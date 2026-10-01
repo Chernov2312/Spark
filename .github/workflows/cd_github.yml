@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+      - master
 jobs:
   lint_and_test:
     runs-on: ubuntu-latest
