@@ -1,7 +1,6 @@
 # Spark
-[![Spark](https://github.com/Chernov2312/Spark/actions/workflows/ci_github.yml/badge.svg)](https://github.com/Chernov2312/Spark/actions/workflows/ci_github.yml)
-
-![lint_test](./badges/lint_test.svg)
+[![Linter](https://github.com/Chernov2312/Spark/actions/workflows/ci_linter.yml/badge.svg)](https://github.com/Chernov2312/Spark/actions/workflows/ci_linter.yml)
+[![Python Test](https://github.com/Chernov2312/Spark/actions/workflows/ci_python_test.yml/badge.svg)](https://github.com/Chernov2312/Spark/actions/workflows/ci_python_test.yml)
 ## 🛠 Необходимое ПО
 
 Перед запуском проекта убедитесь, что у вас установлены:
