@@ -31,16 +31,23 @@ jobs:
       - name: Flake8 check
         run: flake8 .
 
-      - name: Update Linter Badge
-        uses: badges/shields@v1
+      - name: Generate lint_test badge
         if: always()
+        uses: emibcn/badge-action@v2.0.2
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          badge-branch: badges
-          badge-filename: linter_test.json
-          label: 'Linters'
+          label: 'lint_test'
           status: ${{ job.status }}
-          color: ${{ job.status == 'success' && 'green' || job.status == 'failure' && 'red' || 'gray' }}
+          color: ${{ job.status == 'success' && 'green' || 'red' }}
+          path: 'badges/lint_test.svg'
+
+      - name: Push badge
+        if: always()
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add badges/lint_test.svg
+          git commit -m "Update lint_test badge [skip ci]" || true
+          git push
   python_test:
     runs-on: ubuntu-latest
     steps:
