@@ -14,14 +14,13 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
-
 from backend.config import settings
 from backend.db.database import Base
 from backend.db.models.chat import Chat
-from backend.db.models.user import User
 from backend.db.models.image import Image
 from backend.db.models.message import Message
 from backend.db.models.message_reaction import MessageReaction
+from backend.db.models.user import User
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
