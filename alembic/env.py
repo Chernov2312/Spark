@@ -4,7 +4,7 @@ import sys
 root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 sys.path.insert(0, root_path)
-sys.path.insert(0, os.path.join(root_path, "web"))
+sys.path.insert(0, os.path.join(root_path, "backend"))
 
 import asyncio
 from logging.config import fileConfig
@@ -15,13 +15,13 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 
-from web.config import settings
-from web.db.database import Base
-from web.db.models.chat import Chat
-from web.db.models.user import User
-from web.db.models.image import Image
-from web.db.models.message import Message
-from web.db.models.message_reaction import MessageReaction
+from backend.config import settings
+from backend.db.database import Base
+from backend.db.models.chat import Chat
+from backend.db.models.user import User
+from backend.db.models.image import Image
+from backend.db.models.message import Message
+from backend.db.models.message_reaction import MessageReaction
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

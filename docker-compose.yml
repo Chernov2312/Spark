@@ -16,8 +16,8 @@ services:
       timeout: 5s
       retries: 5
 
-  web:
-    build: .
+  backend:
+    build: ./backend
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -32,7 +32,36 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - .:/app
+      - ./backend:/app
+  frontend:
+    build: ./frontend
+    container_name: react_frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - backend
 
+  postgres_test:
+    image: postgres:15-alpine
+    profiles: ["test"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}_test
+      POSTGRES_USER: ${POSTGRES_USER}_test
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}_test
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data_test:/var/lib/postgresql_test/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 volumes:
   postgres_data:
+  postgres_data_test:
