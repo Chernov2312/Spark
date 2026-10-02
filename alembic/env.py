@@ -1,9 +1,8 @@
 import os
 import sys
 
-# Получаем путь к корню (PythonMessenger)
 root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# Добавляем в пути сам корень и папку web
+
 sys.path.insert(0, root_path)
 sys.path.insert(0, os.path.join(root_path, "web"))
 
