@@ -1,5 +1,4 @@
-from web.db.dao.basedao import BaseDao
-
+from db.dao.basedao import BaseDao
 from db.models.image import Image
 
 

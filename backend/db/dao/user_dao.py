@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from web.db.dao.basedao import BaseDao
 
+from db.dao.basedao import BaseDao
 from db.models.user import User
 
 
