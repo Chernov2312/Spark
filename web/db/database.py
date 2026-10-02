@@ -42,7 +42,8 @@ class Base(AsyncAttrs, DeclarativeBase):
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_maker() as session:
-        yield session
+        async with session.begin():
+            yield session
 
 
 async def create_tables():
