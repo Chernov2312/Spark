@@ -1,5 +1,5 @@
 # Spark
-![Статус линтёра isort](https://github.com/Chernov2312/Spark/actions/workflows/{workflow_file}.yml/badge.svg)
+![Статус линтёра isort](https://github.com/Chernov2312/Spark/actions/workflows/{ci_github}.yml/badge.svg)
 ## 🛠 Необходимое ПО
 
 Перед запуском проекта убедитесь, что у вас установлены:
