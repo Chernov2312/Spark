@@ -8,7 +8,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
     POSTGRES_HOST: str = "localhost"
-    POSTGRES_PORT: str = 5432
+    POSTGRES_PORT: str = "5432"
     POSTGRES_DB: str
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str

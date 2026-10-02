@@ -19,6 +19,7 @@ user_chat = Table(
         ForeignKey("chats.id", ondelete="CASCADE"),
         primary_key=True,
     ),
+    keep_existing=True,
 )
 
 
@@ -48,3 +49,4 @@ class User(Base):
         "Image",
         back_populates="user",
     )
+    __table_args__ = {"extend_existing": True}

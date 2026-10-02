@@ -14,6 +14,7 @@ exclude =
     manage.py
     /static/
     __init__.py
+    alembic
 
 ignore = N805, B008, F821, E701
 max-line-length = 90

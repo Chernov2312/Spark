@@ -24,3 +24,4 @@ class Message(Base):
         server_default="{}",
         nullable=False,
     )
+    __table_args__ = {"extend_existing": True}
