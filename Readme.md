@@ -1,5 +1,5 @@
 # Spark
-[![Linter](https://github.com/Chernov2312/Spark/actions/workflows/ci_linter.yml/badge.svg)](https://github.com/Chernov2312/Spark/actions/workflows/ci_linter.yml)
+[![Linter](https://github.com/Chernov2312/Spark/actions/workflows/ci_linter_test.yml/badge.svg)](https://github.com/Chernov2312/Spark/actions/workflows/ci_linter_test.yml)
 [![Python Test](https://github.com/Chernov2312/Spark/actions/workflows/ci_python_test.yml/badge.svg)](https://github.com/Chernov2312/Spark/actions/workflows/ci_python_test.yml)
 ## 🛠 Необходимое ПО
 
