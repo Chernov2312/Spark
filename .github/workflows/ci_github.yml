@@ -4,6 +4,10 @@ on:
     branches:
       - main
       - master
+
+permissions:
+  contents: write
+
 jobs:
   lint_test:
     runs-on: ubuntu-latest
@@ -35,7 +39,7 @@ jobs:
         if: always()
         uses: emibcn/badge-action@v2.0.2
         with:
-          label: 'lint_test'
+          label: 'Lint & Style'
           status: ${{ job.status }}
           color: ${{ job.status == 'success' && 'green' || 'red' }}
           path: 'badges/lint_test.svg'
@@ -47,7 +51,9 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add badges/lint_test.svg
           git commit -m "Update lint_test badge [skip ci]" || true
+          git pull --rebase origin ${GITHUB_REF##*/} # Избегаем конфликтов при параллельном пуше
           git push
+
   python_test:
     runs-on: ubuntu-latest
     steps:
@@ -58,3 +64,22 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+
+      - name: Generate python_test badge
+        if: always()
+        uses: emibcn/badge-action@v2.0.2
+        with:
+          label: 'Python Tests'
+          status: ${{ job.status }}
+          color: ${{ job.status == 'success' && 'green' || 'red' }}
+          path: 'badges/python_test.svg'
+
+      - name: Push badge
+        if: always()
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add badges/python_test.svg
+          git commit -m "Update python_test badge [skip ci]" || true
+          git pull --rebase origin ${GITHUB_REF##*/} # Избегаем конфликтов при параллельном пуше
+          git push
