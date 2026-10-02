@@ -41,6 +41,7 @@ async def db_session(db_engine):
 @pytest_asyncio.fixture(scope="function", loop_scope="session")
 async def api_client():
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://localhost:8000/",
+        transport=ASGITransport(app=app),
+        base_url="http://localhost:8000/",
     ) as client:
         yield client
