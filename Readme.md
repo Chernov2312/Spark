@@ -1,5 +1,7 @@
 # Spark
 [![Spark](https://github.com/Chernov2312/Spark/actions/workflows/ci_github.yml/badge.svg)](https://github.com/Chernov2312/Spark/actions/workflows/ci_github.yml)
+
+![lint_test](./badges/lint_test.svg)
 ## 🛠 Необходимое ПО
 
 Перед запуском проекта убедитесь, что у вас установлены:

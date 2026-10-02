@@ -30,6 +30,17 @@ jobs:
 
       - name: Flake8 check
         run: flake8 .
+
+      - name: Update Linter Badge
+        uses: badges/shields@v1
+        if: always()
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          badge-branch: badges
+          badge-filename: linter_test.json
+          label: 'Linters'
+          status: ${{ job.status }}
+          color: ${{ job.status == 'success' && 'green' || job.status == 'failure' && 'red' || 'gray' }}
   python_test:
     runs-on: ubuntu-latest
     steps:
