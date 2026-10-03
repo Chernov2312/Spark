@@ -2,7 +2,7 @@ from sqlalchemy import Column, ForeignKey, String, Table
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from db.database import Base
+from backend.db.database import Base
 
 user_chat = Table(
     "user_chat",
@@ -42,7 +42,7 @@ class User(Base):
     )
     created_chats: Mapped[list["Chat"]] = relationship(
         "Chat",
-        back_populates="author",
+        back_populates="owner",
         cascade="all, delete-orphan",
     )
     avatars: Mapped[list["Image"]] = relationship(
