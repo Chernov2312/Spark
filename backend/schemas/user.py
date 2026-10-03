@@ -19,3 +19,7 @@ class UserUpdate(BaseModel):
     avatar_url: Optional[str] = Field(default=None, max_length=512)
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class Avatar(BaseModel):
+    url: str = Field(..., max_length=512)
