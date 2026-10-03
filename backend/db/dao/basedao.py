@@ -34,7 +34,12 @@ class BaseDao[T]:
         data: dict,
     ) -> bool:
         update_data = {k: v for k, v in data.items() if k != "id"}
-        query = update(cls.model).where(cls.model.id == target_id).values(**update_data).returning(cls.model)
+        query = (
+            update(cls.model)
+            .where(cls.model.id == target_id)
+            .values(**update_data)
+            .returning(cls.model)
+        )
         res = await session.execute(query)
         await session.flush()
         return res.scalar_one_or_none()
