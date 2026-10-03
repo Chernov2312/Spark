@@ -12,9 +12,9 @@ jobs:
       postgres_test:
         image: postgres:15-alpine
         env:
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: test_db
+          POSTGRES_USER: test_user_test
+          POSTGRES_PASSWORD: test_password_test
+          POSTGRES_DB: test_db_test
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
