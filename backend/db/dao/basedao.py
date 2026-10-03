@@ -1,7 +1,7 @@
 import uuid
 from typing import List, Type
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -10,9 +10,9 @@ class BaseDao[T]:
 
     @classmethod
     async def add(cls, session: AsyncSession, data: dict) -> T:
-        new = cls.model(**data)
-        session.add(new)
-        return new
+        stmt = insert(cls.model).values(**data).returning(cls.model)
+        result = await session.execute(stmt)
+        return result.scalar_one()
 
     @classmethod
     async def get_by_id(cls, session: AsyncSession, target_id: uuid.UUID) -> T:

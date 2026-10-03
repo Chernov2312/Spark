@@ -2,7 +2,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime
 
-from sqlalchemy import UUID, func
+from sqlalchemy import UUID, func, inspect
 from sqlalchemy.ext.asyncio import (
     AsyncAttrs,
     AsyncSession,
@@ -38,6 +38,9 @@ class Base(AsyncAttrs, DeclarativeBase):
     @declared_attr.directive
     def __tablename__(cls) -> str:
         return cls.__name__.lower() + "s"
+
+    def to_dict(self):
+        return {c.key: getattr(self, c.key) for c in inspect(self).mapper.column_attrs}
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
