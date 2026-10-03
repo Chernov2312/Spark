@@ -1,5 +1,5 @@
 from dao.basedao import BaseDao
-from db.models.message_reaction import MessageReaction
+from db.models import MessageReaction
 
 
 class MessageReactionDao(BaseDao[MessageReaction]):

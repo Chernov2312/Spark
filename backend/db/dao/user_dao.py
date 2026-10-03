@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.dao.basedao import BaseDao
-from db.models.user import User
+from db.models import User
 
 
 class UserDao(BaseDao[User]):

@@ -1,5 +1,5 @@
 from db.dao.basedao import BaseDao
-from db.models.image import Image
+from db.models import Image
 
 
 class ImageDao(BaseDao[Image]):

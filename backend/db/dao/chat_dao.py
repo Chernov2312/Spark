@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from dao.basedao import BaseDao
-from db.models.chat import Chat
+from db.models import Chat
 
 
 class ChatDao(BaseDao[Chat]):
