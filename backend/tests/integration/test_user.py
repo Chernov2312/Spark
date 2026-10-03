@@ -27,8 +27,8 @@ async def test_get_by_username_or_email(db_session, db_user: User):
 async def test_update_user(db_session, db_user: User):
     test = db_user.to_dict()
     test["username"] = "chel"
-    user_get = await UserDao.update(db_session, db_user.to_dict())
-    assert user_get > 0
+    user_get = await UserDao.update_by_id(db_session, target_id=db_user.id, data=test)
+    assert user_get.username == test["username"]
 
 
 async def test_get_users_from_chat(
