@@ -6,6 +6,8 @@ from db.models.user import User
 
 
 class UserDao(BaseDao[User]):
+    model = User
+
     @classmethod
     async def get_by_username(
         cls,

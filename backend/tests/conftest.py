@@ -5,7 +5,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from backend.config import settings
 from backend.db.database import Base
 from backend.main import app
-
+from db.models.user import User
+from db.models.chat import Chat
+from db.models.image import Image
+from db.models.message import Message
+from db.models.message_reaction import MessageReaction
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def db_engine():
@@ -13,7 +17,7 @@ async def db_engine():
         f"postgresql+asyncpg://{settings.POSTGRES_USER}_test"
         f":{settings.POSTGRES_PASSWORD}_test"
         f"@localhost"
-        f":{settings.POSTGRES_PORT}"
+        f":5433"
         f"/{settings.POSTGRES_DB}_test"
     )
     engine = create_async_engine(url=db_url)

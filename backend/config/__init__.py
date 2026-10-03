@@ -1,3 +1,3 @@
 from config.app import settings
-
-__all__ = ("settings",)
+from config.tags import RouteTags
+__all__ = ("settings", "RouteTags")

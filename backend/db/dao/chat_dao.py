@@ -9,6 +9,8 @@ from db.models.chat import Chat
 
 
 class ChatDao(BaseDao[Chat]):
+    model = Chat
+
     @classmethod
     async def get_chat_with_users(
         cls,
