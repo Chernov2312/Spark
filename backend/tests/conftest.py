@@ -5,11 +5,20 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from backend.config import settings
 from backend.db.database import Base
 from backend.main import app
-from db.models.user import User
 from db.models.chat import Chat
 from db.models.image import Image
 from db.models.message import Message
 from db.models.message_reaction import MessageReaction
+from db.models.user import User
+
+__all__ = (
+    "Chat",
+    "Image",
+    "Message",
+    "MessageReaction",
+    "User",
+)
+
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def db_engine():
