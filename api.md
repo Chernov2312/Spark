@@ -23,7 +23,6 @@
   {
     "id": "u1111111-eeee-aaaa-bbbb-cccccccccccc",
     "username": "john_doe",
-    "email": "john@example.com",
     "token": "eyJhbGciOiJIUzI1NiIsIn..."
   }
   ```
