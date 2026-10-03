@@ -16,7 +16,7 @@ jobs:
           POSTGRES_PASSWORD: test_password_test
           POSTGRES_DB: test_db_test
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U test_user_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -25,9 +25,6 @@ jobs:
 
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v4
-
-      - name: Checkout project code
         uses: actions/checkout@v4
 
       - name: Set up Python 3.13
@@ -44,7 +41,9 @@ jobs:
       - name: Run tests
         env:
           POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5433
           POSTGRES_USER: test_user
           POSTGRES_PASSWORD: test_password
           POSTGRES_DB: test_db
+          PYTHONPATH: .
         run: pytest
