@@ -27,16 +27,6 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v4
 
-
-      - name: Run tests
-        env:
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: test_user
-          DB_PASSWORD: test_password
-          DB_NAME: test_db
-        run: go test -v ./...
-
       - name: Checkout project code
         uses: actions/checkout@v4
 
@@ -51,5 +41,11 @@ jobs:
           pip install -r backend/requirements/test.txt
           pip install -r backend/requirements/dev.txt
       
-      - name: python test
+      - name: Run tests
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: test_user
+          DB_PASSWORD: test_password
+          DB_NAME: test_db
         run: pytest
