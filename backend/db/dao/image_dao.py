@@ -12,7 +12,10 @@ class ImageDao(BaseDao[Image]):
 
     @classmethod
     async def delete_image_by_url_and_user_id(
-        cls, session: AsyncSession, target_url: str, user_id: uuid.UUID,
+        cls,
+        session: AsyncSession,
+        target_url: str,
+        user_id: uuid.UUID,
     ) -> bool:
         query = delete(Image).where(
             and_(Image.image_url == target_url, Image.user_id == user_id),

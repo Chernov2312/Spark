@@ -54,7 +54,8 @@ async def set_avatar(
 ) -> Avatar:
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="incorrect file format",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="incorrect file format",
         )
     s3 = S3Storage()
     url = await s3.upload_avatar(file=file, user_id=current_user.id)
@@ -73,7 +74,9 @@ async def delete_avatar(
     current_user=Depends(get_user),
 ):
     image = await ImageDao.delete_image_by_url_and_user_id(
-        session=session, target_url=avatar.url, user_id=current_user.id,
+        session=session,
+        target_url=avatar.url,
+        user_id=current_user.id,
     )
     if not image:
         raise HTTPException(
