@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.v1.auth import auth
 from api.v1.user import user_router
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
