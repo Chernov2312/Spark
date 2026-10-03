@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.v1.auth import auth
+from api.v1.user import user_router
 
 
 @asynccontextmanager
@@ -30,3 +31,4 @@ def create_app() -> FastAPI:
 
 app = create_app()
 app.include_router(auth)
+app.include_router(user_router)
