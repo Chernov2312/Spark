@@ -26,6 +26,10 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       SECRET_KEY: ${SECRET_KEY}
       ALGORITHM: ${ALGORITHM}
+      YANDEX_CLOUD_KEY_ID: ${YANDEX_CLOUD_KEY_ID}
+      YANDEX_CLOUD_KEY: ${YANDEX_CLOUD_KEY}
+      BUCKET_NAME: ${BUCKET_NAME}
+    
     depends_on:
       postgres:
         condition: service_healthy

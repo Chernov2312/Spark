@@ -9,7 +9,6 @@ from api.v1.user import user_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-
     yield
 
 

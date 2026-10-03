@@ -24,4 +24,9 @@ class Settings(BaseSettings):
         )
 
 
+class Storage(BaseSettings):
+    YANDEX_CLOUD_KEY_ID: str
+    YANDEX_CLOUD_KEY: str
+
+
 settings = Settings()
