@@ -27,13 +27,14 @@ class BaseDao[T]:
         return res.all()
 
     @classmethod
-    async def update(cls, session: AsyncSession, data: dict) -> bool:
-        if not data["id"]:
-            return ValueError("data must has id")
+    async def update_by_id(
+        cls,
+        session: AsyncSession,
+        target_id: uuid.UUID,
+        data: dict,
+    ) -> bool:
         update_data = {k: v for k, v in data.items() if k != "id"}
-        query = (
-            update(cls.model).where(cls.model.id == data.get("id")).values(**update_data)
-        )
+        query = update(cls.model).where(cls.model.id == target_id).values(**update_data)
         res = await session.execute(query)
         await session.flush()
         return res.rowcount > 0

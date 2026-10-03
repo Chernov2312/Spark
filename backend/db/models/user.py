@@ -25,11 +25,11 @@ user_chat = Table(
 
 class User(Base):
     username: Mapped[str] = mapped_column(
-        String(100),
+        String(50),
         nullable=False,
         unique=True,
     )
-    password: Mapped[str] = mapped_column(String(100), nullable=False)
+    password: Mapped[str] = mapped_column(String(250), nullable=False)
     email: Mapped[str] = mapped_column(
         String(100),
         nullable=False,
