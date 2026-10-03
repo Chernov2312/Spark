@@ -3,8 +3,8 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.config import settings
-from backend.db.database import Base
 from backend.main import app
+from db.database import Base
 from db.models.chat import Chat
 from db.models.image import Image
 from db.models.message import Message
