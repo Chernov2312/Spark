@@ -19,9 +19,13 @@ async def db_userchat(db_session, db_user):
         db_session,
         {"owner_id": db_user.id, "title": "test", "description": "test"},
     )
-    chat = await ChatDao.add_users_to_chat(
+    await ChatDao.add_users_to_chat(
         session=db_session,
         chat_id=chat.id,
         new_user_ids=[user.id],
+    )
+    chat = await ChatDao.get_chat_with_users(
+        session=db_session,
+        chat_id=chat.id,
     )
     yield (chat, user)

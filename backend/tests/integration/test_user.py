@@ -17,6 +17,13 @@ async def test_get_user(db_session, db_user: User):
     assert user_get.email == db_user.email
 
 
+async def test_get_by_username_or_email(db_session, db_user: User):
+    user_username = await UserDao.get_by_username_or_email(db_session, db_user.username)
+    assert user_username.id == db_user.id
+    user_email = await UserDao.get_by_username_or_email(db_session, db_user.email)
+    assert user_email.id == db_user.id
+
+
 async def test_update_user(db_session, db_user: User):
     test = db_user.to_dict()
     test["username"] = "chel"

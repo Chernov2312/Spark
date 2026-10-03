@@ -1,11 +1,12 @@
 import uuid
 
 from sqlalchemy import select
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from db.dao.basedao import BaseDao
-from db.models import Chat, User
+from db.models import Chat, user_chat
 
 
 class ChatDao(BaseDao[Chat]):
@@ -17,23 +18,17 @@ class ChatDao(BaseDao[Chat]):
         session: AsyncSession,
         chat_id: uuid.UUID,
         new_user_ids: list[uuid.UUID],
-    ) -> Chat | None:
-        query = select(Chat).where(Chat.id == chat_id).options(selectinload(Chat.users))
-        result = await session.execute(query)
-        chat = result.scalar_one_or_none()
+    ) -> None:
+        if not new_user_ids:
+            return
+        stmt = (
+            postgresql.insert(user_chat)
+            .values([{"chat_id": chat_id, "user_id": uid} for uid in new_user_ids])
+            .on_conflict_do_nothing()
+        )
 
-        if not chat:
-            return None
-
-        users_query = select(User).where(User.id.in_(new_user_ids))
-        users_result = await session.execute(users_query)
-        new_users = users_result.scalars().all()
-
-        for user in new_users:
-            if user not in chat.users:
-                chat.users.append(user)
+        await session.execute(stmt)
         await session.flush()
-        return chat
 
     @classmethod
     async def get_chat_with_users(
