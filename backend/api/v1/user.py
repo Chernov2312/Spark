@@ -28,6 +28,8 @@ async def update_me(
     current_user=Depends(get_user),
 ) -> UserRead:
     user: UserRead = await UserDao.update(
-        session=session, target_id=current_user.id, data=update_user.model_dump(),
+        session=session,
+        target_id=current_user.id,
+        data=update_user.model_dump(),
     )
     return user
