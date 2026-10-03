@@ -1,9 +1,18 @@
 from pydantic import BaseModel, Field
+import uuid
 
 
 class UserRegister(BaseModel):
-    username: str = Field(..., nullable=False, max_length=10)
+    name: str = Field(..., nullable=False, max_length=50)
+    email: str = Field(..., nullable=False, max_length=50)
+    password: str = Field(..., nullable=False, max_length=50)
 
 
-class Vernul(BaseModel):
-    status: str
+class UserLogin(BaseModel):
+    email: str = Field(..., nullable=False, max_length=50)
+    password: str = Field(..., nullable=False, max_length=50)
+
+
+class UserResponse(BaseModel):
+    id: uuid.UUID = Field(..., nullable=False)
+    username: str = Field(..., nullable=False, max_length=50)

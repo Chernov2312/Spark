@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from db.database import create_tables
 from api.v1.auth import auth
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await create_tables()
