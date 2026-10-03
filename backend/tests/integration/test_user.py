@@ -1,6 +1,6 @@
-from db.dao.user_dao import UserDao
 from db.dao.chat_dao import ChatDao
-from db.models import User, Chat
+from db.dao.user_dao import UserDao
+from db.models import Chat, User
 
 
 async def test_create_user(db_session):
@@ -23,6 +23,13 @@ async def test_update_user(db_session, db_user: User):
     user_get = await UserDao.update(db_session, db_user.to_dict())
     assert user_get > 0
 
-async def test_get_users_from_chat(db_session, db_user: User, db_userchat: Chat):
+
+async def test_get_users_from_chat(
+    db_session,
+    db_user: User,
+    db_userchat: tuple[Chat, User],
+):
+    db_user_from_chat = db_userchat[1]
+    db_userchat = db_userchat[0]
     chat = await ChatDao.get_chat_with_users(session=db_session, chat_id=db_userchat.id)
-    assert chat.users == [db_user.id]
+    assert db_user_from_chat.id == chat.users[0].id

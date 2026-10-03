@@ -2,7 +2,7 @@ from sqlalchemy import Column, ForeignKey, String, Table
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from backend.db.database import Base
+from db.database import Base
 
 user_chat = Table(
     "user_chat",

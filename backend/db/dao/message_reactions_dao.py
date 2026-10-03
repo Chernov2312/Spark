@@ -1,4 +1,4 @@
-from dao.basedao import BaseDao
+from db.dao.basedao import BaseDao
 from db.models import MessageReaction
 
 

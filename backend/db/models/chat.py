@@ -3,8 +3,8 @@ import uuid
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from backend.db.database import Base
-from backend.db.models.user import user_chat
+from db.database import Base
+from db.models.user import user_chat
 
 
 class Chat(Base):
@@ -28,7 +28,6 @@ class Chat(Base):
     )
     description: Mapped[str] = mapped_column(
         String(500),
-        nullable=True,
         unique=False,
     )
     avatars: Mapped[list["Image"]] = relationship(

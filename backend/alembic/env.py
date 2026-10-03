@@ -1,11 +1,11 @@
 import os
 import sys
 
-root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Вычисляем путь к папке backend (она на два уровня выше, чем этот env.py)
+backend_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-sys.path.insert(0, root_path)
-sys.path.insert(0, os.path.join(root_path, "backend"))
-
+# Добавляем корень бэкенда в пути поиска модулей Python
+sys.path.insert(0, backend_root)
 import asyncio
 from logging.config import fileConfig
 
@@ -14,13 +14,13 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
-from backend.config import settings
-from backend.db.database import Base
-from backend.db.models.user import User
-from backend.db.models.chat import Chat
-from backend.db.models.message import Message
-from backend.db.models.message_reaction import MessageReaction
-from backend.db.models.image import Image
+from config import settings
+from db.database import Base
+from db.models.user import User
+from db.models.chat import Chat
+from db.models.message import Message
+from db.models.message_reaction import MessageReaction
+from db.models.image import Image
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
