@@ -1,0 +1,117 @@
+.not-found {
+  min-height: calc(100vh - 64px);
+  padding: 80px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: var(--bg);
+  position: relative;
+  overflow: hidden;
+}
+
+.not-found::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px;
+  height: 400px;
+  background: radial-gradient(
+    ellipse at center,
+    var(--spark-glow) 0%,
+    transparent 70%
+  );
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+.not-found > * {
+  position: relative;
+  z-index: 1;
+}
+
+.not-found__code {
+  font-size: 120px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--spark);
+  letter-spacing: -4px;
+  margin-bottom: 16px;
+  text-shadow: 0 0 60px var(--spark-glow);
+}
+
+.not-found__title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 16px;
+}
+
+.not-found__text {
+  max-width: 520px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  margin: 0 0 32px;
+}
+
+.not-found__path {
+  padding: 2px 8px;
+  background: var(--bg-input);
+  color: var(--spark);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: "Consolas", "Menlo", monospace;
+}
+
+.not-found__actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.not-found__btn {
+  display: inline-block;
+  padding: 12px 28px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  background: var(--bg-elevated);
+  border-radius: 10px;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.not-found__btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--spark);
+}
+
+.not-found__btn--primary {
+  background: var(--spark);
+  color: #fff;
+  border-color: var(--spark);
+  box-shadow: 0 8px 24px var(--spark-glow);
+}
+
+.not-found__btn--primary:hover {
+  background: var(--spark-hover);
+  border-color: var(--spark-hover);
+}
+
+@media (max-width: 640px) {
+  .not-found__code {
+    font-size: 80px;
+  }
+  .not-found__title {
+    font-size: 20px;
+  }
+}

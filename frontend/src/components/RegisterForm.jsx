@@ -65,7 +65,8 @@ export default function RegisterForm({ onSuccess }) {
   return (
     <div className="register-page">
       <form className="register-card" onSubmit={handleSubmit} noValidate>
-        <h1 className="register-card__title">Регистрация участника</h1>
+        <h1 className="register-card__title">Создать аккаунт Spark</h1>
+        <p className="register-card__subtitle">Займёт меньше минуты</p>
 
         <label className="field">
           <span className="field__label">
