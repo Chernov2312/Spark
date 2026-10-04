@@ -1,6 +1,7 @@
+import hashlib
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-import hashlib
 
 from config import RouteTags
 from db.dao.user_dao import UserDao
