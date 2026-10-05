@@ -14,7 +14,7 @@ class UserDao(BaseDao[User]):
         cls,
         session: AsyncSession,
         target: str,
-    ) -> User:
+    ) -> User | None:
         query = select(User).where(or_(User.username == target, User.email == target))
         res = await session.execute(query)
         return res.scalar_one_or_none()
@@ -24,7 +24,7 @@ class UserDao(BaseDao[User]):
         cls,
         session: AsyncSession,
         target_id: str,
-    ) -> User:
+    ) -> User | None:
         query = select(User).where(User.id == target_id).options(selectinload(User.chats))
         result = await session.execute(query)
 

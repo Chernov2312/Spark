@@ -35,7 +35,7 @@ class ChatDao(BaseDao[Chat]):
         cls,
         session: AsyncSession,
         chat_id: uuid.UUID,
-    ) -> Chat:
+    ) -> Chat | None:
         query = select(Chat).where(Chat.id == chat_id).options(selectinload(Chat.users))
         result = await session.execute(query)
 

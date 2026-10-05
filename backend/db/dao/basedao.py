@@ -15,7 +15,7 @@ class BaseDao[T]:
         return result.scalar_one()
 
     @classmethod
-    async def get_by_id(cls, session: AsyncSession, target_id: uuid.UUID) -> T:
+    async def get_by_id(cls, session: AsyncSession, target_id: uuid.UUID) -> T | None:
         query = select(cls.model).where(cls.model.id == target_id)
         result = await session.execute(query)
         return result.scalar_one_or_none()
