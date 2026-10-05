@@ -11,7 +11,7 @@ class YandexStorage(BaseSettings):
     YANDEX_CLOUD_KEY_ID: str
     YANDEX_CLOUD_KEY: str
     BUCKET_NAME: str
-    ENDPOINT_URL: str = "https://storage.api.cloud.yandex.net"
+    ENDPOINT_URL: str = "https://storage.yandexcloud.net"
 
 
 yandex_storage = YandexStorage()
