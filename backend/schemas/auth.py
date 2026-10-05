@@ -10,17 +10,13 @@ class UserRegister(BaseModel):
 
 
 class UserLogin(BaseModel):
-    email: str = Field(..., nullable=False, max_length=50)
+    username: str = Field(..., nullable=False, max_length=50)
     password: str = Field(..., nullable=False, max_length=250)
 
 
-class UserRegisterResponse(BaseModel):
-    id: uuid.UUID = Field(..., nullable=False)
-    username: str = Field(..., nullable=False, max_length=50)
-
-
-class UserLoginResponse(BaseModel):
+class UserResponse(BaseModel):
     id: uuid.UUID = Field(..., nullable=False)
     username: str = Field(..., nullable=False, max_length=50)
     email: str = Field(..., nullable=False, max_length=50)
-    token: str = Field(..., nullable=False, max_length=250)
+    access_token: str = Field(..., nullable=False, max_length=250)
+    token_type: str = "bearer"

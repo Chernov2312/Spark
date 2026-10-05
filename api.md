@@ -13,37 +13,36 @@
 
 - **Тело запроса (JSON):**
   ```json
-  {
-    "username": "john_doe",
-    "email": "john@example.com",
-    "password": "strongpassword123"
-  }
+    username: "chel"
+    email: "john@example.com"
+    password: "strongpassword123" 
   ```
 - **Ответ (201 Created):**
   ```json
   {
     "id": "u1111111-eeee-aaaa-bbbb-cccccccccccc",
     "username": "john_doe",
-    "token": "eyJhbGciOiJIUzI1NiIsIn..."
+    "email": "pivo",
+    "token": "eyJhbGciOiJIUzI1NiIsIn...",
+    "token_type" = "bearer"
   }
   ```
 
 ### `POST /api/v1/auth/login` — Авторизация пользователя
 
-- **Тело запроса (JSON):**
-  ```json
-  {
-    "email": "john@example.com",
-    "password": "strongpassword123"
-  }
+- **Тело запроса (Form Data / URL-encoded):**
+  ```ini
+    email: "john@example.com" # Тут можно указать  username: "chel"
+    password: "strongpassword123" 
   ```
 - **Ответ (200 OK):**
   ```json
   {
     "id": "u1111111-eeee-aaaa-bbbb-cccccccccccc",
     "username": "john_doe",
-    "email": "john@example.com",
-    "token": "eyJhbGciOiJIUzI1NiIsIn..."
+    "email": "pivo",
+    "token": "eyJhbGciOiJIUzI1NiIsIn...",
+    "token_type" = "bearer"
   }
   ```
 
