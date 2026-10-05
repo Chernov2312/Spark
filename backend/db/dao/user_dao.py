@@ -20,7 +20,7 @@ class UserDao(BaseDao[User]):
         return res.scalar_one_or_none()
 
     @classmethod
-    async def get_all_chats(
+    async def get_user_with_chats(
         cls,
         session: AsyncSession,
         target_id: str,
