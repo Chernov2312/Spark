@@ -25,6 +25,7 @@ class UserDao(BaseDao[User]):
         session: AsyncSession,
         target_id: str,
     ) -> User:
-        stmt = select(User).where(User.id == target_id).options(selectinload(User.chats))
-        await session.execute(stmt)
-        await session.flush()
+        query = select(User).where(User.id == target_id).options(selectinload(User.chats))
+        result = await session.execute(query)
+
+        return result.scalar_one_or_none()
