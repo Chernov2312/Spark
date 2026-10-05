@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags
 from core.storage import S3Storage
+from core.security import get_current_user
 from db.dao.image_dao import ImageDao
 from db.dao.user_dao import UserDao
 from db.database import get_session
@@ -19,14 +20,10 @@ user_router = APIRouter(prefix="/api/v1/users", tags=[RouteTags.USERS])
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
 
-def get_user():
-    return None
-
-
 @user_router.get("/me", status_code=status.HTTP_200_OK)
 async def get_me(
     session: AsyncSession = Depends(get_session),
-    user=Depends(get_user),
+    user=Depends(get_current_user),
 ) -> UserRead:
     return await UserDao.get_by_id(session=session, target_id=user.id)
 
@@ -35,7 +32,7 @@ async def get_me(
 async def update_me(
     update_user: UserUpdate,
     session: AsyncSession = Depends(get_session),
-    current_user=Depends(get_user),
+    current_user=Depends(get_current_user),
 ) -> UserRead:
     user: UserRead = await UserDao.update(
         session=session,
@@ -50,7 +47,7 @@ async def update_me(
 async def set_avatar(
     file: UploadFile,
     session: AsyncSession = Depends(get_session),
-    current_user=Depends(get_user),
+    current_user=Depends(get_current_user),
 ) -> Avatar:
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(
@@ -71,7 +68,7 @@ async def set_avatar(
 async def delete_avatar(
     avatar: Avatar,
     session: AsyncSession = Depends(get_session),
-    current_user=Depends(get_user),
+    current_user=Depends(get_current_user),
 ):
     image = await ImageDao.delete_image_by_url_and_user_id(
         session=session,
