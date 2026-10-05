@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
 
+    SECRET_KEY: str
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
     @property
     def db_url(self):
         return (
@@ -25,8 +29,8 @@ class Settings(BaseSettings):
 
 
 class Storage(BaseSettings):
-    YANDEX_CLOUD_KEY_ID: str
-    YANDEX_CLOUD_KEY: str
+    YANDEX_CLOUD_KEY_ID: str = ""
+    YANDEX_CLOUD_KEY: str = ""
 
 
 settings = Settings()
