@@ -9,8 +9,8 @@ from fastapi import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags
-from core.storage import S3Storage
 from core.security import get_current_user
+from core.storage import S3Storage
 from db.dao.image_dao import ImageDao
 from db.dao.user_dao import UserDao
 from db.database import get_session
