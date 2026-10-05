@@ -9,8 +9,8 @@ from fastapi import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags
-from core.storage import S3Storage
 from core.security import get_current_user
+from core.storage import S3Storage
 from db.dao.image_dao import ImageDao
 from db.dao.user_dao import UserDao
 from db.database import get_session
@@ -34,7 +34,7 @@ async def update_me(
     session: AsyncSession = Depends(get_session),
     current_user=Depends(get_current_user),
 ) -> UserRead:
-    user: UserRead = await UserDao.update(
+    user: UserRead = await UserDao.update_by_id(
         session=session,
         target_id=current_user.id,
         data=update_user.model_dump(),

@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
 from db.dao.user_dao import UserDao
-from db.models import User
 from db.database import get_session
+from db.models import User
 from schemas.auth import UserLogin
 
 security_router = APIRouter()
@@ -88,7 +88,7 @@ async def login_for_access_token(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> Token:
     user = await authenticate_user(
-        UserLogin(password=form_data.password, email=form_data.username), 
+        UserLogin(password=form_data.password, email=form_data.username),
         session=session,
     )
     if not user:
