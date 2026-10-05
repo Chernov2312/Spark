@@ -1,4 +1,3 @@
-# здесь создаем токен и храним его структуру
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -12,9 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
 from db.dao.user_dao import UserDao
+from db.models import User
+from db.database import get_session
 from schemas.auth import UserLogin
 
 security_router = APIRouter()
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 password_hash = PasswordHash.recommended()
 
@@ -29,11 +31,11 @@ class TokenData(BaseModel):
     username: str | None = None
 
 
-def verify_password(plain_password, hashed_password):
+def verify_password(plain_password: str, hashed_password: str) -> bool:
     return password_hash.verify(plain_password, hashed_password)
 
 
-def get_password_hash(password):
+def get_password_hash(password: str) -> str:
     return password_hash.hash(password)
 
 
@@ -49,7 +51,7 @@ async def authenticate_user(
     return user
 
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None):
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
@@ -60,7 +62,10 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     return encoded_jwt
 
 
-async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
+async def get_current_user(
+    token: Annotated[str, Depends(oauth2_scheme)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -68,31 +73,34 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
     )
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        data = payload.get("sub")
-        if data is None:
+        sub_id = payload.get("sub")
+        if sub_id is None:
             raise credentials_exception
-        token_data = TokenData(username=data["username"], id=data["id"])
-    except InvalidTokenError:
+    except (InvalidTokenError, KeyError, TypeError):
         raise credentials_exception
-    if token_data is None:
-        raise credentials_exception
-    return token_data
+    user = await UserDao.get_by_id(session=session, target_id=sub_id)
+    return user
 
 
-@security_router.post("/token")
+@security_router.post("/token", response_model=Token)
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> Token:
-    user = await authenticate_user(form_data.username, form_data.password)
+    user = await authenticate_user(
+        UserLogin(password=form_data.password, email=form_data.username), 
+        session=session,
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": {"username": user.username, "id": user.id}},
+        data={"sub": str(user.id), "username": user.username},
         expires_delta=access_token_expires,
     )
     return Token(access_token=access_token, token_type="bearer")
