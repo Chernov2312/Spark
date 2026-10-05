@@ -76,5 +76,8 @@ async def login_for_access_token(
         expires_delta=access_token_expires,
     )
     return UserResponse(
-        id=user.id, username=user.username, email=user.email, access_token=access_token,
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        access_token=access_token,
     )
