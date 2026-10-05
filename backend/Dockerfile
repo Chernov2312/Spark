@@ -12,4 +12,5 @@ RUN pip install --no-cache-dir -r requirements/prod.txt
 COPY . .
 
 COPY ./entrypoint.sh /entrypoint.sh
-ENTRYPOINT [ "/entrypoint.sh" ]
+
+ENTRYPOINT ["/entrypoint.sh"]
