@@ -56,6 +56,7 @@ async def db_session(db_engine):
             yield session
         await transaction.rollback()
 
+
 @pytest_asyncio.fixture(scope="function", loop_scope="session")
 async def api_client(db_session):
     app.dependency_overrides[get_session] = lambda: db_session
