@@ -45,7 +45,7 @@ jobs:
           POSTGRES_USER: test_user
           POSTGRES_PASSWORD: test_password
           POSTGRES_DB: test_db
-          SEKRET_KEY: wery_secret
+          SECRET_KEY: wery_secret
           YANDEX_CLOUD_KEY_ID: choto
           YANDEX_CLOUD_KEY: choto
           BUCKET_NAME: name
