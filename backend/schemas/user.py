@@ -1,13 +1,13 @@
 import uuid
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class UserRead(BaseModel):
     id: uuid.UUID = Field(..., description="user_id")
     username: str = Field(..., max_length=50)
-    email: str = Field(..., max_length=100)
+    email: EmailStr = Field(..., max_length=100)
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -19,7 +19,7 @@ from schemas.auth import UserLogin, UserRegister, UserResponse
 auth_router = APIRouter(prefix="/api/v1/auth", tags=[RouteTags.AUTH])
 
 
-@auth_router.post("/register")
+@auth_router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(
     data: UserRegister,
     session: AsyncSession = Depends(get_session),
@@ -54,7 +54,7 @@ async def register(
     )
 
 
-@auth_router.post("/login")
+@auth_router.post("/login", status_code=status.HTTP_200_OK)
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     session: Annotated[AsyncSession, Depends(get_session)],
