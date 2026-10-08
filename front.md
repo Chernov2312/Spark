@@ -1,136 +1,579 @@
-# 🖱️ 1. Кнопки и элементы управления (UI Contract)
+# Frontend Spark — документация
 
-Раздел описывает клиентские элементы взаимодействия, их назначение и привязку к API-эндпоинтам. Используется фронтенд-разработчиками как чек-лист при верстке и подключении логики.
+Одностраничное приложение мессенджера **Spark** на React + Vite. Тёмная тема, роутинг, работа с REST API и WebSocket.
 
-## 1.1. Шапка сайта (глобальная навигация)
+---
 
-| Элемент              | Тип         | Действие                                   | API / Роут        | Описание                                                        |
-| -------------------- | ----------- | ------------------------------------------ | ----------------- | --------------------------------------------------------------- |
-| **Spark** (логотип)  | `<Link>`    | Переход                                    | `/` или `/chats`  | Ведёт на главную для гостя, на список чатов для авторизованного |
-| **Возможности**      | `<NavLink>` | Переход                                    | `/features`       | Показывается только гостям. Описание функций мессенджера        |
-| **Скачать**          | `<NavLink>` | Переход                                    | `/download`       | Показывается только гостям. Ссылки на iOS/Android/Desktop       |
-| **FAQ**              | `<NavLink>` | Переход                                    | `/faq`            | Показывается только гостям. Частые вопросы                      |
-| **Чаты**             | `<NavLink>` | Переход                                    | `/chats`          | Виден авторизованным. Список чатов пользователя                 |
-| **Профиль**          | `<NavLink>` | Переход                                    | `/profile`        | Виден авторизованным. Профиль пользователя                      |
-| **Войти**            | `<NavLink>` | Переход                                    | `/login`          | Виден гостям. Форма входа                                       |
-| **Начать бесплатно** | `<Link>`    | Переход                                    | `/register`       | CTA-кнопка в шапке. Ведёт на регистрацию                        |
-| **@{username}**      | `<span>`    | —                                          | —                 | Отображение имени авторизованного пользователя                  |
-| **Выйти**            | `<button>`  | `auth.logoutUser()` + `navigate('/login')` | Локально, без API | Удаляет `token` и `user` из `localStorage`                      |
+## 1. Стек
 
-## 1.2. Главная страница `/`
+| Слой          | Технология                 |
+| ------------- | -------------------------- |
+| **Сборщик**   | Vite 5                     |
+| **UI**        | React 18                   |
+| **Роутинг**   | react-router-dom 7         |
+| **HTTP**      | axios                      |
+| **Стили**     | чистый CSS, CSS-переменные |
+| **Состояние** | hooks + `localStorage`     |
+| **Модули**    | ESM                        |
 
-| Элемент                | Тип      | Действие | API / Роут                     |
-| ---------------------- | -------- | -------- | ------------------------------ |
-| **Создать аккаунт**    | `<Link>` | Переход  | `/register`                    |
-| **Скачать приложение** | `<Link>` | Переход  | `/download`                    |
-| Карточка «Мгновенно»   | `<div>`  | —        | Информационная, не кликабельна |
-| Карточка «Приватно»    | `<div>`  | —        | Информационная, не кликабельна |
-| Карточка «Синхронно»   | `<div>`  | —        | Информационная, не кликабельна |
+---
 
-## 1.3. Форма регистрации `/register`
+## 2. Быстрый старт
 
-| Элемент                                | Тип                     | Действие                         | API                          |
-| -------------------------------------- | ----------------------- | -------------------------------- | ---------------------------- |
-| **Имя пользователя**                   | `<input>`               | Ввод `username`, мин. 3 символа  | —                            |
-| **Электронная почта**                  | `<input type=email>`    | Ввод `email`, проверка формата   | —                            |
-| **Пароль**                             | `<input type=password>` | Ввод `password`, мин. 6 символов | —                            |
-| **Пароль ещё раз**                     | `<input type=password>` | Проверка совпадения на клиенте   | —                            |
-| **Чекбокс «Согласие на обработку ПД»** | `<input type=checkbox>` | Обязателен для отправки          | —                            |
-| **Регистрация**                        | `<button type=submit>`  | Отправка формы                   | `POST /api/v1/auth/register` |
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-**Логика кнопки «Регистрация»:**
+Открывается http://localhost:5173
 
-1. Проверить, что `password === passwordRepeat`.
-2. Проверить, что стоит галочка согласия.
-3. `POST /api/v1/auth/register` с `{ username, email, password }`.
-4. При `201` — сохранить `token` и `user` в `localStorage`, редирект на `/chats`.
-5. При `409` — показать «Email уже занят».
-6. При `422` — показать первую ошибку валидации.
-7. Пока идёт запрос — кнопка `disabled`, текст «Отправка…».
+### Переменные окружения
 
-## 1.4. Форма входа `/login`
+`frontend/.env`:
 
-| Элемент               | Тип                     | Действие        | API                       |
-| --------------------- | ----------------------- | --------------- | ------------------------- |
-| **Электронная почта** | `<input type=email>`    | Ввод `email`    | —                         |
-| **Пароль**            | `<input type=password>` | Ввод `password` | —                         |
-| **Войти**             | `<button type=submit>`  | Отправка формы  | `POST /api/v1/auth/login` |
-| **Создать**           | `<Link>`                | Переход         | `/register`               |
+```
+VITE_API_URL=http://localhost:8080/api/v1
+```
 
-**Логика кнопки «Войти»:**
+`.env.example` — коммитится в репозиторий, содержит те же переменные.
 
-1. `POST /api/v1/auth/login` с `{ email, password }`.
-2. При `200` — сохранить `token` и данные пользователя, редирект на `/chats`.
-3. При `401` — «Неверный email или пароль».
-4. Пока идёт запрос — кнопка `disabled`.
+### Скрипты
 
-## 1.5. Список чатов `/chats` (приватный)
+| Команда           | Что делает                 |
+| ----------------- | -------------------------- |
+| `npm run dev`     | Dev-сервер Vite, порт 5173 |
+| `npm run build`   | Prod-сборка в `dist/`      |
+| `npm run preview` | Просмотр `dist/` локально  |
 
-| Элемент                                  | Тип                      | Действие                    | API                  |
-| ---------------------------------------- | ------------------------ | --------------------------- | -------------------- |
-| **Чат (карточка)**                       | `<Link>`                 | Переход                     | `/chats/{chatId}`    |
-| **Создать чат**                          | `<button>`               | Модальное окно              | `POST /api/v1/chats` |
-| **Поле «Название»** (в модалке)          | `<input>`                | Ввод `title`                | —                    |
-| **Поле «Описание»** (в модалке)          | `<textarea>`             | Ввод `description`          | —                    |
-| **Пригласить пользователей** (в модалке) | `<input>` / мультиселект | Ввод `invited_user_ids`     | —                    |
-| **Создать** (в модалке)                  | `<button type=submit>`   | Отправка                    | `POST /api/v1/chats` |
-| **Отмена** (в модалке)                   | `<button>`               | Закрыть модалку без запроса | —                    |
+---
 
-## 1.6. Чат `/chats/{chatId}` (приватный)
+## 3. Структура проекта
 
-| Элемент                      | Тип                              | Действие                     | API / WS                                  |
-| ---------------------------- | -------------------------------- | ---------------------------- | ----------------------------------------- |
-| **Поле ввода сообщения**     | `<input>`                        | Ввод текста                  | —                                         |
-| **Отправить**                | `<button type=submit>`           | Отправка                     | WS `message:send`                         |
-| **Ввод текста (событие)**    | `<input onInput>`                | Сигнал «печатает»            | WS `chat:typing`                          |
-| **Сообщение (карточка)**     | `<div>`                          | —                            | Отображение из `GET /chats/{id}/messages` |
-| **Реакция (эмодзи)**         | `<button>`                       | Добавить/заменить            | `POST /messages/{id}/reactions`           |
-| **Реакция (повторный клик)** | `<button>`                       | Удалить свою                 | `DELETE /messages/{id}/reactions`         |
-| **Редактировать**            | `<button>`                       | Открыть режим редактирования | `PUT /messages/{id}`                      |
-| **Удалить**                  | `<button>`                       | Удаление                     | `DELETE /messages/{id}`                   |
-| **Smart Replies**            | `<button>` ×3                    | Подставить подсказку         | `GET /ai/messages/{id}/smart-replies`     |
-| **Саммари чата**             | `<button>`                       | Показать выжимку             | `POST /ai/chats/{id}/summarize`           |
-| **Прикрепить изображение**   | `<button>` + `<input type=file>` | Открыть выбор файла          | `POST /images/upload`                     |
-| **Аватар чата**              | `<button>` на аватаре            | Загрузить новый              | `POST /chats/{id}/avatar`                 |
-| **Добавить участника**       | `<button>`                       | Модальное окно               | `POST /chats/{id}/users`                  |
-| **Удалить участника**        | `<button>` в списке              | Удаление                     | `DELETE /chats/{id}/users/{user_id}`      |
-| **Покинуть чат**             | `<button>`                       | Выход                        | `DELETE /chats/{id}/users/{me}`           |
+```
+frontend/
+├── .env                       # переменные окружения
+├── .env.example
+├── index.html
+├── package.json
+├── vite.config.js
+├── public/
+│   └── spark.svg              # логотип (favicon + mask-image)
+└── src/
+    ├── main.jsx               # монтирование React + BrowserRouter
+    ├── App.jsx                # карта маршрутов
+    ├── api/
+    │   ├── index.js           # единая точка экспорта
+    │   ├── client.js          # axios + токен + интерцепторы
+    │   ├── auth.js            # register / login / logout
+    │   └── users.js           # профиль, аватар
+    ├── components/
+    │   ├── Header.jsx         # шапка
+    │   ├── RegisterForm.jsx   # форма регистрации
+    │   ├── LoginForm.jsx      # форма входа
+    │   ├── SparkLogo.jsx      # логотип через mask-image
+    │   └── NotFound.jsx       # 404
+    ├── pages/
+    │   ├── HomePage.jsx
+    │   ├── RegisterPage.jsx
+    │   ├── RegisterDemoPage.jsx
+    │   ├── LoginPage.jsx
+    │   ├── ProfilePage.jsx    # /profile + demo
+    │   ├── ChatsPage.jsx      # /chats, /chats/:chatId
+    │   └── FaqPage.jsx
+    └── styles/
+        ├── index.css          # @import всех
+        ├── base.css           # :root, *, body
+        ├── header.css
+        ├── register.css
+        ├── home.css
+        ├── profile.css
+        ├── chats.css
+        ├── faq.css
+        ├── not-found.css
+        └── animations.css
+```
 
-**WebSocket-события, на которые реагирует UI:**
+**Правила:**
 
-| Событие (входящее) | Реакция UI                                |
-| ------------------ | ----------------------------------------- |
-| `message:new`      | Добавить сообщение в список, скролл вниз  |
-| `chat:updated`     | Обновить название/аватар в шапке чата     |
-| `user:typing`      | Показать «@{username} печатает…»          |
-| `ai:typing`        | Показать индикатор «ИИ генерирует ответ…» |
-| `ai:stream_chunk`  | Дописать кусочек текста в блок ИИ-ответа  |
+- Компоненты — `PascalCase.jsx`, один компонент — один файл.
+- API/утилиты — `camelCase.js`.
+- CSS — `kebab-case.css` через `index.css`.
 
-## 1.7. Профиль `/profile` (приватный)
+---
 
-| Элемент              | Тип                              | Действие           | API                            |
-| -------------------- | -------------------------------- | ------------------ | ------------------------------ |
-| **Аватар**           | `<img>`                          | Отображение        | —                              |
-| **Сменить аватар**   | `<button>` + `<input type=file>` | Загрузка           | `POST /users/me/avatar`        |
-| **Удалить аватар**   | `<button>`                       | Удаление           | `POST /users/me/delete/avatar` |
-| **Имя пользователя** | `<input>`                        | Редактирование     | `PATCH /users/me`              |
-| **Email**            | `<input>`                        | Редактирование     | `PATCH /users/me`              |
-| **Сохранить**        | `<button type=submit>`           | Отправка изменений | `PATCH /users/me`              |
-| **Отмена**           | `<button>`                       | Сброс формы        | —                              |
+## 4. Маршруты
 
-## 1.8. Страница 404
+| Путь                | Компонент          | Доступ        | Что показывает             |
+| ------------------- | ------------------ | ------------- | -------------------------- |
+| `/`                 | `HomePage`         | публичный     | Лендинг                    |
+| `/register`         | `RegisterPage`     | публичный     | Регистрация через API      |
+| `/register-preview` | `RegisterDemoPage` | публичный     | Демо-регистрация (без API) |
+| `/login`            | `LoginPage`        | публичный     | Вход                       |
+| `/profile`          | `ProfilePage`      | **приватный** | Профиль через API          |
+| `/profile-preview`  | `ProfilePage demo` | публичный     | Демо-профиль               |
+| `/chats`            | `ChatsPage`        | **приватный** | Список чатов               |
+| `/chats/:chatId`    | `ChatsPage`        | **приватный** | Конкретный чат             |
+| `/features`         | `SimplePage`       | публичный     | Заглушка                   |
+| `/download`         | `SimplePage`       | публичный     | Заглушка                   |
+| `/faq`              | `FaqPage`          | публичный     | FAQ                        |
+| `*`                 | `NotFound`         | публичный     | 404                        |
 
-| Элемент             | Тип      | Действие | Роут        |
-| ------------------- | -------- | -------- | ----------- |
-| **На главную**      | `<Link>` | Переход  | `/`         |
-| **Создать аккаунт** | `<Link>` | Переход  | `/register` |
+### Приватные маршруты
 
-## 1.9. Общие правила для кнопок
+```jsx
+function PrivateRoute({ children }) {
+  return auth.isAuthenticated() ? children : <Navigate to="/login" replace />;
+}
+```
 
-1. **Токен обязателен** — все кнопки, дергающие приватные эндпоинты, работают только при наличии `localStorage.token`. Иначе — редирект на `/login`.
-2. **Disabled во время запроса** — любая кнопка, отправляющая запрос, блокируется на время ответа, чтобы не было двойных нажатий.
-3. **Loading-состояние** — текст кнопки меняется («Отправка…», «Вход…», «Сохранение…») либо показывается спиннер.
-4. **Обработка ошибок** — при `4xx`/`5xx` над кнопкой или рядом с формой показывается сообщение.
-5. **Идемпотентность** — повторный клик по уже выбранной реакции удаляет её (toggle), повторная отправка сообщения блокируется до завершения предыдущей.
-6. **Клавиатурные сокращения** — Enter в поле сообщения = «Отправить», Shift+Enter = перенос строки, Esc = закрыть модалку.
-7. **Подсветка активного пункта** — в шапке активный маршрут выделяется цветом `--spark` и подчёркиванием (класс `nav-link--active`).
+`isAuthenticated()` проверяет `localStorage.access_token`.
+
+---
+
+## 5. API
+
+### `src/api/client.js`
+
+```js
+export const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL,
+  headers: { "Content-Type": "application/json" },
+});
+```
+
+**Интерцепторы:**
+
+1. Запрос → `Authorization: Bearer <access_token>`.
+2. Ответ → при `401` чистит токен и редиректит на `/login`.
+
+**Экспорты:**
+
+```js
+setToken(t); // положить access_token
+getToken(); // прочитать access_token
+clearToken(); // удалить access_token и user
+```
+
+### `src/api/auth.js`
+
+| Функция                                       | HTTP                  | Описание                      |
+| --------------------------------------------- | --------------------- | ----------------------------- |
+| `registerUser({ username, email, password })` | `POST /auth/register` | Сохраняет токен и user        |
+| `loginUser({ email, password })`              | `POST /auth/login`    | Content-Type: form-urlencoded |
+| `logoutUser()`                                | —                     | Чистит localStorage           |
+| `getCurrentUser()`                            | —                     | Возвращает `user`             |
+| `isAuthenticated()`                           | —                     | Есть ли токен                 |
+
+### `src/api/users.js`
+
+| Функция                           | HTTP                           |
+| --------------------------------- | ------------------------------ |
+| `getMe()`                         | `GET /users/me`                |
+| `updateMe({ username?, email? })` | `PATCH /users/me`              |
+| `uploadAvatar(file)`              | `POST /users/me/avatar`        |
+| `deleteAvatar(url)`               | `POST /users/me/delete/avatar` |
+
+### `src/api/index.js`
+
+```js
+export { api, setToken, getToken, clearToken } from "./client";
+export * as auth from "./auth";
+export * as users from "./users";
+```
+
+Использование:
+
+```jsx
+import { auth, users } from "../api";
+
+await auth.loginUser({ email, password });
+const me = await users.getMe();
+```
+
+---
+
+## 6. Аутентификация
+
+### Хранение токена
+
+- `localStorage.access_token` — JWT, поле `access_token` из ответа бэкенда.
+- `localStorage.user` — JSON `{ id, username, email }`.
+
+### JWT
+
+Payload:
+
+```json
+{ "sub": "u1111111-...", "exp": 1734000000 }
+```
+
+### Поток «регистрация → чаты»
+
+1. Заполняется `RegisterForm`.
+2. Валидация паролей и галочки.
+3. `auth.registerUser({ username, email, password })`.
+4. Ответ `{ id, username, email, access_token, token_type }`.
+5. `setToken(access_token)`.
+6. Редирект на `/chats`.
+
+### Поток «логин → чаты»
+
+1. `LoginForm` → `POST /auth/login` (form-urlencoded).
+2. `200` — токен в localStorage, редирект на `/chats`.
+3. `401` — «Неверный email или пароль».
+
+### Logout
+
+```jsx
+auth.logoutUser();
+setUser(null);
+navigate("/login");
+```
+
+---
+
+## 7. Компоненты
+
+### `Header.jsx`
+
+Меняет содержимое по авторизации:
+
+| Гость                       | Авторизованный      |
+| --------------------------- | ------------------- |
+| Возможности / Скачать / FAQ | Чаты / Профиль      |
+| Войти / Начать бесплатно    | `@username` / Выйти |
+
+`user` берётся из `auth.getCurrentUser()`.
+
+### `RegisterForm.jsx`
+
+| Проп              | Тип      | Описание         |
+| ----------------- | -------- | ---------------- |
+| `onSuccess(data)` | function | После успеха     |
+| `demo`            | boolean  | Имитация без API |
+
+**Поля:** `username`, `email`, `password`, `passwordRepeat`, `consent`.
+
+**Валидация:**
+
+- Пароли совпадают.
+- Галочка согласия.
+- Пароль ≥ 6, username ≥ 3.
+
+### `LoginForm.jsx`
+
+| Проп              | Тип      |
+| ----------------- | -------- |
+| `onSuccess(data)` | function |
+
+**Поля:** `email`, `password`.
+
+### `SparkLogo.jsx`
+
+| Проп        | По умолчанию   |
+| ----------- | -------------- |
+| `size`      | 28             |
+| `color`     | `currentColor` |
+| `className` | `''`           |
+
+```jsx
+<SparkLogo size={26} color="#fff" />
+```
+
+### `NotFound.jsx`
+
+Показывает путь и кнопки «На главную» / «Создать аккаунт».
+
+---
+
+## 8. Страницы
+
+### `HomePage.jsx` — `/`
+
+Hero, две кнопки, три карточки фич.
+
+### `RegisterPage.jsx` — `/register`
+
+Обёртка `RegisterForm`, `onSuccess` → `/chats`.
+
+### `LoginPage.jsx` — `/login`
+
+Обёртка `LoginForm` + ссылка на `/register`.
+
+### `ProfilePage.jsx` — `/profile` и `/profile-preview`
+
+VK-стиль: обложка, круглый аватар, имя, табы.
+
+| Проп   | Тип     | Описание                      |
+| ------ | ------- | ----------------------------- |
+| `demo` | boolean | Данные из `DEMO_USER` без API |
+
+**Функции:**
+
+- Загрузка профиля (`GET /users/me`).
+- Смена аватара (`POST /users/me/avatar`).
+- Удаление аватара (`POST /users/me/delete/avatar`).
+- Редактирование (`PATCH /users/me`).
+- Табы: Информация / Друзья / Фото.
+
+### `ChatsPage.jsx` — `/chats`
+
+Слева список чатов, справа переписка. Сейчас на встроенных `MOCK_CHATS` / `MOCK_MESSAGES`.
+
+Когда бэкенд готов — заменить на:
+
+- `chats.listChats()` → `GET /chats`
+- `messages.listMessages(chatId)` → `GET /chats/{id}/messages`
+- `messages.sendMessage(chatId, text)` → `POST /chats/{id}/messages`
+
+### `FaqPage.jsx` — `/faq`
+
+Аккордеон из 10 вопросов. Плавная анимация раскрытия через `grid-template-rows: 0fr → 1fr`.
+
+Ответы — простые строки в массиве `FAQ_ITEMS`.
+
+---
+
+## 9. Стили
+
+### Переменные
+
+```css
+:root {
+  --bg: #0a0a0f;
+  --bg-elevated: #131319;
+  --bg-input: #0f0f15;
+  --border: #26262f;
+  --border-focus: #7c6cff;
+  --text: #f1f2f6;
+  --text-muted: #8d92a3;
+  --spark: #7c6cff;
+  --spark-hover: #6a58f0;
+  --spark-dim: rgba(124, 108, 255, 0.14);
+  --danger: #ff6b6b;
+  --success: #4ade80;
+}
+```
+
+### Подключение
+
+`main.jsx`:
+
+```jsx
+import "./styles/index.css";
+```
+
+`index.css`:
+
+```css
+@import "./base.css";
+@import "./header.css";
+@import "./register.css";
+@import "./home.css";
+@import "./profile.css";
+@import "./chats.css";
+@import "./faq.css";
+@import "./not-found.css";
+@import "./animations.css";
+```
+
+`base.css` — первым (там `:root`). `animations.css` — последним.
+
+### Палитра
+
+| Токен           | Значение  | Где             |
+| --------------- | --------- | --------------- |
+| `--bg`          | `#0a0a0f` | Фон страниц     |
+| `--bg-elevated` | `#131319` | Карточки, шапка |
+| `--bg-input`    | `#0f0f15` | Поля ввода      |
+| `--spark`       | `#7c6cff` | Акцент, кнопки  |
+| `--danger`      | `#ff6b6b` | Ошибки          |
+| `--success`     | `#4ade80` | Успех           |
+
+---
+
+## 10. Анимации
+
+### FAQ — раскрытие
+
+```css
+.faq-item__collapsible {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.faq-item--open .faq-item__collapsible {
+  grid-template-rows: 1fr;
+}
+
+.faq-item__answer {
+  overflow: hidden;
+}
+```
+
+Grid сам считает высоту — работает с любой длиной ответа.
+
+### Табы в профиле
+
+```css
+.vk-tab-content {
+  animation: tabFadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes tabFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+```
+
+В JSX — `key={tab}`, чтобы React пересоздавал блок и animation срабатывал заново.
+
+### Каскадное появление строк
+
+```css
+.vk-info-row:nth-child(1) {
+  animation-delay: 0.05s;
+}
+.vk-info-row:nth-child(2) {
+  animation-delay: 0.1s;
+}
+.vk-info-row:nth-child(3) {
+  animation-delay: 0.15s;
+}
+```
+
+### Ховеры
+
+- Кнопки — `translateY(-1px)` + цвет.
+- Аватар — `scale(1.03)` + тень.
+- Карточки фич — `translateY(-2px)` + рамка.
+
+---
+
+## 11. Демо-режим
+
+Два публичных маршрута для работы без бэкенда:
+
+| Маршрут             | Что показывает               |
+| ------------------- | ---------------------------- |
+| `/register-preview` | Форма регистрации в имитации |
+| `/profile-preview`  | Профиль с `DEMO_USER`        |
+
+Компоненты принимают проп `demo`:
+
+- `demo={false}` — реальные запросы.
+- `demo={true}` — локальные данные.
+
+**Зачем:**
+
+- Разработка UI без бэкенда.
+- Демонстрация интерфейса.
+- Обход CORS-проблем.
+
+**Ограничения:**
+
+- Данные не сохраняются на сервере.
+- Токен фиктивный.
+- Аватар живёт до перезагрузки.
+
+---
+
+## 12. Типичные ошибки
+
+| Ошибка                     | Причина                                 | Решение                                     |
+| -------------------------- | --------------------------------------- | ------------------------------------------- |
+| `Failed to resolve import` | Опечатка / файла нет                    | Проверить `dir src\...`                     |
+| `X is not defined`         | Забыл импорт                            | Добавить `import X`                         |
+| `Invalid hook call`        | Разные версии React и роутера           | `npm install react-router-dom@latest`       |
+| `CORS policy`              | Бэкенд не разрешил origin               | `CORSMiddleware` с `http://localhost:5173`  |
+| `ERR_CONNECTION_REFUSED`   | Бэкенд не запущен                       | `uvicorn app.main:app --reload --port 8080` |
+| Стили не применяются       | `index.css` не импортирован             | Проверить `main.jsx`                        |
+| `VITE_API_URL` undefined   | `.env` не в корне / Vite не перезапущен | `.env` → `frontend/`, перезапуск            |
+| 401 на приватном роуте     | Токен протух                            | Залогиниться заново                         |
+| 422 на регистрации         | Поля не совпадают со схемой             | Сверить с `API.md`                          |
+
+---
+
+## 13. Сборка и деплой
+
+### Production build
+
+```bash
+cd frontend
+npm run build
+```
+
+Результат — `frontend/dist/`.
+
+### Локальный просмотр
+
+```bash
+npm run preview
+```
+
+http://localhost:4173
+
+### Деплой
+
+`dist/` — статика. Кладётся на Nginx, Caddy, Vercel, Netlify, Cloudflare Pages.
+
+**Для SPA-роутинга** нужен fallback на `index.html`:
+
+**Nginx:**
+
+```nginx
+location / { try_files $uri $uri/ /index.html; }
+```
+
+**Netlify** — `_redirects`:
+
+```
+/* /index.html 200
+```
+
+**Vercel** — `vercel.json`:
+
+```json
+{ "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }
+```
+
+### Production `.env`
+
+```
+VITE_API_URL=https://api.spark.example.com/api/v1
+```
+
+Переменные с префиксом `VITE_` инлайнятся в бандл.
+
+---
+
+## 14. Что дальше
+
+Фронт покрывает MVP: лендинг, регистрация, вход, профиль, чаты (на моках), FAQ, 404.
+
+Следующие шаги:
+
+1. **Чаты через API** — заменить `MOCK_CHATS` / `MOCK_MESSAGES`.
+2. **WebSocket** — `ws://localhost:8080/ws?token=...`.
+3. **Реакции** — эмодзи на сообщениях.
+4. **Загрузка изображений** — `POST /images/upload`.
+5. **Smart Replies и саммари** — AI-эндпоинты.
+6. **Создание чатов** — модальное окно `POST /chats`.
+7. **Уведомления** — Web Notifications + счётчик.
+8. **Тема light/dark** — переключатель + второй набор переменных.
+9. **PWA** — манифест, service worker.
+
+---
+
+## 15. Связанные документы
+
+- **`API.md`** — спецификация эндпоинтов бэкенда (REST + WebSocket).
+- **`README.md`** — общее описание проекта и инструкция запуска.
