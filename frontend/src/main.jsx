@@ -3,9 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 
-import "./styles/register.css";
-import "./styles/header.css";
-import "./styles/not-found.css";
+import "./styles/index.css"; // ← один импорт вместо нескольких
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
