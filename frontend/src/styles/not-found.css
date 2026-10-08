@@ -1,3 +1,7 @@
+/* ============================================================
+   404
+   ============================================================ */
+
 .not-found {
   min-height: calc(100vh - 64px);
   padding: 80px 24px;
@@ -107,10 +111,12 @@
   border-color: var(--spark-hover);
 }
 
+/* ---------- Адаптив ---------- */
 @media (max-width: 640px) {
   .not-found__code {
     font-size: 80px;
   }
+
   .not-found__title {
     font-size: 20px;
   }

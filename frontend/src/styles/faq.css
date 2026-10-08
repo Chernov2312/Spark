@@ -1,0 +1,294 @@
+/* ============================================================
+   FAQ
+   ============================================================ */
+
+.faq-page {
+  min-height: calc(100vh - 64px);
+  padding: 60px 16px 100px;
+  background: var(--bg);
+}
+
+.faq-container {
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+.faq-header {
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.faq-title {
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--text);
+  margin: 0 0 12px;
+  letter-spacing: -0.5px;
+}
+
+.faq-subtitle {
+  font-size: 15px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.faq-subtitle a {
+  color: var(--spark);
+  text-decoration: none;
+}
+
+.faq-subtitle a:hover {
+  text-decoration: underline;
+}
+
+/* ---------- Список ---------- */
+.faq-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.faq-item {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  transition:
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.faq-item--open {
+  border-color: var(--spark);
+  box-shadow:
+    0 0 0 1px var(--spark),
+    0 8px 24px rgba(124, 108, 255, 0.15);
+}
+
+/* ---------- Вопрос ---------- */
+.faq-item__question {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 22px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
+}
+
+.faq-item__question:hover {
+  background: var(--bg-hover);
+}
+.faq-item--open .faq-item__question {
+  color: var(--spark);
+}
+
+/* ---------- Иконка +/− ---------- */
+.faq-item__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--spark-dim);
+  color: var(--spark);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+  flex-shrink: 0;
+  transition:
+    background 0.3s ease,
+    color 0.3s ease,
+    transform 0.3s ease;
+}
+
+.faq-item--open .faq-item__icon {
+  background: var(--spark);
+  color: #fff;
+  transform: rotate(180deg);
+}
+
+/* ============================================================
+   ✨ Плавная анимация раскрытия — grid-template-rows 0fr → 1fr
+   ============================================================ */
+
+.faq-item__collapsible {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.faq-item--open .faq-item__collapsible {
+  grid-template-rows: 1fr;
+}
+
+.faq-item__answer {
+  /* overflow: hidden — обязательно, иначе контент не обрезается */
+  overflow: hidden;
+  padding: 0 22px;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.65;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    padding 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+
+.faq-item--open .faq-item__answer {
+  padding: 0 22px 22px;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ---------- Markdown внутри ответа ---------- */
+.faq-item__answer > *:first-child {
+  margin-top: 0;
+}
+.faq-item__answer > *:last-child {
+  margin-bottom: 0;
+}
+
+.faq-item__answer p {
+  margin: 0 0 12px;
+}
+.faq-item__answer strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.faq-item__answer em {
+  color: var(--text);
+  font-style: italic;
+}
+
+.faq-item__answer ul,
+.faq-item__answer ol {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+
+.faq-item__answer li {
+  margin-bottom: 6px;
+}
+.faq-item__answer li:last-child {
+  margin-bottom: 0;
+}
+
+.faq-item__answer a {
+  color: var(--spark);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s ease;
+}
+
+.faq-item__answer a:hover {
+  border-bottom-color: var(--spark);
+}
+
+.faq-item__answer code {
+  padding: 2px 6px;
+  background: var(--bg-input);
+  color: var(--spark);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: "Consolas", "Menlo", monospace;
+  font-size: 12px;
+}
+
+.faq-item__answer blockquote {
+  margin: 12px 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--spark);
+  background: var(--spark-dim);
+  border-radius: 0 8px 8px 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.faq-item__answer blockquote p {
+  margin: 0;
+}
+
+/* ---------- CTA ---------- */
+.faq-cta {
+  text-align: center;
+  padding: 40px 24px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.faq-cta h2 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 8px;
+}
+
+.faq-cta p {
+  color: var(--text-muted);
+  font-size: 14px;
+  margin: 0 0 20px;
+}
+
+.faq-cta__btn {
+  display: inline-block;
+  background: var(--spark);
+  color: #fff;
+  padding: 12px 32px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 10px;
+  transition:
+    background 0.15s,
+    transform 0.15s,
+    box-shadow 0.15s;
+  box-shadow: 0 8px 24px rgba(124, 108, 255, 0.3);
+}
+
+.faq-cta__btn:hover {
+  background: var(--spark-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(124, 108, 255, 0.4);
+}
+
+/* ---------- Адаптив ---------- */
+@media (max-width: 640px) {
+  .faq-page {
+    padding: 40px 12px 60px;
+  }
+  .faq-title {
+    font-size: 26px;
+  }
+
+  .faq-item__question {
+    padding: 16px;
+    font-size: 14px;
+  }
+
+  .faq-item__answer {
+    padding: 0 16px;
+    font-size: 13px;
+  }
+
+  .faq-item--open .faq-item__answer {
+    padding: 0 16px 16px;
+  }
+}
