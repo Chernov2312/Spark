@@ -6,12 +6,13 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.security import get_id_current_user
+from config import RouteTags
 from db.dao.message_dao import MessageDao
 from db.database import get_session
 from db.models import Message
 from schemas.message import MessageCreate, MessageHistory, MessageResponse
 
-message_router = APIRouter(prefix="/api/v1/chats")
+message_router = APIRouter(prefix="/api/v1/chats", tags=[RouteTags.MESSAGES])
 
 
 @message_router.get("/{chat_id}/messages", status_code=status.HTTP_200_OK)

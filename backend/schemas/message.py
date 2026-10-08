@@ -10,7 +10,7 @@ class MessageResponse(BaseModel):
     chat_id: uuid.UUID
     user_id: uuid.UUID
     text: str
-    reactions_count: dict
+    reactions_count: dict[str, int]
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
