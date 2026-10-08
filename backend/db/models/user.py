@@ -49,4 +49,3 @@ class User(Base):
         "Image",
         back_populates="user",
     )
-    __table_args__ = {"extend_existing": True}

@@ -25,4 +25,3 @@ class Image(Base):
         "Chat",
         back_populates="avatars",
     )
-    __table_args__ = {"extend_existing": True}
