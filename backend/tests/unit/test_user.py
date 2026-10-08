@@ -20,7 +20,9 @@ async def test_get_me(api_client: AsyncClient, auth_token_and_user):
 async def test_update_me(api_client: AsyncClient, auth_token_and_user):
     headers = {"Authorization": f"Bearer {auth_token_and_user}"}
     res = await api_client.patch(
-        "/api/v1/users/me", headers=headers, json={"username": "kto-to"},
+        "/api/v1/users/me",
+        headers=headers,
+        json={"username": "kto-to"},
     )
     assert res.status_code == status.HTTP_200_OK
     print(res.json())
