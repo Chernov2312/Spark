@@ -5,8 +5,8 @@ from typing import List
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.security import get_id_current_user
 from config import RouteTags
+from core.security import get_id_current_user
 from db.dao.message_dao import MessageDao
 from db.database import get_session
 from db.models import Message
