@@ -24,5 +24,4 @@ class MessageReaction(Base):
             "emoji",
             name="uq_user_message_emoji",
         ),
-        {"extend_existing": True},
     )

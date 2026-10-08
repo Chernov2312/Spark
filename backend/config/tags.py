@@ -6,3 +6,4 @@ class RouteTags(str, Enum):
     CHAT = "Чат"
     USERS = "Пользователи"
     IMAGES = "Изображения"
+    MESSAGES = "Сообщения"

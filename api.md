@@ -189,17 +189,18 @@
 - **Query параметры:** `limit=50` (по умолчанию), `before=uuid_или_timestamp` (курсорная пагинация).
 - **Ответ (200 OK):**
   ```json
-  [
-    {
-      "id": "m4444444-eeee-aaaa-bbbb-cccccccccccc",
-      "chat_id": "c3333333-eeee-aaaa-bbbb-cccccccccccc",
-      "user_id": "u1111111-eeee-aaaa-bbbb-cccccccccccc",
-      "text": "Привет всем!",
-      "reactions_count": { "👍": 3, "❤️": 1 },
-      "created_at": "2026-10-03T09:10:00Z",
-      "updated_at": "2026-10-03T09:11:00Z"
-    }
-  ]
+  {
+    "messages": [
+      {
+        "id": "m4444444-eeee-aaaa-bbbb-cccccccccccc",
+        "chat_id": "c3333333-eeee-aaaa-bbbb-cccccccccccc",
+        "user_id": "u1111111-eeee-aaaa-bbbb-cccccccccccc",
+        "text": "Привет всем!",
+        "reactions_count": { "👍": 3, "❤️": 1 },
+        "created_at": "2026-10-03T09:10:00Z"
+      }
+    ]
+  }
   ```
 
 ### `POST /api/v1/chats/{chat_id}/messages` — Отправка текстового сообщения через HTTP
