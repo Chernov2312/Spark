@@ -37,8 +37,10 @@ async def update_me(
     user: UserRead = await UserDao.update_by_id(
         session=session,
         target_id=current_user_id,
-        data=update_user.model_dump(),
+        data=update_user.model_dump(exclude_unset=True),
     )
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
     await session.commit()
     return user
 

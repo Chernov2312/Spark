@@ -10,6 +10,8 @@ from db.models.image import Image
 from db.models.message import Message
 from db.models.message_reaction import MessageReaction
 from db.models.user import User
+from db.dao.user_dao import UserDao
+from core.security import get_password_hash, create_access_token
 
 __all__ = (
     "Chat",
@@ -66,3 +68,18 @@ async def api_client(db_session):
     ) as client:
         yield client
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture(scope="function", loop_scope="session")
+async def auth_token_and_user(db_session):
+    new_user = {
+        "username": "ivan_natanich",
+        "email": "alkash@mail.ru",
+        "password": get_password_hash("Pivo228Chel"),
+    }
+    user = await UserDao.add(session=db_session, data=new_user)
+    await db_session.flush()
+
+    token = create_access_token({"sub": str(user.id)})
+
+    yield token

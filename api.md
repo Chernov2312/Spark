@@ -23,7 +23,7 @@
     "id": "u1111111-eeee-aaaa-bbbb-cccccccccccc",
     "username": "john_doe",
     "email": "pivo",
-    "token": "eyJhbGciOiJIUzI1NiIsIn...",
+    "access_token": "eyJhbGciOiJIUzI1NiIsIn...",
     "token_type" = "bearer"
   }
   ```
@@ -41,7 +41,7 @@
     "id": "u1111111-eeee-aaaa-bbbb-cccccccccccc",
     "username": "john_doe",
     "email": "pivo",
-    "token": "eyJhbGciOiJIUzI1NiIsIn...",
+    "access_token": "eyJhbGciOiJIUzI1NiIsIn...",
     "token_type" = "bearer"
   }
   ```

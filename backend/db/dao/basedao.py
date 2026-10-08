@@ -32,16 +32,20 @@ class BaseDao[T]:
         session: AsyncSession,
         target_id: uuid.UUID,
         data: dict,
-    ) -> bool:
-        update_data = {k: v for k, v in data.items() if k != "id"}
+    ) -> T:
+        update_data = {k: v for k, v in data.items() if k != "id" and v is not None}
+        if not update_data:
+            query = select(cls.model).where(cls.model.id == target_id)
+            res = await session.execute(query)
+            return res.scalar_one_or_none()
         query = (
             update(cls.model)
             .where(cls.model.id == target_id)
             .values(**update_data)
             .returning(cls.model)
+            .execution_options(synchronize_session="fetch")
         )
         res = await session.execute(query)
-        await session.flush()
         return res.scalar_one_or_none()
 
     @classmethod
