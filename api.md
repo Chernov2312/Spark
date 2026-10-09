@@ -138,7 +138,16 @@
     "invited_user_ids": ["uuid-user-1", "uuid-user-2"]
   }
   ```
-- **Ответ (201 Created):** Возвращает структуру созданного объекта чата.
+- **Ответ (201 Created):** Возвращает структуру созданного объекта чата. 
+```json
+  {
+      "id": ,
+      "owner_id": ,
+      "title": ,
+      "description": ,
+      "users_count": ,
+  }
+```
 
 ### `PATCH /api/v1/chats/{chat_id}` — Редактирование параметров чата
 
