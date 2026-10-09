@@ -27,7 +27,7 @@ async def post_new_chat(
     data: NewChatRequest,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_id_current_user),
-) -> None:
+):
     users_in_chat_ids = [user.id]
     for id in data.invited_user_ids:
         users_in_chat_ids.append(id)
@@ -48,5 +48,6 @@ async def post_new_chat(
         "owner_id": str(new_chat.owner_id),
         "title": new_chat.title,
         "description": new_chat.description,
-        "users_count": len(new_chat.users),
+        "users_count": len(data.invited_user_ids),
     }
+
