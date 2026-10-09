@@ -22,19 +22,19 @@ async def get_chats(
     return JSONResponse(user.chats)
 
 
-@chat_router.post("/chats/{chat_id}", status_code=status.HTTP_201_CREATED)
+@chat_router.post("/chats", status_code=status.HTTP_201_CREATED)
 async def post_new_chat(
     data: NewChatRequest,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(get_id_current_user),
+    user_id=Depends(get_id_current_user),
 ):
-    users_in_chat_ids = [user.id]
+    users_in_chat_ids = [user_id]
     for id in data.invited_user_ids:
         users_in_chat_ids.append(id)
 
     new_chat = await ChatDao.add(
         session,
-        {"owner_id": user.id, "title": data.title, "description": data.description},
+        {"owner_id": user_id, "title": data.title, "description": data.description},
     )
 
     await ChatDao.add_users_to_chat(

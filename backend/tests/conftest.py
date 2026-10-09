@@ -94,4 +94,4 @@ async def id_second_user(db_session):
     }
     user = await UserDao.add(session=db_session, data=new_user)
     await db_session.flush()
-    yield user.id
+    yield str(user.id)
