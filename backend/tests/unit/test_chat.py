@@ -37,15 +37,16 @@ async def test_update_chat(api_client: AsyncClient, auth_token_and_user, chat_id
 
 async def test_update_avatar_chat(api_client: AsyncClient, auth_token_and_user, chat_id):
     headers = {"Authorization": f"Bearer {auth_token_and_user}"}
-    files = {
-        "avatar": ("cat.jpg", open("tests/fixtures/cat.jpg", "rb"), "image/jpeg"),
-    }
-    res = await api_client.get(
-        f"/api/v1/chats?chat_id={chat_id}/avatar",
-        headers=headers,
-        files=files,
-    )
-    assert res.status_code == status.HTTP_200_OK
+    with open("tests/fixtures/cat.jpg", "rb") as f:
+        files = {
+            "avatar": ("cat.jpg", f, "image/jpeg"),
+        }
+        res = await api_client.get(
+            f"/api/v1/chats?chat_id={chat_id}/avatar",
+            headers=headers,
+            files=files,
+        )
+        assert res.status_code == status.HTTP_200_OK
 
 
 async def test_add_user_in_chat(
