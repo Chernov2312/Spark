@@ -28,7 +28,9 @@ async def test_get_chat(api_client: AsyncClient, auth_token_and_user):
 async def test_update_chat(api_client: AsyncClient, auth_token_and_user, chat_id):
     headers = {"Authorization": f"Bearer {auth_token_and_user}"}
     res = await api_client.patch(
-        f"/api/v1/chats?chat_id={chat_id}", headers=headers, json={"title": "pivo"},
+        f"/api/v1/chats?chat_id={chat_id}",
+        headers=headers,
+        json={"title": "pivo"},
     )
     assert res.status_code == status.HTTP_200_OK
 
@@ -39,13 +41,18 @@ async def test_update_avatar_chat(api_client: AsyncClient, auth_token_and_user, 
         "avatar": ("cat.jpg", open("tests/fixtures/cat.jpg", "rb"), "image/jpeg"),
     }
     res = await api_client.get(
-        f"/api/v1/chats?chat_id={chat_id}/avatar", headers=headers, files=files,
+        f"/api/v1/chats?chat_id={chat_id}/avatar",
+        headers=headers,
+        files=files,
     )
     assert res.status_code == status.HTTP_200_OK
 
 
 async def test_add_user_in_chat(
-    db_session, api_client: AsyncClient, auth_token_and_user, chat_id,
+    db_session,
+    api_client: AsyncClient,
+    auth_token_and_user,
+    chat_id,
 ):
     headers = {"Authorization": f"Bearer {auth_token_and_user}"}
     new_user = {
