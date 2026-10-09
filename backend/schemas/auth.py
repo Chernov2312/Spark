@@ -3,7 +3,9 @@ import uuid
 
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
-password_valid = re.compile(r".*[A-Z].*[0-9].*[a-z].*")
+password_valid = re.compile(
+    r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$",
+)
 
 
 class UserRegister(BaseModel):
