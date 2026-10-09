@@ -1,23 +1,13 @@
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    Response,
-    UploadFile,
-    status,
-)
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags
-from core.storage import S3Storage
 from core.security import get_current_user
 from db.dao.chat_dao import ChatDao
 from db.dao.user_dao import UserDao
-from db.models.user import User
-from db.models.chat import Chat
 from db.database import get_session
-from schemas.user import Avatar, UserRead, UserUpdate
+from db.models.user import User
 from schemas.chats import NewChatRequest
 
 chat_router = APIRouter(prefix="/api/v1", tags=[RouteTags.CHAT])
@@ -28,9 +18,7 @@ async def get_chats(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
-    user = await UserDao.get_user_with_chats(
-        session=session,
-        target_id=user.id)
+    user = await UserDao.get_user_with_chats(session=session, target_id=user.id)
     return JSONResponse(user.chats)
 
 
@@ -54,7 +42,7 @@ async def post_new_chat(
         chat_id=new_chat.id,
         new_user_ids=users_in_chat_ids,
     )
-    
+
     return {
         "id": str(new_chat.id),
         "owner_id": str(new_chat.owner_id),
