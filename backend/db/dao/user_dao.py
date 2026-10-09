@@ -27,4 +27,4 @@ class UserDao(BaseDao[User]):
     ) -> User:
         query = select(User).where(User.id == target_id).options(selectinload(User.chats))
         res = await session.execute(query)
-        return res
+        return res.scalar_one_or_none()
