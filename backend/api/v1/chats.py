@@ -7,7 +7,6 @@ from core.security import get_id_current_user
 from db.dao.chat_dao import ChatDao
 from db.dao.user_dao import UserDao
 from db.database import get_session
-from db.models.user import User
 from schemas.chats import NewChatRequest
 
 chat_router = APIRouter(prefix="/api/v1", tags=[RouteTags.CHAT])
@@ -16,9 +15,9 @@ chat_router = APIRouter(prefix="/api/v1", tags=[RouteTags.CHAT])
 @chat_router.get("/chats", status_code=status.HTTP_200_OK)
 async def get_chats(
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(get_id_current_user),
+    user_id: str = Depends(get_id_current_user),
 ):
-    user = await UserDao.get_user_with_chats(session=session, target_id=user.id)
+    user = await UserDao.get_user_with_chats(session=session, target_id=user_id)
     return JSONResponse(user.chats)
 
 
@@ -50,4 +49,3 @@ async def post_new_chat(
         "description": new_chat.description,
         "users_count": len(data.invited_user_ids),
     }
-
