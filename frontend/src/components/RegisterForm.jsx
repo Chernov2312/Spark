@@ -1,12 +1,9 @@
 import { useState } from "react";
-import { registerUser } from "../api/auth";
+import { auth } from "../api";
 
-export default function RegisterForm({ onSuccess }) {
+export default function RegisterForm({ onSuccess, demo = false }) {
   const [form, setForm] = useState({
-    lastName: "",
-    firstName: "",
-    middleName: "",
-    noMiddleName: false,
+    username: "",
     email: "",
     password: "",
     passwordRepeat: "",
@@ -34,22 +31,13 @@ export default function RegisterForm({ onSuccess }) {
       return;
     }
 
-    const name = [
-      form.lastName.trim(),
-      form.firstName.trim(),
-      form.noMiddleName ? "" : form.middleName.trim(),
-    ]
-      .filter(Boolean)
-      .join(" ");
-
     setLoading(true);
     try {
-      const data = await registerUser({
-        email: form.email,
+      const data = await auth.registerUser({
+        username: form.username.trim(),
+        email: form.email.trim(),
         password: form.password,
-        name,
       });
-      localStorage.setItem("token", data.token);
       onSuccess?.(data);
     } catch (err) {
       const detail = err.response?.data?.detail;
@@ -70,50 +58,17 @@ export default function RegisterForm({ onSuccess }) {
 
         <label className="field">
           <span className="field__label">
-            Фамилия <b>*</b>
+            Имя пользователя <b>*</b>
           </span>
           <input
             type="text"
-            value={form.lastName}
-            onChange={update("lastName")}
+            value={form.username}
+            onChange={update("username")}
             required
-            autoComplete="family-name"
+            minLength={3}
+            autoComplete="username"
+            placeholder="chel"
           />
-        </label>
-
-        <label className="field">
-          <span className="field__label">
-            Имя <b>*</b>
-          </span>
-          <input
-            type="text"
-            value={form.firstName}
-            onChange={update("firstName")}
-            required
-            autoComplete="given-name"
-          />
-        </label>
-
-        <label className="field">
-          <span className="field__label">
-            Отчество (если есть) <b>*</b>
-          </span>
-          <input
-            type="text"
-            value={form.middleName}
-            onChange={update("middleName")}
-            disabled={form.noMiddleName}
-            autoComplete="additional-name"
-          />
-        </label>
-
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={form.noMiddleName}
-            onChange={update("noMiddleName")}
-          />
-          <span>У меня нет отчества</span>
         </label>
 
         <label className="field">
@@ -126,6 +81,7 @@ export default function RegisterForm({ onSuccess }) {
             onChange={update("email")}
             required
             autoComplete="email"
+            placeholder="john@example.com"
           />
         </label>
 
@@ -140,6 +96,7 @@ export default function RegisterForm({ onSuccess }) {
             required
             minLength={6}
             autoComplete="new-password"
+            placeholder="Минимум 6 символов"
           />
         </label>
 
@@ -164,8 +121,8 @@ export default function RegisterForm({ onSuccess }) {
             onChange={update("consent")}
           />
           <span>
-            Устанавливая галочку внутри данной формы, Вы даете согласие на
-            обработку своих персональных данных. <a href="#">Подробнее…</a>
+            Устанавливая галочку, Вы даете согласие на обработку персональных
+            данных. <a href="#">Подробнее…</a>
           </span>
         </label>
 

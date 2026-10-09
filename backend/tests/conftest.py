@@ -4,7 +4,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.config import settings
 from backend.main import app
-from db.database import Base
+from core.security import create_access_token, get_password_hash
+from db.dao.user_dao import UserDao
+from db.database import Base, get_session
 from db.models.chat import Chat
 from db.models.image import Image
 from db.models.message import Message
@@ -44,17 +46,40 @@ async def db_engine():
 
 @pytest_asyncio.fixture(scope="function", loop_scope="session")
 async def db_session(db_engine):
-    async_session_maker = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with db_engine.connect() as connection:
+        transaction = await connection.begin()
 
-    async with async_session_maker() as session:
-        yield session
-        await session.rollback()
+        async_session_maker = async_sessionmaker(
+            bind=connection,
+            expire_on_commit=False,
+        )
+
+        async with async_session_maker() as session:
+            yield session
+        await transaction.rollback()
 
 
 @pytest_asyncio.fixture(scope="function", loop_scope="session")
-async def api_client():
+async def api_client(db_session):
+    app.dependency_overrides[get_session] = lambda: db_session
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://localhost:8000/",
     ) as client:
         yield client
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture(scope="function", loop_scope="session")
+async def auth_token_and_user(db_session):
+    new_user = {
+        "username": "ivan_natanich",
+        "email": "alkash@mail.ru",
+        "password": get_password_hash("Pivo228Chel"),
+    }
+    user = await UserDao.add(session=db_session, data=new_user)
+    await db_session.flush()
+
+    token = create_access_token({"sub": str(user.id)})
+
+    yield token

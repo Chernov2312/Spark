@@ -1,12 +1,36 @@
 import axios from "axios";
 
+export const API_BASE =
+  import.meta.env.VITE_API_URL || "http://localhost:8080/api/v1";
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: API_BASE,
   headers: { "Content-Type": "application/json" },
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("access_token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
+
+api.interceptors.response.use(
+  (r) => r,
+  (err) => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("user");
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
+    }
+    return Promise.reject(err);
+  },
+);
+
+export const setToken = (t) => localStorage.setItem("access_token", t);
+export const getToken = () => localStorage.getItem("access_token");
+export const clearToken = () => {
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("user");
+};

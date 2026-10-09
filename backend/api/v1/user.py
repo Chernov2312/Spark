@@ -9,7 +9,7 @@ from fastapi import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags
-from core.security import get_current_user
+from core.security import get_id_current_user
 from core.storage import S3Storage
 from db.dao.image_dao import ImageDao
 from db.dao.user_dao import UserDao
@@ -23,22 +23,24 @@ ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 @user_router.get("/me", status_code=status.HTTP_200_OK)
 async def get_me(
     session: AsyncSession = Depends(get_session),
-    user=Depends(get_current_user),
+    user_id=Depends(get_id_current_user),
 ) -> UserRead:
-    return await UserDao.get_by_id(session=session, target_id=user.id)
+    return await UserDao.get_by_id(session=session, target_id=user_id)
 
 
 @user_router.patch("/me", status_code=status.HTTP_200_OK)
 async def update_me(
     update_user: UserUpdate,
     session: AsyncSession = Depends(get_session),
-    current_user=Depends(get_current_user),
+    current_user_id=Depends(get_id_current_user),
 ) -> UserRead:
     user: UserRead = await UserDao.update_by_id(
         session=session,
-        target_id=current_user.id,
-        data=update_user.model_dump(),
+        target_id=current_user_id,
+        data=update_user.model_dump(exclude_unset=True),
     )
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
     await session.commit()
     return user
 
@@ -47,7 +49,7 @@ async def update_me(
 async def set_avatar(
     file: UploadFile,
     session: AsyncSession = Depends(get_session),
-    current_user=Depends(get_current_user),
+    current_user_id=Depends(get_id_current_user),
 ) -> Avatar:
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(
@@ -55,10 +57,10 @@ async def set_avatar(
             detail="incorrect file format",
         )
     s3 = S3Storage()
-    url = await s3.upload_avatar(file=file, user_id=current_user.id)
+    url = await s3.upload_avatar(file=file, user_id=current_user_id)
     await ImageDao.add(
         session=session,
-        data={"user_id": current_user.id, "image_url": url},
+        data={"user_id": current_user_id, "image_url": url},
     )
     await session.commit()
     return Avatar(url=url)
@@ -68,12 +70,12 @@ async def set_avatar(
 async def delete_avatar(
     avatar: Avatar,
     session: AsyncSession = Depends(get_session),
-    current_user=Depends(get_current_user),
+    current_user_id=Depends(get_id_current_user),
 ):
     image = await ImageDao.delete_image_by_url_and_user_id(
         session=session,
         target_url=avatar.url,
-        user_id=current_user.id,
+        user_id=current_user_id,
     )
     if not image:
         raise HTTPException(

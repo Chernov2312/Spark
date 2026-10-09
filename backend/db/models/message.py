@@ -1,6 +1,7 @@
 import uuid
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, Index, String
+from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -24,4 +25,10 @@ class Message(Base):
         server_default="{}",
         nullable=False,
     )
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        Index(
+            "ix_messages_chat_id_created_at_desc",
+            "chat_id",
+            sa_text("created_at DESC"),
+        ),
+    )

@@ -1,0 +1,42 @@
+/* ---------- Переменные (тёмная тема Spark) ---------- */
+:root {
+  --bg: #0a0a0f;
+  --bg-elevated: #131319;
+  --bg-input: #0f0f15;
+  --bg-hover: #1c1c25;
+
+  --border: #26262f;
+  --border-focus: #7c6cff;
+
+  --text: #f1f2f6;
+  --text-muted: #8d92a3;
+  --text-dim: #5a5f70;
+
+  --spark: #7c6cff;
+  --spark-hover: #6a58f0;
+  --spark-dim: rgba(124, 108, 255, 0.14);
+  --spark-glow: rgba(124, 108, 255, 0.35);
+
+  --danger: #ff6b6b;
+  --success: #4ade80;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: "Inter", "Open Sans", "Segoe UI", Roboto, system-ui, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
