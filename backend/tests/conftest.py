@@ -83,3 +83,15 @@ async def auth_token_and_user(db_session):
     token = create_access_token({"sub": str(user.id)})
 
     yield token
+
+
+@pytest_asyncio.fixture(scope="function", loop_scope="session")
+async def id_second_user(db_session):
+    new_user = {
+        "username": "ivan_nih_natanich",
+        "email": "alkash_pivo@mail.ru",
+        "password": get_password_hash("Pivo228Chel"),
+    }
+    user = await UserDao.add(session=db_session, data=new_user)
+    await db_session.flush()
+    yield user.id
