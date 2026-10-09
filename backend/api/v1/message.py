@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags
@@ -10,18 +10,18 @@ from core.security import get_id_current_user
 from db.dao.message_dao import MessageDao
 from db.database import get_session
 from db.models import Message
-from schemas.message import MessageCreate, MessageHistory, MessageResponse
+from schemas.message import MessageHistory, MessageRequest, MessageResponse
 
-message_router = APIRouter(prefix="/api/v1/chats", tags=[RouteTags.MESSAGES])
+message_router = APIRouter(prefix="/api/v1", tags=[RouteTags.MESSAGES])
 
 
-@message_router.get("/{chat_id}/messages", status_code=status.HTTP_200_OK)
+@message_router.get("chats/{chat_id}/messages", status_code=status.HTTP_200_OK)
 async def get_messages_history(
     chat_id: uuid.UUID,
     limit: int = 50,
     before: datetime = None,
     session: AsyncSession = Depends(get_session),
-    _: str = Depends(get_id_current_user),
+    _: uuid.UUID = Depends(get_id_current_user),
 ) -> MessageHistory:
     db_messages: List[Message] = await MessageDao.get_chat_history(
         session=session,
@@ -32,15 +32,36 @@ async def get_messages_history(
     return MessageHistory(messages=db_messages)
 
 
-@message_router.post("/{chat_id}/messages", status_code=status.HTTP_201_CREATED)
+@message_router.post("chats/{chat_id}/messages", status_code=status.HTTP_201_CREATED)
 async def create_message(
     chat_id: uuid.UUID,
-    message: MessageCreate,
+    message: MessageRequest,
     session: AsyncSession = Depends(get_session),
-    user_id: str = Depends(get_id_current_user),
+    user_id: uuid.UUID = Depends(get_id_current_user),
 ) -> MessageResponse:
     message_db: Message = await MessageDao.add(
         session=session,
         data={"user_id": user_id, "text": message.text, "chat_id": chat_id},
     )
     return message_db
+
+
+@message_router.put("messages/{message_id}")
+async def update_message(
+    message_id: uuid.UUID,
+    message: MessageRequest,
+    session: AsyncSession = Depends(get_session),
+    user_id: uuid.UUID = Depends(get_id_current_user),
+) -> MessageResponse:
+
+    res = await MessageDao.update_by_id(
+        session=session,
+        target_id=message_id,
+        data={"text": message.text, "user_id": user_id},
+    )
+    if res is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Message not found or you don't have permission to edit it",
+        )
+    return res

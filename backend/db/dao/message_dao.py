@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.dao.basedao import BaseDao
@@ -32,3 +32,25 @@ class MessageDao(BaseDao[Message]):
 
         res = await session.execute(query)
         return res.scalars().all()
+
+    @classmethod
+    async def update_by_id(
+        cls,
+        session: AsyncSession,
+        target_id: uuid.UUID,
+        user_id: uuid.UUID,
+        text: str,
+    ) -> Message | None:
+        query = (
+            update(cls.model)
+            .where(
+                Message.id == target_id,
+                Message.user_id == user_id,
+            )
+            .values(text=text)
+            .returning(cls.model)
+        )
+
+        res = await session.execute(query)
+
+        return res.scalars().scalar_one_or_none()

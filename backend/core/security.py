@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -50,7 +51,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
 
 async def get_id_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
-) -> str:
+) -> uuid.UUID:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -63,4 +64,4 @@ async def get_id_current_user(
             raise credentials_exception
     except (InvalidTokenError, KeyError, TypeError):
         raise credentials_exception
-    return sub_id
+    return uuid.UUID(sub_id)

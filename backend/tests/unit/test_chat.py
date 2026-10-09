@@ -13,7 +13,7 @@ async def test_create_chat(api_client: AsyncClient, auth_token_and_user, id_seco
         json={
             "title": "uhfewt",
             "description": "ergpjiergh",
-            "invited_user_ids": [id_second_user],
+            "invited_user_ids": [str(id_second_user)],
         },
     )
     assert res.status_code == status.HTTP_201_CREATED

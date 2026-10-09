@@ -22,5 +22,5 @@ class MessageHistory(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class MessageCreate(BaseModel):
+class MessageRequest(BaseModel):
     text: str

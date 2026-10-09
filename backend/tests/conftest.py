@@ -79,12 +79,12 @@ async def first_user_id(db_session):
     }
     user = await UserDao.add(session=db_session, data=new_user)
     await db_session.flush()
-    yield str(user.id)
+    yield user.id
 
 
 @pytest_asyncio.fixture(scope="function", loop_scope="session")
 async def auth_token_and_user(first_user_id):
-    token = create_access_token({"sub": first_user_id})
+    token = create_access_token({"sub": str(first_user_id)})
 
     yield token
 
@@ -98,4 +98,4 @@ async def id_second_user(db_session):
     }
     user = await UserDao.add(session=db_session, data=new_user)
     await db_session.flush()
-    yield str(user.id)
+    yield user.id

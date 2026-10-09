@@ -24,7 +24,7 @@ class BaseDao[T]:
     async def get_all(cls, session: AsyncSession) -> List[T]:
         query = select(cls.model)
         res = await session.execute(query)
-        return res.all()
+        return list(res.scalars().all())
 
     @classmethod
     async def update_by_id(
@@ -32,7 +32,7 @@ class BaseDao[T]:
         session: AsyncSession,
         target_id: uuid.UUID,
         data: dict,
-    ) -> T:
+    ) -> T | None:
         update_data = {k: v for k, v in data.items() if k != "id" and v is not None}
         if not update_data:
             query = select(cls.model).where(cls.model.id == target_id)
