@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags
-from core.security import get_current_user
+from core.security import get_id_current_user
 from db.dao.chat_dao import ChatDao
 from db.dao.user_dao import UserDao
 from db.database import get_session
@@ -16,7 +16,7 @@ chat_router = APIRouter(prefix="/api/v1", tags=[RouteTags.CHAT])
 @chat_router.get("/chats", status_code=status.HTTP_200_OK)
 async def get_chats(
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_id_current_user),
 ):
     user = await UserDao.get_user_with_chats(session=session, target_id=user.id)
     return JSONResponse(user.chats)
@@ -26,7 +26,7 @@ async def get_chats(
 async def post_new_chat(
     data: NewChatRequest,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_id_current_user),
 ) -> None:
     users_in_chat_ids = [user.id]
     for id in data.invited_user_ids:
