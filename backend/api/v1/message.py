@@ -15,6 +15,7 @@ from schemas.message import MessageHistory, MessageRequest, MessageResponse
 message_router = APIRouter(prefix="/api/v1", tags=[RouteTags.MESSAGES])
 status.HTTP_422_UNPROCESSABLE_CONTENT
 
+
 @message_router.get("/chats/{chat_id}/messages", status_code=status.HTTP_200_OK)
 async def get_messages_history(
     chat_id: uuid.UUID,

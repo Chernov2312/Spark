@@ -5,7 +5,9 @@ from httpx import AsyncClient
 
 
 async def test_get_chat_history(
-    spam_history: uuid.UUID, api_client: AsyncClient, auth_token_and_user,
+    spam_history: uuid.UUID,
+    api_client: AsyncClient,
+    auth_token_and_user,
 ):
     headers = {"Authorization": f"Bearer {auth_token_and_user}"}
     res = await api_client.get(
