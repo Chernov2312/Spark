@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, status
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,7 +9,7 @@ from core.security import get_id_current_user
 from db.dao.chat_dao import ChatDao
 from db.dao.user_dao import UserDao
 from db.database import get_session
-from schemas.chats import NewChatRequest
+from schemas.chats import ChatAddUserRequest, NewChatRequest, PatchChatRequest
 
 chat_router = APIRouter(prefix="/api/v1", tags=[RouteTags.CHAT])
 
@@ -49,3 +51,69 @@ async def post_new_chat(
         "description": new_chat.description,
         "users_count": len(data.invited_user_ids),
     }
+
+
+@chat_router.patch("/chats/{chat_id}", status_code=status.HTTP_200_OK)
+async def update_chat(
+    chat_id: str,
+    data: PatchChatRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: str = Depends(get_id_current_user),
+):
+    cur_chat = await ChatDao.get_chat_with_users(session=session, chat_id=chat_id)
+
+    if cur_chat is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chat not found",
+        )
+
+    if current_user_id != cur_chat.owner_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not allowed to edit this chat",
+        )
+    if data.description is not None:
+        cur_chat.description = data.description
+    if data.description is not None:
+        cur_chat.title = data.title
+
+    await session.commit()
+    await session.refresh(cur_chat)
+    return {
+        "id": str(cur_chat.id),
+        "title": cur_chat.title,
+        "description": cur_chat.description,
+        "owner_id": cur_chat.owner_id,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@chat_router.post("/chats/{chat_id}/users")
+async def add_users_in_chat(
+    data: ChatAddUserRequest,
+    chat_id: str,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: str = Depends(get_id_current_user),
+):
+    cur_chat = await ChatDao.get_chat_with_users(session=session, chat_id=chat_id)
+
+    if cur_chat is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chat not found",
+        )
+
+    if current_user_id != cur_chat.owner_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not allowed to edit this chat",
+        )
+    if data.user_ids is not None:
+        await ChatDao.add_users_to_chat(
+            session=session, chat_id=chat_id, new_user_ids=data.user_ids,
+        )
+
+    await session.commit()
+    await session.refresh(cur_chat)
+    return {"status": "success"}

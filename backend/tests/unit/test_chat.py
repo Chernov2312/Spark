@@ -30,7 +30,7 @@ async def test_update_chat(api_client: AsyncClient, auth_token_and_user, chat_id
     res = await api_client.patch(
         f"/api/v1/chats/{chat_id}",
         headers=headers,
-        json={"title": "pivo"},
+        json={"title": "pivo", "description": "New description"},
     )
     assert res.status_code == status.HTTP_200_OK
 
@@ -49,7 +49,7 @@ async def test_update_avatar_chat(api_client: AsyncClient, auth_token_and_user, 
         assert res.status_code == status.HTTP_200_OK
 
 
-async def test_add_user_in_chat(
+async def test_add_users_in_chat(
     db_session,
     api_client: AsyncClient,
     auth_token_and_user,
@@ -64,8 +64,8 @@ async def test_add_user_in_chat(
     user = await UserDao.add(session=db_session, data=new_user)
     await db_session.flush()
     res = await api_client.post(
-        f"/api/v1/chat/{chat_id}/users",
+        f"/api/v1/chats/{chat_id}/users",
         headers=headers,
-        json={"user_id": str(user.id)},
+        json={"user_ids": [str(user.id)]},
     )
     assert res.status_code == status.HTTP_200_OK
