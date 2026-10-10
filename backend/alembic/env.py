@@ -20,7 +20,7 @@ from db.models.user import User
 from db.models.chat import Chat
 from db.models.message import Message
 from db.models.message_reaction import MessageReaction
-from db.models.image import Image
+from backend.db.models.attachment import Image
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

@@ -206,16 +206,54 @@
         "user_id": "u1111111-eeee-aaaa-bbbb-cccccccccccc",
         "text": "Привет всем!",
         "reactions_count": { "👍": 3, "❤️": 1 },
+        "attachments": [
+          {
+            "id": "att-55555555-eeee-aaaa-bbbb-cccccccccccc",
+            "url": "https://cdn.com",
+            "mime_type": "image/jpeg"
+          }
+        ],
         "created_at": "2026-10-03T09:10:00Z"
       }
     ]
   }
   ```
 
-### `POST /api/v1/chats/{chat_id}/messages` — Отправка текстового сообщения через HTTP
+### `POST /api/v1/chats/{chat_id}/messages` — Отправка сообщения через HTTP
 
-- **Тело запроса (JSON):** `{ "text": "Текст сообщения" }`
-- **Ответ (201 Created):** Возвращает созданный объект сообщения.
+- **Тело запроса (JSON):**
+  ```json
+  {
+    "text": "Посмотрите на эти макеты",
+    "attachment_ids": [
+      "att-55555555-eeee-aaaa-bbbb-cccccccccccc",
+      "att-66666666-eeee-aaaa-bbbb-cccccccccccc"
+    ]
+  }
+  ```
+- *Валидация: хотя бы одно из полей (`text` или `attachment_ids`) должно быть заполнено.*
+- **Ответ (201 Created):**
+  ```json
+  {
+    "id": "m4444444-eeee-aaaa-bbbb-cccccccccccc",
+    "chat_id": "c3333333-eeee-aaaa-bbbb-cccccccccccc",
+    "user_id": "u1111111-eeee-aaaa-bbbb-cccccccccccc",
+    "text": "Посмотрите на эти макеты",
+    "attachments": [
+      {
+        "id": "att-55555555-eeee-aaaa-bbbb-cccccccccccc",
+        "url": "https://cdn.com",
+        "mime_type": "image/jpeg"
+      },
+      {
+        "id": "att-66666666-eeee-aaaa-bbbb-cccccccccccc",
+        "url": "https://cdn.com",
+        "mime_type": "image/jpeg"
+      }
+    ],
+    "created_at": "2026-10-10T14:15:00Z"
+  }
+  ```
 
 ### `PUT /api/v1/messages/{message_id}` — Редактирование сообщения
 
