@@ -66,3 +66,24 @@ async def update_message(
             detail="Message not found or you don't have permission to edit it",
         )
     return res
+
+
+@message_router.delete("/messages/{message_id}")
+async def delete_message(
+    message_id: uuid.UUID,
+    message: MessageRequest,
+    session: AsyncSession = Depends(get_session),
+    user_id: uuid.UUID = Depends(get_id_current_user),
+) -> MessageResponse:
+
+    res = await MessageDao.delete_by_id(
+        session=session,
+        target_id=message_id,
+        user_id=user_id,
+    )
+    if not res:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Message not found or you don't have permission to edit it",
+        )
+    return res

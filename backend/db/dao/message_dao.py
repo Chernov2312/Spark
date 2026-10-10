@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import and_, select, update
+from sqlalchemy import and_, delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.dao.basedao import BaseDao
@@ -60,3 +60,17 @@ class MessageDao(BaseDao[Message]):
         res = await session.execute(query)
 
         return res.scalars().scalar_one_or_none()
+
+    @classmethod
+    async def delete_by_id(
+        cls,
+        session: AsyncSession,
+        target_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> bool:
+        query = delete(Message).where(
+            and_(Message.id == target_id, Message.user_id == user_id),
+        )
+        res = await session.execute(query)
+        await session.flush()
+        return res.rowcount > 0
