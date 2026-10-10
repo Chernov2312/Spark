@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import RouteTags
 from core.security import get_id_current_user
 from core.storage import S3Storage
-from backend.db.dao.attachment_dao import AttachmentDao
+from db.dao.attachment_dao import AttachmentDao
 from db.dao.user_dao import UserDao
 from db.database import get_session
 from schemas.user import Avatar, UserRead, UserUpdate
