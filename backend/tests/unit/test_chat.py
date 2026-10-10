@@ -28,7 +28,7 @@ async def test_get_chat(api_client: AsyncClient, auth_token_and_user):
 async def test_update_chat(api_client: AsyncClient, auth_token_and_user, chat_id):
     headers = {"Authorization": f"Bearer {auth_token_and_user}"}
     res = await api_client.patch(
-        f"/api/v1/chats?chat_id={chat_id}",
+        f"/api/v1/chats/{chat_id}",
         headers=headers,
         json={"title": "pivo"},
     )
@@ -42,7 +42,7 @@ async def test_update_avatar_chat(api_client: AsyncClient, auth_token_and_user, 
             "avatar": ("cat.jpg", f, "image/jpeg"),
         }
         res = await api_client.get(
-            f"/api/v1/chats?chat_id={chat_id}/avatar",
+            f"/api/v1/chats/{chat_id}/avatar",
             headers=headers,
             files=files,
         )
@@ -64,7 +64,7 @@ async def test_add_user_in_chat(
     user = await UserDao.add(session=db_session, data=new_user)
     await db_session.flush()
     res = await api_client.post(
-        f"/api/v1/chats?chat_id={chat_id}/users",
+        f"/api/v1/chat/{chat_id}/users",
         headers=headers,
         json={"user_id": str(user.id)},
     )
