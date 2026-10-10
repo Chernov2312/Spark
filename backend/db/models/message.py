@@ -20,6 +20,11 @@ class Message(Base):
     )
     chat: Mapped["Chat"] = relationship("Chat")
     text: Mapped[str] = mapped_column(String(1000), nullable=False)
+    attachments: Mapped[list[dict]] = mapped_column(
+        JSONB,
+        server_default="[]",
+        nullable=False,
+    )
     reactions_count: Mapped[dict] = mapped_column(
         JSONB,
         server_default="{}",
