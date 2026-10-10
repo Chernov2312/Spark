@@ -1,11 +1,11 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.dao.basedao import BaseDao
-from db.models import Message
+from db.models import Chat, Message, User
 
 
 class MessageDao(BaseDao[Message]):
@@ -16,19 +16,25 @@ class MessageDao(BaseDao[Message]):
         cls,
         session: AsyncSession,
         chat_id: uuid.UUID,
+        user_id: uuid.UUID,
         limit: int = 50,
         before: datetime = None,
     ):
 
         query = (
-            select(cls.model)
-            .where(cls.model.chat_id == chat_id)
-            .order_by(cls.model.created_at.desc())
+            select(Message.model)
+            .where(
+                and_(
+                    Message.chat_id == chat_id,
+                    Message.chat.has(Chat.users.any(User.id == user_id)),
+                ),
+            )
+            .order_by(Message.created_at.desc())
             .limit(limit)
         )
 
         if before is not None:
-            query = query.where(cls.model.created_at < before)
+            query = query.where(Message.created_at < before)
 
         res = await session.execute(query)
         return res.scalars().all()
