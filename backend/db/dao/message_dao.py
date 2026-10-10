@@ -22,7 +22,7 @@ class MessageDao(BaseDao[Message]):
     ):
 
         query = (
-            select(Message.model)
+            select(Message)
             .where(
                 and_(
                     Message.chat_id == chat_id,
@@ -48,13 +48,13 @@ class MessageDao(BaseDao[Message]):
         text: str,
     ) -> Message | None:
         query = (
-            update(cls.model)
+            update(Message)
             .where(
                 Message.id == target_id,
                 Message.user_id == user_id,
             )
             .values(text=text)
-            .returning(cls.model)
+            .returning(Message)
         )
 
         res = await session.execute(query)

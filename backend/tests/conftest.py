@@ -71,7 +71,7 @@ async def api_client(db_session):
 
 
 @pytest_asyncio.fixture(scope="function", loop_scope="session")
-async def first_user_id(db_session):
+async def id_first_user(db_session):
     new_user = {
         "username": "ivan_natanich",
         "email": "alkash@mail.ru",
@@ -83,8 +83,8 @@ async def first_user_id(db_session):
 
 
 @pytest_asyncio.fixture(scope="function", loop_scope="session")
-async def auth_token_and_user(first_user_id):
-    token = create_access_token({"sub": str(first_user_id)})
+async def auth_token_and_user(id_first_user):
+    token = create_access_token({"sub": str(id_first_user)})
 
     yield token
 
