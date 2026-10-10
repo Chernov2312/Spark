@@ -29,6 +29,7 @@ class S3Storage:
                 Key=file_key,
                 Body=file_content,
                 ContentType=file.content_type,
+                ACL="public-read",
             )
 
         return f"{self.config['endpoint_url']}/{self.bucket_name}/{file_key}"

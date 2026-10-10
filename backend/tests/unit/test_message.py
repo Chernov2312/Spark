@@ -29,7 +29,7 @@
 #     with open("backend/tests/files/testimage.jpg", "rb") as f:
 #         custom_headers = Headers({
 #             "content-type": "image/jpeg",
-#             "content-length": str(f.read())
+#             "content-length": str(10000)
 #         })
 #         upload_file = UploadFile(
 #             filename="testimage.jpg",
