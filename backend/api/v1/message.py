@@ -46,7 +46,7 @@ async def create_message(
         data={
             "user_id": user_id,
             "text": message.text,
-            "attachments": message.attachment,
+            "attachments": message.attachments,
             "chat_id": chat_id,
         },
     )

@@ -25,10 +25,10 @@ class MessageHistory(BaseModel):
 
 class MessageRequest(BaseModel):
     text: str | None
-    attachment: List[str] = Field(default_factory=list)
+    attachments: List[dict] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def check_fields(self):
-        if self.text is None and self.attachment is None:
+        if self.text is None and self.attachments is None:
             raise ValueError("Empty message")
         return self

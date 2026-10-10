@@ -225,7 +225,7 @@
   ```json
   {
     "text": "Посмотрите на эти макеты",
-    "attachment_ids": [
+    "attachments": [
       "att-55555555-eeee-aaaa-bbbb-cccccccccccc",
       "att-66666666-eeee-aaaa-bbbb-cccccccccccc"
     ]

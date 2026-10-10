@@ -1,4 +1,5 @@
 import datetime
+import uuid
 
 import aioboto3
 from fastapi import UploadFile
@@ -16,7 +17,7 @@ class S3Storage:
         }
         self.bucket_name = yandex_storage.BUCKET_NAME
 
-    async def upload_avatar(self, file: UploadFile, user_id: int) -> str:
+    async def upload_avatar(self, file: UploadFile, user_id: uuid.UUID) -> str:
         file_extension = file.content_type.split("/")[-1]
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         file_key = f"avatars/user_{user_id}/{timestamp}.{file_extension}"
