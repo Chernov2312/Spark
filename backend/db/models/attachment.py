@@ -7,8 +7,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from db.database import Base
 
 
-class Image(Base):
-    image_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+class Attachment(Base):
+    attachment_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=True,
@@ -25,3 +25,5 @@ class Image(Base):
         "Chat",
         back_populates="avatars",
     )
+
+    mime_type: Mapped[str] = mapped_column(String(70), nullable=False)

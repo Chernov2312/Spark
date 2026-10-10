@@ -45,7 +45,7 @@ class User(Base):
         back_populates="owner",
         cascade="all, delete-orphan",
     )
-    avatars: Mapped[list["Image"]] = relationship(
-        "Image",
+    avatars: Mapped[list["Attachment"]] = relationship(
+        "Attachment",
         back_populates="user",
     )

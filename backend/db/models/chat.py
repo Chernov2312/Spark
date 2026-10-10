@@ -30,7 +30,7 @@ class Chat(Base):
         String(500),
         unique=False,
     )
-    avatars: Mapped[list["Image"]] = relationship(
-        "Image",
+    avatars: Mapped[list["Attachment"]] = relationship(
+        "Attachment",
         back_populates="chat",
     )

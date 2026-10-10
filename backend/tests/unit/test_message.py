@@ -14,4 +14,5 @@ async def test_get_chat_history(
         url=f"/api/v1/chats/{spam_history}/messages",
         headers=headers,
     )
+    print(res.text)
     assert res.status_code == status.HTTP_200_OK

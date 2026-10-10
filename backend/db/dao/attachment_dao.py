@@ -4,21 +4,21 @@ from sqlalchemy import and_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.dao.basedao import BaseDao
-from db.models import Image
+from db.models import Attachment
 
 
-class ImageDao(BaseDao[Image]):
-    model = Image
+class AttachmentDao(BaseDao[Attachment]):
+    model = Attachment
 
     @classmethod
-    async def delete_image_by_url_and_user_id(
+    async def delete_attachment_by_url_and_user_id(
         cls,
         session: AsyncSession,
         target_url: str,
         user_id: uuid.UUID,
     ) -> bool:
-        query = delete(Image).where(
-            and_(Image.image_url == target_url, Image.user_id == user_id),
+        query = delete(cls.model).where(
+            and_(cls.model.image_url == target_url, cls.model.user_id == user_id),
         )
         res = await session.execute(query)
         await session.flush()
