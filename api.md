@@ -287,18 +287,23 @@
 
 ---
 
-## 🖼️ 6. Медиафайлы (`/api/v1/images`)
+## 🖼️ 6. Медиафайлы (`/api/v1/attachments`)
 
-### `POST /api/v1/images/upload` — Загрузка изображений для отправки в сообщения
+### `POST /api/v1/attachments` — Изолированная предзагрузка файла
 
-- **Тело запроса:** `multipart/form-data` (файл в поле `image`, необязательные query параметры: `chat_id=uuid`)
+- **Тело запроса:** `multipart/form-data`
+  - `file` *(File, обязательно)*: Бинарный файл.
+- **Query-параметры:**
+  - `purpose` *(string, опционально)*: Назначение файла (`message_attachment`, `user_avatar`, `chat_avatar`). Помогает серверу определить права доступа и жизненный цикл (TTL) бесхозных файлов.
 - **Ответ (201 Created):**
   ```json
   {
-    "id": "img55555-eeee-aaaa-bbbb-cccccccccccc",
-    "image_url": "https://storage.cdn.com/attachments/file.jpg",
+    "id": "att-55555555-eeee-aaaa-bbbb-cccccccccccc",
+    "url": "https://cdn.com",
     "user_id": "u1111111-eeee-aaaa-bbbb-cccccccccccc",
-    "chat_id": "c3333333-eeee-aaaa-bbbb-cccccccccccc"
+    "file_name": "mockup.jpg",
+    "file_size": 2048576,
+    "mime_type": "image/jpeg"
   }
   ```
 

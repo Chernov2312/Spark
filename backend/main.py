@@ -7,7 +7,7 @@ from api.v1.auth import auth_router
 from api.v1.chats import chat_router
 from api.v1.message import message_router
 from api.v1.user import user_router
-
+from api.v1.media import attachment_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -35,3 +35,4 @@ app.include_router(auth_router)
 app.include_router(user_router)
 app.include_router(chat_router)
 app.include_router(message_router)
+app.include_router(attachment_router)

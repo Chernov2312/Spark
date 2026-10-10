@@ -62,7 +62,13 @@ async def set_avatar(
     url = await s3.upload_avatar(file=file, user_id=current_user_id)
     await AttachmentDao.add(
         session=session,
-        data={"user_id": current_user_id, "image_url": url},
+        data={
+            "user_id": current_user_id,
+            "attachment_url": url,
+            "mime_type": file.content_type,
+            "file_name": file.filename,
+            "file_size": file.size,
+        },
     )
     await session.commit()
     return Avatar(url=url)

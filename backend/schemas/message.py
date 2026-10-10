@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import List
 
-from pydantic import BaseModel, ConfigDict, model_validator, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class MessageResponse(BaseModel):
