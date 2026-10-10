@@ -45,6 +45,7 @@ async def create_message(
         session=session,
         data={"user_id": user_id, "text": message.text, "chat_id": chat_id},
     )
+    await session.commit()
     return message_db
 
 
@@ -73,7 +74,6 @@ async def update_message(
 @message_router.delete("/messages/{message_id}")
 async def delete_message(
     message_id: uuid.UUID,
-    message: MessageRequest,
     session: AsyncSession = Depends(get_session),
     user_id: uuid.UUID = Depends(get_id_current_user),
 ) -> MessageResponse:
