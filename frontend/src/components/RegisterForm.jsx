@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { auth } from "../api";
+import { auth, translateApiError } from "../api";
 
 export default function RegisterForm({ onSuccess, demo = false }) {
   const [form, setForm] = useState({
@@ -22,6 +22,31 @@ export default function RegisterForm({ onSuccess, demo = false }) {
     e.preventDefault();
     setError(null);
 
+    // Валидация на клиенте
+    if (!form.username.trim()) {
+      setError("Введите имя пользователя");
+      return;
+    }
+    if (form.username.trim().length < 3) {
+      setError("Имя пользователя — минимум 3 символа");
+      return;
+    }
+    if (!form.email.trim()) {
+      setError("Введите email");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      setError("Некорректный email");
+      return;
+    }
+    if (!form.password) {
+      setError("Введите пароль");
+      return;
+    }
+    if (form.password.length < 6) {
+      setError("Пароль — минимум 6 символов");
+      return;
+    }
     if (form.password !== form.passwordRepeat) {
       setError("Пароли не совпадают");
       return;
@@ -32,19 +57,39 @@ export default function RegisterForm({ onSuccess, demo = false }) {
     }
 
     setLoading(true);
+
     try {
-      const data = await auth.registerUser({
-        username: form.username.trim(),
-        email: form.email.trim(),
-        password: form.password,
-      });
+      let data;
+
+      if (demo) {
+        await new Promise((r) => setTimeout(r, 500));
+        data = {
+          id: "demo-user",
+          username: form.username.trim(),
+          email: form.email.trim(),
+          access_token: "demo-token",
+          token_type: "bearer",
+        };
+        localStorage.setItem("access_token", data.access_token);
+        localStorage.setItem(
+          "user",
+          JSON.stringify({
+            id: data.id,
+            username: data.username,
+            email: data.email,
+          }),
+        );
+      } else {
+        data = await auth.registerUser({
+          username: form.username.trim(),
+          email: form.email.trim(),
+          password: form.password,
+        });
+      }
+
       onSuccess?.(data);
     } catch (err) {
-      const detail = err.response?.data?.detail;
-      let msg = "Ошибка регистрации";
-      if (typeof detail === "string") msg = detail;
-      else if (Array.isArray(detail) && detail[0]?.msg) msg = detail[0].msg;
-      setError(msg);
+      setError(translateApiError(err, "Не удалось зарегистрироваться"));
     } finally {
       setLoading(false);
     }
@@ -52,6 +97,12 @@ export default function RegisterForm({ onSuccess, demo = false }) {
 
   return (
     <div className="register-page">
+      {demo && (
+        <div className="profile-demo-banner">
+          Демо-режим — аккаунт создаётся только в этом браузере
+        </div>
+      )}
+
       <form className="register-card" onSubmit={handleSubmit} noValidate>
         <h1 className="register-card__title">Создать аккаунт Spark</h1>
         <p className="register-card__subtitle">Займёт меньше минуты</p>

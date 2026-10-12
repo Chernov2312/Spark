@@ -1,7 +1,7 @@
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import SparkLogo from "./SparkLogo";
-import { auth } from "../api";
+import { auth, AUTH_EVENT } from "../api";
 
 const navCls = ({ isActive }) =>
   isActive ? "nav-link nav-link--active" : "nav-link";
@@ -11,14 +11,19 @@ export default function Header() {
   const [user, setUser] = useState(auth.getCurrentUser());
 
   useEffect(() => {
-    const handler = () => setUser(auth.getCurrentUser());
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
+    const sync = () => setUser(auth.getCurrentUser());
+
+    window.addEventListener(AUTH_EVENT, sync); // своё событие
+    window.addEventListener("storage", sync); // другие вкладки
+
+    return () => {
+      window.removeEventListener(AUTH_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
   }, []);
 
   const handleLogout = () => {
     auth.logoutUser();
-    setUser(null);
     navigate("/login");
   };
 
