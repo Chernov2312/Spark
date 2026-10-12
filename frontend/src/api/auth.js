@@ -1,5 +1,14 @@
 import { api, setToken, clearToken, getToken } from "./client";
 
+/* Кастомное событие для Header */
+const AUTH_CHANGE_EVENT = "spark:auth-change";
+
+function emitAuthChange() {
+  window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
+}
+
+export const AUTH_EVENT = AUTH_CHANGE_EVENT;
+
 /* POST /auth/register */
 export async function registerUser({ username, email, password }) {
   const { data } = await api.post("/auth/register", {
@@ -18,14 +27,15 @@ export async function registerUser({ username, email, password }) {
         email: data.email,
       }),
     );
+    emitAuthChange();
   }
   return data;
 }
 
-/* POST /auth/login — URL-encoded */
-export async function loginUser({ email, password }) {
+/* POST /auth/login — form-urlencoded, поле формы называется username */
+export async function loginUser({ username, password }) {
   const body = new URLSearchParams();
-  body.append("email", email);
+  body.append("username", username);
   body.append("password", password);
 
   const { data } = await api.post("/auth/login", body, {
@@ -42,12 +52,14 @@ export async function loginUser({ email, password }) {
         email: data.email,
       }),
     );
+    emitAuthChange();
   }
   return data;
 }
 
 export function logoutUser() {
   clearToken();
+  emitAuthChange();
 }
 
 export function getCurrentUser() {
