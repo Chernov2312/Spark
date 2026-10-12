@@ -49,5 +49,6 @@ jobs:
           YANDEX_CLOUD_KEY_ID: choto
           YANDEX_CLOUD_KEY: choto
           BUCKET_NAME: name
+          API_GEMINI: api
           PYTHONPATH: .
         run: pytest

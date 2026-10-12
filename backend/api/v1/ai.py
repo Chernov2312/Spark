@@ -38,5 +38,6 @@ async def get_chat_summary(
         )
     prompt = "\n".join(f"{message.text}" for message in messages)
     await ai_service.generate_text(
-        prompt=prompt, system_instruction=AIPrompts.GENERATE_SUMMARY,
+        prompt=prompt,
+        system_instruction=AIPrompts.GENERATE_SUMMARY,
     )
