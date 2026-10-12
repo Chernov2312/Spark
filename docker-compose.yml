@@ -29,6 +29,7 @@ services:
       YANDEX_CLOUD_KEY_ID: ${YANDEX_CLOUD_KEY_ID}
       YANDEX_CLOUD_KEY: ${YANDEX_CLOUD_KEY}
       BUCKET_NAME: ${BUCKET_NAME}
+      API_GEMINI: ${API_GEMINI}
     
     depends_on:
       postgres:
