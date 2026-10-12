@@ -6,7 +6,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Устанавливаем пакеты
-RUN npm install
+RUN npm ci --prefer-offline --no-audit --no-fund
 
 # Копируем оставшийся код проекта
 COPY . .
