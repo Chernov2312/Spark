@@ -11,7 +11,7 @@ class AIService:
         self.client = genai.Client(api_key=ai_settings.API_GEMINI)
         self.model = model_name
 
-    async def generate_text(self, prompt: str, system_instruction: str = None):
+    async def generate_text(self, prompt: str, system_instruction: str = None) -> str:
         config = types.GenerateContentConfig(
             temperature="0.3",
             system_instruction=system_instruction,
