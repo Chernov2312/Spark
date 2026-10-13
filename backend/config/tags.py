@@ -8,3 +8,4 @@ class RouteTags(str, Enum):
     ATTACHMENT = "Файлы"
     MESSAGES = "Сообщения"
     AI = "ИИ"
+    HEALTH_TEST = "Тест запуска бэка"

@@ -19,7 +19,7 @@ async def test_rewrite(api_client: AsyncClient, auth_token_and_user: uuid.UUID):
 
 
 async def test_summarize(
-    api_client: AsyncClient, auth_token_and_user: uuid.UUID, summarize_chat
+    api_client: AsyncClient, auth_token_and_user: uuid.UUID, summarize_chat,
 ):
     headers = {"Authorization": f"Bearer {auth_token_and_user}"}
     res = await api_client.post(
