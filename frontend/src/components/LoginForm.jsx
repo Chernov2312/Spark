@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { auth } from "../api";
+import { auth, translateApiError } from "../api";
 
 export default function LoginForm({ onSuccess }) {
-  const [form, setForm] = useState({ email: "", password: "" });
+  const [form, setForm] = useState({ username: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -12,19 +12,21 @@ export default function LoginForm({ onSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+
+    if (!form.username.trim() || !form.password) {
+      setError("Заполните все поля");
+      return;
+    }
+
     setLoading(true);
     try {
       const data = await auth.loginUser({
-        email: form.email.trim(),
+        username: form.username.trim(),
         password: form.password,
       });
       onSuccess?.(data);
     } catch (err) {
-      const detail = err.response?.data?.detail;
-      let msg = "Неверный email или пароль";
-      if (typeof detail === "string") msg = detail;
-      else if (Array.isArray(detail) && detail[0]?.msg) msg = detail[0].msg;
-      setError(msg);
+      setError(translateApiError(err, "Не удалось войти"));
     } finally {
       setLoading(false);
     }
@@ -38,15 +40,15 @@ export default function LoginForm({ onSuccess }) {
 
         <label className="field">
           <span className="field__label">
-            Email или имя пользователя <b>*</b>
+            Имя пользователя <b>*</b>
           </span>
           <input
             type="text"
-            value={form.email}
-            onChange={update("email")}
+            value={form.username}
+            onChange={update("username")}
             required
             autoComplete="username"
-            placeholder="john@example.com или chel"
+            placeholder="chel"
           />
         </label>
 

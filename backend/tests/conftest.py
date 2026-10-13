@@ -7,15 +7,15 @@ from backend.main import app
 from core.security import create_access_token, get_password_hash
 from db.dao.user_dao import UserDao
 from db.database import Base, get_session
+from db.models.attachment import Attachment
 from db.models.chat import Chat
-from db.models.image import Image
 from db.models.message import Message
 from db.models.message_reaction import MessageReaction
 from db.models.user import User
 
 __all__ = (
     "Chat",
-    "Image",
+    "Attachment",
     "Message",
     "MessageReaction",
     "User",

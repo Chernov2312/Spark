@@ -1,17 +1,9 @@
-/* ============================================================
-   src/api/index.js
-   Единая точка входа в слой работы с API.
-
-   Использование в компонентах:
-     import { auth, users } from '../api';
-
-     await auth.loginUser({ email, password });
-     await users.getMe();
-   ============================================================ */
-
-// --- Низкоуровневый клиент ---
-export { api, API_BASE, setToken, getToken, clearToken } from "./client";
-
-// --- Модули по доменам ---
+export { api, setToken, getToken, clearToken } from "./client";
 export * as auth from "./auth";
 export * as users from "./users";
+export * as chats from "./chats";
+export * as messages from "./messages";
+export * as images from "./images";
+export { createChatSocket } from "./ws";
+export { AUTH_EVENT } from "./auth";
+export { translateApiError } from "./translations";

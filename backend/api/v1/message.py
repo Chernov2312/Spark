@@ -43,7 +43,12 @@ async def create_message(
 ) -> MessageResponse:
     message_db: Message = await MessageDao.add(
         session=session,
-        data={"user_id": user_id, "text": message.text, "chat_id": chat_id},
+        data={
+            "user_id": user_id,
+            "text": message.text,
+            "attachments": message.attachments,
+            "chat_id": chat_id,
+        },
     )
     await session.commit()
     return message_db

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import RouteTags
 from core.security import get_id_current_user
 from core.storage import S3Storage
-from db.dao.image_dao import ImageDao
+from db.dao.attachment_dao import AttachmentDao
 from db.dao.user_dao import UserDao
 from db.database import get_session
 from schemas.user import Avatar, UserRead, UserUpdate
@@ -60,9 +60,15 @@ async def set_avatar(
         )
     s3 = S3Storage()
     url = await s3.upload_avatar(file=file, user_id=current_user_id)
-    await ImageDao.add(
+    await AttachmentDao.add(
         session=session,
-        data={"user_id": current_user_id, "image_url": url},
+        data={
+            "user_id": current_user_id,
+            "attachment_url": url,
+            "mime_type": file.content_type,
+            "file_name": file.filename,
+            "file_size": file.size,
+        },
     )
     await session.commit()
     return Avatar(url=url)
@@ -74,7 +80,7 @@ async def delete_avatar(
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_id_current_user),
 ):
-    image = await ImageDao.delete_image_by_url_and_user_id(
+    image = await AttachmentDao.delete_attachment_by_url_and_user_id(
         session=session,
         target_url=avatar.url,
         user_id=current_user_id,

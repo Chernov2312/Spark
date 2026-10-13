@@ -111,7 +111,9 @@ async def add_users_in_chat(
         )
     if data.user_ids is not None:
         await ChatDao.add_users_to_chat(
-            session=session, chat_id=chat_id, new_user_ids=data.user_ids,
+            session=session,
+            chat_id=chat_id,
+            new_user_ids=data.user_ids,
         )
 
     await session.commit()
