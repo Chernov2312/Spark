@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import JSONResponse
+# from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags
@@ -20,7 +20,7 @@ async def get_chats(
     user_id: str = Depends(get_id_current_user),
 ):
     user = await UserDao.get_user_with_chats(session=session, target_id=user_id)
-    return JSONResponse(user.chats)
+    return user.chats
 
 
 @chat_router.post("/chats", status_code=status.HTTP_201_CREATED)
@@ -43,6 +43,8 @@ async def post_new_chat(
         chat_id=new_chat.id,
         new_user_ids=users_in_chat_ids,
     )
+
+    session.commit()
 
     return {
         "id": str(new_chat.id),
