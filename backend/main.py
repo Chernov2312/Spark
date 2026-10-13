@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.v1.ai import ai_router
 from api.v1.auth import auth_router
 from api.v1.chats import chat_router
 from api.v1.core import core_router
@@ -39,3 +40,4 @@ app.include_router(user_router)
 app.include_router(chat_router)
 app.include_router(message_router)
 app.include_router(attachment_router)
+app.include_router(ai_router)
