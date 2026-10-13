@@ -1,7 +1,7 @@
-from datetime import datetime, timezone
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-# from fastapi.responses import JSONResponse
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags
@@ -9,7 +9,15 @@ from core.security import get_id_current_user
 from db.dao.chat_dao import ChatDao
 from db.dao.user_dao import UserDao
 from db.database import get_session
-from schemas.chats import ChatAddUserRequest, NewChatRequest, PatchChatRequest
+from schemas.chats import (
+    AddUserToChatResponse,
+    ChatAddUserRequest,
+    ChatResponse,
+    GetChatsResponse,
+    NewChatRequest,
+    NewChatResponse,
+    PatchChatRequest,
+)
 
 chat_router = APIRouter(prefix="/api/v1", tags=[RouteTags.CHAT])
 
@@ -17,25 +25,26 @@ chat_router = APIRouter(prefix="/api/v1", tags=[RouteTags.CHAT])
 @chat_router.get("/chats", status_code=status.HTTP_200_OK)
 async def get_chats(
     session: AsyncSession = Depends(get_session),
-    user_id: str = Depends(get_id_current_user),
-):
+    user_id: uuid.UUID = Depends(get_id_current_user),
+) -> GetChatsResponse:
     user = await UserDao.get_user_with_chats(session=session, target_id=user_id)
-    return user.chats
+    return GetChatsResponse(chats=user.chats)
 
 
 @chat_router.post("/chats", status_code=status.HTTP_201_CREATED)
 async def post_new_chat(
     data: NewChatRequest,
     session: AsyncSession = Depends(get_session),
-    user_id=Depends(get_id_current_user),
-):
+    user_id: uuid.UUID = Depends(get_id_current_user),
+) -> NewChatResponse:
+    owner_id = user_id
     users_in_chat_ids = [user_id]
     for id in data.invited_user_ids:
         users_in_chat_ids.append(id)
 
     new_chat = await ChatDao.add(
         session,
-        {"owner_id": user_id, "title": data.title, "description": data.description},
+        {"owner_id": owner_id, "title": data.title, "description": data.description},
     )
 
     await ChatDao.add_users_to_chat(
@@ -44,15 +53,17 @@ async def post_new_chat(
         new_user_ids=users_in_chat_ids,
     )
 
-    session.commit()
+    await session.commit()
+    await session.flush()
 
-    return {
-        "id": str(new_chat.id),
-        "owner_id": str(new_chat.owner_id),
-        "title": new_chat.title,
-        "description": new_chat.description,
-        "users_count": len(data.invited_user_ids),
-    }
+    return NewChatResponse(
+        id=str(new_chat.id),
+        owner_id=str(new_chat.owner_id),
+        title=new_chat.title,
+        description=new_chat.description,
+        users_count=len(users_in_chat_ids),
+        invited_user_ids=[str(uid) for uid in users_in_chat_ids],
+    )
 
 
 @chat_router.patch("/chats/{chat_id}", status_code=status.HTTP_200_OK)
@@ -61,7 +72,7 @@ async def update_chat(
     data: PatchChatRequest,
     session: AsyncSession = Depends(get_session),
     current_user_id: str = Depends(get_id_current_user),
-):
+) -> ChatResponse:
     cur_chat = await ChatDao.get_chat_with_users(session=session, chat_id=chat_id)
 
     if cur_chat is None:
@@ -77,18 +88,12 @@ async def update_chat(
         )
     if data.description is not None:
         cur_chat.description = data.description
-    if data.description is not None:
+    if data.title is not None:
         cur_chat.title = data.title
 
     await session.commit()
     await session.refresh(cur_chat)
-    return {
-        "id": str(cur_chat.id),
-        "title": cur_chat.title,
-        "description": cur_chat.description,
-        "owner_id": cur_chat.owner_id,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
+    return cur_chat
 
 
 @chat_router.post("/chats/{chat_id}/users")
@@ -97,7 +102,7 @@ async def add_users_in_chat(
     chat_id: str,
     session: AsyncSession = Depends(get_session),
     current_user_id: str = Depends(get_id_current_user),
-):
+) -> AddUserToChatResponse:
     cur_chat = await ChatDao.get_chat_with_users(session=session, chat_id=chat_id)
 
     if cur_chat is None:
@@ -120,4 +125,4 @@ async def add_users_in_chat(
 
     await session.commit()
     await session.refresh(cur_chat)
-    return {"status": "success"}
+    return AddUserToChatResponse(status="success")

@@ -44,18 +44,21 @@ async def summarize_chat(db_session, id_first_user, id_second_user, chat_id):
     messages = [
         {"user_id": id_second_user, "text": "Привет! Посмотрел ТЗ по новому спринту."},
         {"user_id": id_first_user, "text": "Привет. И как тебе? Успеем до пятницы?"},
-        {"user_id": id_second_user, "text": "Там много правок по дизайну, нужно обсудить голосом."},
+        {
+            "user_id": id_second_user,
+            "text": "Там много правок по дизайну, нужно обсудить голосом.",
+        },
         {"user_id": id_second_user, "text": "Так созвон завтра в 21:10"},
         {"user_id": id_first_user, "text": "Ок, мне подходит. Запишу в календарь."},
-
         {"user_id": id_first_user, "text": "Кстати, у нас прод упал или мне кажется?"},
-        {"user_id": id_second_user, "text": "Нет, там базу обновляют, через 10 минут поднимется."},
-
+        {
+            "user_id": id_second_user,
+            "text": "Нет, там базу обновляют, через 10 минут поднимется.",
+        },
         {"user_id": id_second_user, "text": "Коллеги почему не работаем"},
         {"user_id": id_second_user, "text": "На созвоне обсу"},
         {"user_id": id_first_user, "text": "Обсудим* ты хотел сказать?))"},
         {"user_id": id_second_user, "text": "Да, т9 забагался. Обсудим детали завтра."},
-
         {"user_id": id_first_user, "text": "Договорились. Я подготовлю список вопросов."},
         {"user_id": id_second_user, "text": "Супер, тогда до завтра!"},
     ]
