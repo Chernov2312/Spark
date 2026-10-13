@@ -49,25 +49,25 @@ async def update_me(
 
 @user_router.post("/me/avatar", status_code=status.HTTP_201_CREATED)
 async def set_avatar(
-    file: UploadFile,
+    avatar: UploadFile,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_id_current_user),
 ) -> Avatar:
-    if file.content_type not in ALLOWED_IMAGE_TYPES:
+    if avatar.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="incorrect file format",
         )
     s3 = S3Storage()
-    url = await s3.upload_avatar(file=file, user_id=current_user_id)
+    url = await s3.upload_avatar(file=avatar, user_id=current_user_id)
     await AttachmentDao.add(
         session=session,
         data={
             "user_id": current_user_id,
             "attachment_url": url,
-            "mime_type": file.content_type,
-            "file_name": file.filename,
-            "file_size": file.size,
+            "mime_type": avatar.content_type,
+            "file_name": avatar.filename,
+            "file_size": avatar.size,
         },
     )
     await session.commit()
