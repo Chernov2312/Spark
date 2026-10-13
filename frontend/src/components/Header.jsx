@@ -65,7 +65,13 @@ export default function Header() {
         <div className="site-header__actions">
           {user ? (
             <>
-              <span className="header-user">@{user.username}</span>
+              <NavLink
+                to="/profile"
+                className="header-user"
+                title="Открыть профиль"
+              >
+                @{user.username}
+              </NavLink>
               <button
                 type="button"
                 className="register-btn"

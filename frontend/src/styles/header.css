@@ -138,3 +138,25 @@
     font-size: 18px;
   }
 }
+/* @username — ссылка на профиль */
+.header-user {
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.header-user:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.header-user.active {
+  color: var(--spark);
+  font-weight: 600;
+}
