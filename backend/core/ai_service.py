@@ -7,7 +7,7 @@ from config import ai_settings
 
 class AIService:
 
-    def __init__(self, model_name="gemini-3.8-flash"):
+    def __init__(self, model_name="gemini-3.5-flash-lite"):
         self.client = genai.Client(api_key=ai_settings.API_GEMINI)
         self.model = model_name
 
@@ -19,7 +19,7 @@ class AIService:
         try:
             response = await self.client.aio.models.generate_content(
                 model=self.model,
-                prompt=prompt,
+                contents=prompt,
                 config=config,
             )
             return response.text or "Не удалось сгенерировать текст."
