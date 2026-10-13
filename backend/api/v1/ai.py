@@ -4,7 +4,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config.ai import AIPrompts
+from config import AIPrompts, RouteTags
 from core.ai_service import AIService
 from core.security import get_id_current_user
 from db.dao.message_dao import Message, MessageDao
@@ -20,7 +20,7 @@ async def get_ai_service() -> AIService:
     return AIService()
 
 
-ai_router = APIRouter(prefix="/api/v1/ai")
+ai_router = APIRouter(prefix="/api/v1/ai", tags=[RouteTags.AI])
 
 
 @ai_router.post("/chats/{chat_id}/summarize")

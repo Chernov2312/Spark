@@ -3,13 +3,14 @@ import uuid
 from fastapi import APIRouter, Depends, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import RouteTags
 from core.security import get_id_current_user
 from core.storage import S3Storage
 from db.dao.attachment_dao import AttachmentDao
 from db.database import get_session
 from schemas.attachment import AttachmentResponse
 
-attachment_router = APIRouter(prefix="/api/v1/attachments")
+attachment_router = APIRouter(prefix="/api/v1/attachments", tags=[RouteTags.ATTACHMENT])
 
 
 @attachment_router.post("/")

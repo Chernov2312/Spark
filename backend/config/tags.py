@@ -5,5 +5,6 @@ class RouteTags(str, Enum):
     AUTH = "Авторизация"
     CHAT = "Чат"
     USERS = "Пользователи"
-    IMAGES = "Изображения"
+    ATTACHMENT = "Файлы"
     MESSAGES = "Сообщения"
+    AI = "ИИ"
