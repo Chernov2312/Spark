@@ -425,3 +425,274 @@
   color: var(--text);
   font-size: 18px;
 }
+/* ============================================================
+   Панель форматирования и textarea
+   ============================================================ */
+
+.chat-view__composer-wrapper {
+  position: relative;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.chat-view__composer-wrapper .chat-view__composer {
+  border-top: none;
+  background: transparent;
+}
+
+.composer-input {
+  flex: 1;
+  min-height: 42px;
+  max-height: 160px;
+  padding: 10px 16px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  outline: none;
+  font-family: inherit;
+  resize: none;
+  overflow-y: auto;
+  transition: border-color 0.15s;
+}
+
+.composer-input:focus {
+  border-color: var(--border-focus);
+}
+
+.composer-input::placeholder {
+  color: var(--text-dim);
+}
+
+.format-toolbar {
+  position: absolute;
+  top: -54px;
+  left: 20px;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  z-index: 50;
+  animation: formatToolbarIn 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes formatToolbarIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.format-toolbar__btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.format-toolbar__btn:hover {
+  background: var(--spark);
+  color: #fff;
+}
+
+/* Стили для inline-элементов в сообщениях */
+.msg__text strong {
+  font-weight: 700;
+}
+.msg__text em {
+  font-style: italic;
+}
+.msg__text del {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+.msg__text code {
+  padding: 1px 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+  font-family: "Consolas", "Menlo", monospace;
+  font-size: 13px;
+}
+.msg--me .msg__text code {
+  background: rgba(255, 255, 255, 0.15);
+}
+/* ============================================================
+   Composer, панель форматирования, пикер реакций
+   ============================================================ */
+
+.chat-view__composer-wrapper {
+  position: relative;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.chat-view__composer-wrapper .chat-view__composer {
+  border-top: none;
+  background: transparent;
+}
+
+.composer-input {
+  flex: 1;
+  min-height: 42px;
+  max-height: 160px;
+  padding: 10px 16px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  outline: none;
+  font-family: inherit;
+  resize: none;
+  overflow-y: auto;
+  transition: border-color 0.15s;
+}
+
+.composer-input:focus {
+  border-color: var(--border-focus);
+}
+
+.composer-input::placeholder {
+  color: var(--text-dim);
+}
+
+/* ---------- Панель форматирования ---------- */
+.format-toolbar {
+  position: absolute;
+  top: -54px;
+  left: 20px;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  z-index: 50;
+  animation: formatToolbarIn 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes formatToolbarIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.format-toolbar__btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.format-toolbar__btn:hover {
+  background: var(--spark);
+  color: #fff;
+}
+
+/* ---------- Рендер markdown в сообщениях ---------- */
+.msg__text strong {
+  font-weight: 700;
+}
+.msg__text em {
+  font-style: italic;
+}
+.msg__text del {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+.msg__text code {
+  padding: 1px 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+  font-family: "Consolas", "Menlo", monospace;
+  font-size: 13px;
+}
+.msg--me .msg__text code {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ---------- Пикер реакций ---------- */
+.reaction-picker__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+}
+
+.reaction-picker {
+  position: fixed;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  z-index: 401;
+  animation: formatToolbarIn 0.15s ease;
+}
+
+.reaction-picker__emoji {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  font-size: 20px;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    transform 0.1s;
+}
+
+.reaction-picker__emoji:hover {
+  background: var(--bg-hover);
+  transform: scale(1.15);
+}
+
+.reaction-picker__emoji:active {
+  transform: scale(0.95);
+}
+
+/* Курсор правого клика на сообщениях */
+.msg {
+  cursor: context-menu;
+}

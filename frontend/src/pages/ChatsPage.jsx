@@ -7,6 +7,7 @@ import {
   auth,
   createChatSocket,
 } from "../api";
+import FormatToolbar from "../components/FormatToolbar";
 
 /* ---------- Утилиты времени ---------- */
 function timeAgo(iso) {
@@ -20,6 +21,7 @@ function timeAgo(iso) {
     month: "short",
   });
 }
+
 function msgTime(iso) {
   if (!iso) return "";
   return new Date(iso).toLocaleTimeString("ru-RU", {
@@ -27,6 +29,27 @@ function msgTime(iso) {
     minute: "2-digit",
   });
 }
+
+/* ---------- Рендер markdown ---------- */
+function renderMarkdown(text) {
+  if (!text) return "";
+  let html = String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  html = html
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/~~(.+?)~~/g, "<del>$1</del>")
+    .replace(/`([^`]+?)`/g, "<code>$1</code>")
+    .replace(/(^|\s)\*([^*\n]+?)\*(?=\s|$)/g, "$1<em>$2</em>")
+    .replace(/\n/g, "<br/>");
+
+  return html;
+}
+
+/* ---------- Набор эмодзи для реакций ---------- */
+const EMOJI_SET = ["👍", "❤️", "🔥", "😂", "😮", "😢", "🎉", "👏"];
 
 /* ---------- Компонент ---------- */
 export default function ChatsPage() {
@@ -53,9 +76,16 @@ export default function ChatsPage() {
     invited: "",
   });
 
+  // Форматирование
+  const [showFormat, setShowFormat] = useState(false);
+
+  // Пикер реакций
+  const [reactionPicker, setReactionPicker] = useState(null);
+
   const bottomRef = useRef(null);
   const socketRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const textareaRef = useRef(null);
 
   /* ---------- 1. Загрузка чатов ---------- */
   useEffect(() => {
@@ -69,7 +99,7 @@ export default function ChatsPage() {
       .finally(() => setChatsLoading(false));
   }, []);
 
-  /* ---------- 2. Загрузка сообщений при смене чата ---------- */
+  /* ---------- 2. Загрузка сообщений ---------- */
   useEffect(() => {
     if (!chatId) {
       setMessages([]);
@@ -80,7 +110,6 @@ export default function ChatsPage() {
     messagesApi
       .listMessages(chatId)
       .then((list) => {
-        // Бэкенд отдаёт от новых к старым — разворачиваем
         setMessages([...list].reverse());
       })
       .catch((e) =>
@@ -143,7 +172,7 @@ export default function ChatsPage() {
       });
       socketRef.current = sock;
     } catch (e) {
-      console.warn("WebSocket не подключился:", e.message);
+      // Тихо игнорируем — WS опционален
     }
     return () => sock?.close();
   }, [chatId]);
@@ -155,14 +184,17 @@ export default function ChatsPage() {
 
   /* ---------- 5. Отправка сообщения ---------- */
   const handleSend = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!text.trim() || !chatId || sending) return;
+
     setSending(true);
     try {
-      // Отправляем через HTTP (если WS не подключён — так надёжнее)
       const created = await messagesApi.sendMessage(chatId, text.trim());
       setMessages((prev) => [...prev, created]);
       setText("");
+      setShowFormat(false);
+      if (textareaRef.current) textareaRef.current.style.height = "auto";
+
       setChats((prev) =>
         prev.map((c) =>
           c.id === chatId
@@ -185,16 +217,100 @@ export default function ChatsPage() {
     }
   };
 
-  /* ---------- 6. Индикатор «печатает…» ---------- */
+  /* ---------- 6. Ввод текста + typing ---------- */
   const handleTextChange = (e) => {
     setText(e.target.value);
+
+    e.target.style.height = "auto";
+    e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
+
     if (!chatId || !socketRef.current) return;
     socketRef.current.sendTyping(chatId);
     clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {}, 1000);
   };
 
-  /* ---------- 7. Создание чата ---------- */
+  /* ---------- 7. Форматирование ---------- */
+  const applyFormat = (openMark, closeMark) => {
+    const el = textareaRef.current;
+    if (!el) return;
+
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const value = el.value;
+
+    const selected = value.slice(start, end);
+    const before = value.slice(0, start);
+    const after = value.slice(end);
+
+    const inner = selected || "";
+    const newText = `${before}${openMark}${inner}${closeMark}${after}`;
+
+    setText(newText);
+
+    requestAnimationFrame(() => {
+      el.focus();
+      if (selected) {
+        el.setSelectionRange(
+          start + openMark.length,
+          start + openMark.length + inner.length,
+        );
+      } else {
+        el.setSelectionRange(start + openMark.length, start + openMark.length);
+      }
+    });
+  };
+
+  const updateFormatVisibility = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const hasSelection = el.selectionEnd - el.selectionStart > 0;
+    setShowFormat(hasSelection && !sending);
+  };
+
+  /* ---------- 8. Клавиатура ---------- */
+  const handleKeyDown = (e) => {
+    const isCtrl = e.ctrlKey || e.metaKey;
+
+    // Ctrl+Enter — перенос строки (проверяем ПЕРВЫМ)
+    if (e.key === "Enter" && isCtrl) {
+      e.preventDefault();
+      const el = e.currentTarget;
+      const start = el.selectionStart;
+      const end = el.selectionEnd;
+      const value = el.value;
+      const newValue = value.slice(0, start) + "\n" + value.slice(end);
+      setText(newValue);
+      requestAnimationFrame(() => {
+        el.setSelectionRange(start + 1, start + 1);
+      });
+      return;
+    }
+
+    // Ctrl+B / I / U
+    if (isCtrl) {
+      if (e.key === "b" || e.key === "B") {
+        e.preventDefault();
+        applyFormat("**", "**");
+      } else if (e.key === "i" || e.key === "I") {
+        e.preventDefault();
+        applyFormat("*", "*");
+      } else if (e.key === "u" || e.key === "U") {
+        e.preventDefault();
+        applyFormat("`", "`");
+      }
+      return;
+    }
+
+    // Enter — отправить, Shift+Enter — новая строка
+    if (e.key === "Enter") {
+      if (e.shiftKey) return;
+      e.preventDefault();
+      handleSend(e);
+    }
+  };
+
+  /* ---------- 9. Создание чата ---------- */
   const handleCreateChat = async (e) => {
     e.preventDefault();
     if (!newChat.title.trim()) return;
@@ -216,7 +332,7 @@ export default function ChatsPage() {
     }
   };
 
-  /* ---------- 8. Реакция ---------- */
+  /* ---------- 10. Реакции (тихо игнорируем 404, пока бэк не готов) ---------- */
   const handleReaction = async (messageId, emoji) => {
     try {
       const res = await messagesApi.addReaction(messageId, emoji);
@@ -227,15 +343,39 @@ export default function ChatsPage() {
             : m,
         ),
       );
-    } catch {}
+    } catch (err) {
+      if (err.response?.status === 404) {
+        // Эндпоинт реакций ещё не реализован на бэкенде — молча игнорируем
+        console.info("[Reactions] Эндпоинт ещё не готов на бэкенде");
+      } else {
+        console.error("Не удалось поставить реакцию:", err);
+      }
+    }
   };
 
-  /* ---------- 9. Загрузка картинки ---------- */
+  const openReactionPicker = (e, messageId) => {
+    e.preventDefault();
+    setReactionPicker({
+      messageId,
+      x: e.clientX,
+      y: e.clientY,
+    });
+  };
+
+  const closeReactionPicker = () => setReactionPicker(null);
+
+  const pickReaction = async (emoji) => {
+    if (!reactionPicker) return;
+    const { messageId } = reactionPicker;
+    setReactionPicker(null);
+    await handleReaction(messageId, emoji);
+  };
+
+  /* ---------- 11. Загрузка картинки ---------- */
   const handleImageUpload = async (file) => {
     if (!chatId) return;
     try {
       const res = await imagesApi.uploadImage(file, chatId);
-      // Отправим сообщение с URL картинки (или как бэкенд ждёт)
       await messagesApi.sendMessage(chatId, `![](${res.image_url})`);
     } catch {}
   };
@@ -384,14 +524,24 @@ export default function ChatsPage() {
                 messages.map((m) => {
                   const isMe = m.user_id === me?.id;
                   return (
-                    <div key={m.id} className={`msg ${isMe ? "msg--me" : ""}`}>
+                    <div
+                      key={m.id}
+                      className={`msg ${isMe ? "msg--me" : ""}`}
+                      onContextMenu={(e) => openReactionPicker(e, m.id)}
+                      title="Правый клик — добавить реакцию"
+                    >
                       {!isMe && (
                         <div className="msg__author">
                           @{String(m.user_id || "").slice(0, 6)}
                         </div>
                       )}
                       <div className="msg__bubble">
-                        <span className="msg__text">{m.text}</span>
+                        <span
+                          className="msg__text"
+                          dangerouslySetInnerHTML={{
+                            __html: renderMarkdown(m.text),
+                          }}
+                        />
                         <span className="msg__time">
                           {msgTime(m.created_at)}
                         </span>
@@ -418,37 +568,83 @@ export default function ChatsPage() {
               <div ref={bottomRef} />
             </div>
 
-            <form className="chat-view__composer" onSubmit={handleSend}>
-              <label className="composer-btn" title="Прикрепить">
-                📎
-                <input
-                  type="file"
-                  accept="image/*"
-                  hidden
-                  onChange={(e) =>
-                    e.target.files[0] && handleImageUpload(e.target.files[0])
-                  }
+            {/* ---------- Composer ---------- */}
+            <div className="chat-view__composer-wrapper">
+              <FormatToolbar onFormat={applyFormat} visible={showFormat} />
+
+              <form className="chat-view__composer" onSubmit={handleSend}>
+                <label className="composer-btn" title="Прикрепить">
+                  📎
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={(e) =>
+                      e.target.files[0] && handleImageUpload(e.target.files[0])
+                    }
+                  />
+                </label>
+
+                <textarea
+                  ref={textareaRef}
+                  className="composer-input"
+                  placeholder="Написать сообщение…"
+                  value={text}
+                  rows={1}
+                  onChange={handleTextChange}
+                  onSelect={updateFormatVisibility}
+                  onMouseUp={updateFormatVisibility}
+                  onKeyUp={updateFormatVisibility}
+                  onKeyDown={handleKeyDown}
+                  onBlur={() => setTimeout(() => setShowFormat(false), 150)}
+                  disabled={sending}
                 />
-              </label>
-              <input
-                type="text"
-                placeholder="Написать сообщение…"
-                value={text}
-                onChange={handleTextChange}
-                disabled={sending}
-              />
-              <button
-                type="submit"
-                className="composer-btn composer-btn--send"
-                disabled={sending}
-                title="Отправить"
-              >
-                ➤
-              </button>
-            </form>
+
+                <button
+                  type="submit"
+                  className="composer-btn composer-btn--send"
+                  disabled={sending}
+                  title="Отправить"
+                >
+                  ➤
+                </button>
+              </form>
+            </div>
           </>
         )}
       </section>
+
+      {/* ---------- Пикер реакций ---------- */}
+      {reactionPicker && (
+        <>
+          <div
+            className="reaction-picker__backdrop"
+            onClick={closeReactionPicker}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              closeReactionPicker();
+            }}
+          />
+          <div
+            className="reaction-picker"
+            style={{
+              top: Math.max(8, reactionPicker.y - 60),
+              left: Math.min(reactionPicker.x, window.innerWidth - 340),
+            }}
+          >
+            {EMOJI_SET.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                className="reaction-picker__emoji"
+                onClick={() => pickReaction(emoji)}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* ---------- Модалка создания чата ---------- */}
       {createOpen && (
