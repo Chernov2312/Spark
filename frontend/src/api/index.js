@@ -5,5 +5,5 @@ export * as chats from "./chats";
 export * as messages from "./messages";
 export * as images from "./images";
 export { createChatSocket } from "./ws";
-export { AUTH_EVENT } from "./auth";
 export { translateApiError } from "./translations";
+export { AUTH_EVENT } from "./auth";

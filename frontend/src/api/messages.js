@@ -1,7 +1,7 @@
 import { api } from "./client";
 
 /* GET /chats/{id}/messages?limit=50&before=...
-   Универсально: если бэкенд отдаёт массив — берём его,
+   Универсально: если бэк отдаёт массив — берём его,
    если объект { messages: [...] } — берём .messages */
 export async function listMessages(chatId, { limit = 50, before } = {}) {
   const params = { limit };

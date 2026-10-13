@@ -28,14 +28,12 @@ export async function updateMe(payload) {
   return data;
 }
 
-/* POST /users/me/avatar — multipart/form-data, поле "avatar"
+/* POST /users/me/avatar — multipart/form-data, поле "file"
    → { avatar_url } */
 export async function uploadAvatar(file) {
   const form = new FormData();
-  form.append("avatar", file);
-  const { data } = await api.post("/users/me/avatar", form, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+  form.append("file", file);
+  const { data } = await api.post("/users/me/avatar", form);
   return data;
 }
 
