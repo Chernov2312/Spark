@@ -40,3 +40,18 @@ body {
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
 }
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+main,
+.page-simple,
+.home,
+.register-page,
+.profile-page,
+.faq-page,
+.not-found {
+  flex: 1;
+}
