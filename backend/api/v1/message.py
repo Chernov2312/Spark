@@ -42,7 +42,7 @@ async def get_messages_history(
                 url = await s3.get_temporary_url(file_key)
                 signed_attachments.append(url)
             msg.attachments = signed_attachments
-            
+
         validated_messages.append(msg)
     return MessageHistory(messages=validated_messages)
 

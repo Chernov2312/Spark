@@ -1,8 +1,7 @@
 import datetime
 import uuid
-from typing import Literal
+
 import aioboto3
-from config import StorageCategory
 from fastapi import UploadFile
 
 from config import yandex_storage
@@ -17,6 +16,7 @@ class S3Storage:
             "endpoint_url": yandex_storage.ENDPOINT_URL,
         }
         self.bucket_name = yandex_storage.BUCKET_NAME
+
     async def upload_file(
         self,
         file: UploadFile,
