@@ -1,7 +1,7 @@
-from enum import Enum
+from enum import StrEnum
 
 
-class RouteTags(str, Enum):
+class RouteTags(StrEnum):
     AUTH = "Авторизация"
     CHAT = "Чат"
     USERS = "Пользователи"

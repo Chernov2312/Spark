@@ -32,7 +32,7 @@ export async function updateMe(payload) {
    → { avatar_url } */
 export async function uploadAvatar(file) {
   const form = new FormData();
-  form.append("file", file);
+  form.append("avatar", file);
   const { data } = await api.post("/users/me/avatar", form);
   return data;
 }

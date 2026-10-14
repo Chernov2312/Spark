@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags
 from core.security import get_id_current_user
+from core.storage import S3Storage
 from db.dao.message_dao import MessageDao
 from db.database import get_session
 from db.models import Message
@@ -31,7 +32,19 @@ async def get_messages_history(
         limit=limit,
         before=before,
     )
-    return MessageHistory(messages=db_messages)
+    s3 = S3Storage()
+    validated_messages = []
+
+    for msg in db_messages:
+        if msg.attachments:
+            signed_attachments = []
+            for file_key in msg.attachments:
+                url = await s3.get_temporary_url(file_key)
+                signed_attachments.append(url)
+            msg.attachments = signed_attachments
+            
+        validated_messages.append(msg)
+    return MessageHistory(messages=validated_messages)
 
 
 @message_router.post("/chats/{chat_id}/messages", status_code=status.HTTP_201_CREATED)

@@ -1,7 +1,8 @@
 import datetime
 import uuid
-
+from typing import Literal
 import aioboto3
+from config import StorageCategory
 from fastapi import UploadFile
 
 from config import yandex_storage
@@ -16,11 +17,15 @@ class S3Storage:
             "endpoint_url": yandex_storage.ENDPOINT_URL,
         }
         self.bucket_name = yandex_storage.BUCKET_NAME
-
-    async def upload_file(self, file: UploadFile, user_id: uuid.UUID) -> str:
+    async def upload_file(
+        self,
+        file: UploadFile,
+        target_id: uuid.UUID,
+        category: str,
+    ) -> str:
         file_extension = file.content_type.split("/")[-1]
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        file_key = f"avatars/user_{user_id}/{timestamp}.{file_extension}"
+        file_key = f"{category}/{target_id}/{timestamp}.{file_extension}"
 
         async with self.session.client("s3", **self.config) as s3:
             file_content = await file.read()
@@ -29,10 +34,21 @@ class S3Storage:
                 Key=file_key,
                 Body=file_content,
                 ContentType=file.content_type,
-                ACL="public-read",
             )
 
-        return f"{self.config['endpoint_url']}/{self.bucket_name}/{file_key}"
+        return file_key
+
+    async def get_temporary_url(self, file_key: str, expires_in: int = 3600) -> str:
+        async with self.session.client("s3", **self.config) as s3:
+            url = await s3.generate_presigned_url(
+                ClientMethod="get_object",
+                Params={
+                    "Bucket": self.bucket_name,
+                    "Key": file_key,
+                },
+                ExpiresIn=expires_in,
+            )
+            return url
 
     async def delete_avatar(self, file_url: str) -> bool:
         splitted = file_url.split("/")

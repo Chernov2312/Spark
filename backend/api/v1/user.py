@@ -10,7 +10,7 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import RouteTags
+from config import RouteTags, StorageCategory
 from core.security import get_id_current_user
 from core.storage import S3Storage
 from db.dao.attachment_dao import AttachmentDao
@@ -59,7 +59,7 @@ async def set_avatar(
             detail="incorrect file format",
         )
     s3 = S3Storage()
-    url = await s3.upload_file(file=avatar, user_id=current_user_id)
+    url = await s3.upload_file(file=avatar, target_id=current_user_id, category=StorageCategory.USER_AVATAR)
     await AttachmentDao.add(
         session=session,
         data={
@@ -71,7 +71,8 @@ async def set_avatar(
         },
     )
     await session.commit()
-    return Avatar(url=url)
+    temporary_url = await s3.get_temporary_url(url)
+    return Avatar(url=temporary_url)
 
 
 @user_router.post("/me/delete/avatar", status_code=status.HTTP_204_NO_CONTENT)

@@ -1,3 +1,4 @@
+from enum import StrEnum
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +13,12 @@ class YandexStorage(BaseSettings):
     YANDEX_CLOUD_KEY: str
     BUCKET_NAME: str
     ENDPOINT_URL: str = "https://storage.yandexcloud.net"
+
+
+class StorageCategory(StrEnum):
+    USER_AVATAR = "user_avatar"
+    CHAT_AVATAR = "chat_avatar"
+    USER_MESSAGE = "user_message"
 
 
 yandex_storage = YandexStorage()
