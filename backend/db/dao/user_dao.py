@@ -28,3 +28,15 @@ class UserDao(BaseDao[User]):
         query = select(User).where(User.id == target_id).options(selectinload(User.chats))
         res = await session.execute(query)
         return res.scalar_one_or_none()
+
+    @classmethod
+    async def get_user_with_avatars(
+        cls,
+        session: AsyncSession,
+        target_id: str,
+    ) -> User | None:
+        query = (
+            select(User).where(User.id == target_id).options(selectinload(User.avatars))
+        )
+        res = await session.execute(query)
+        return res.scalar_one_or_none()

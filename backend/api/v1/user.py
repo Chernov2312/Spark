@@ -27,7 +27,18 @@ async def get_me(
     session: AsyncSession = Depends(get_session),
     user_id: uuid.UUID = Depends(get_id_current_user),
 ) -> UserRead:
-    return await UserDao.get_by_id(session=session, target_id=user_id)
+    user = await UserDao.get_by_id(session=session, target_id=user_id)
+    avatar_urls = []
+    s3 = S3Storage()
+    for i in user.avatars:
+        avatar_urls.append(await s3.get_temporary_url(i.attachment_url))
+    return UserRead(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        avatar_url=avatar_urls,
+        created_at=user.created_at,
+    )
 
 
 @user_router.patch("/me", status_code=status.HTTP_200_OK)

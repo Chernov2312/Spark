@@ -58,7 +58,7 @@
     "id": "u1111111-eeee-aaaa-bbbb-cccccccccccc",
     "username": "john_doe",
     "email": "john@example.com",
-    "avatar_url": "https://storage.cdn.com/avatars/user_1.jpg",
+    "avatar_url": ["https://storage.cdn.com/avatars/user_1.jpg"]
     "created_at": "2026-10-03T09:21:00Z"
   }
   ```

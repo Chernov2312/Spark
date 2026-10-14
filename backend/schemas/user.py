@@ -9,6 +9,7 @@ class UserRead(BaseModel):
     username: str = Field(..., max_length=50)
     email: EmailStr = Field(..., max_length=100)
 
+    avatar_url: list[str] = []
     model_config = ConfigDict(from_attributes=True)
 
 
