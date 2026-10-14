@@ -46,6 +46,7 @@ class MessageDao(BaseDao[Message]):
         target_id: uuid.UUID,
         user_id: uuid.UUID,
         text: str,
+        
     ) -> Message | None:
         query = (
             update(Message)
