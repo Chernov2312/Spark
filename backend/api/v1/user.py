@@ -27,7 +27,7 @@ async def get_me(
     session: AsyncSession = Depends(get_session),
     user_id: uuid.UUID = Depends(get_id_current_user),
 ) -> UserRead:
-    user = await UserDao.get_by_id(session=session, target_id=user_id)
+    user = await UserDao.get_user_with_avatars(session=session, target_id=user_id)
     avatar_urls = []
     s3 = S3Storage()
     for i in user.avatars:
