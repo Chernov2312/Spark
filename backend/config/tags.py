@@ -7,5 +7,6 @@ class RouteTags(StrEnum):
     USERS = "Пользователи"
     ATTACHMENT = "Файлы"
     MESSAGES = "Сообщения"
+    REACTIONS = "Реакции"
     AI = "ИИ"
     HEALTH_TEST = "Тест запуска бэка"
