@@ -26,20 +26,15 @@ export default function ProfilePage({ demo = false }) {
   const [success, setSuccess] = useState(null);
   const [tab, setTab] = useState("info");
   const [editMode, setEditMode] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    if (demo) {
-      setMe({ ...DEMO_USER });
-      setForm({ username: DEMO_USER.username, email: DEMO_USER.email });
-      return;
-    }
-
     users
       .getMe()
       .then((data) => {
-        setMe(data);
+        setMe(data); // данные уже нормализованы в users.js
         setForm({ username: data.username || "", email: data.email || "" });
       })
       .catch((e) =>
@@ -118,16 +113,13 @@ export default function ProfilePage({ demo = false }) {
     setUploadingAvatar(true);
 
     try {
-      if (demo) {
-        // Демо: локальный blob-URL, на сервер ничего не уходит
-        const url = URL.createObjectURL(file);
-        setMe((prev) => ({ ...prev, avatar_url: url }));
-        setSuccess("Аватар обновлён (демо)");
-      } else {
-        const { avatar_url } = await users.uploadAvatar(file);
-        setMe((prev) => ({ ...prev, avatar_url }));
-        setSuccess("Аватар обновлён");
-      }
+      const { avatar_url, avatar_url_raw } = await users.uploadAvatar(file);
+      setMe((prev) => ({
+        ...prev,
+        avatar_url,
+        avatar_url_raw,
+      }));
+      setSuccess("Аватар обновлён");
     } catch (err) {
       const detail = err.response?.data?.detail;
       setError(
@@ -138,29 +130,36 @@ export default function ProfilePage({ demo = false }) {
       e.target.value = "";
     }
   };
-
   const handleDeleteAvatar = async () => {
-    if (!me.avatar_url) return;
-    if (!window.confirm("Удалить аватар?")) return;
+    if (!me?.avatar_url) {
+      console.warn("[DELETE] нет avatar_url в стейте");
+      return;
+    }
+
+    const urlToSend = me.avatar_url_raw || me.avatar_url;
+    console.log("[DELETE] Отправляю:", urlToSend);
 
     setError(null);
     setSuccess(null);
     setUploadingAvatar(true);
 
     try {
-      if (demo) {
-        setMe((prev) => ({ ...prev, avatar_url: null }));
-        setSuccess("Аватар удалён (демо)");
-      } else {
-        await users.deleteAvatar(me.avatar_url);
-        setMe((prev) => ({ ...prev, avatar_url: null }));
-        setSuccess("Аватар удалён");
-      }
+      const res = await users.deleteAvatar(urlToSend);
+      console.log("[DELETE] Успех:", res);
+
+      setMe((prev) => ({
+        ...prev,
+        avatar_url: null,
+        avatar_url_raw: null,
+      }));
+      setSuccess("Аватар удалён");
     } catch (err) {
+      console.error("[DELETE] Ошибка:", err);
       const detail = err.response?.data?.detail;
-      setError(
-        typeof detail === "string" ? detail : "Не удалось удалить аватар",
-      );
+      let msg = "Не удалось удалить аватар";
+      if (typeof detail === "string") msg = detail;
+      else if (Array.isArray(detail) && detail[0]?.msg) msg = detail[0].msg;
+      setError(msg);
     } finally {
       setUploadingAvatar(false);
     }
@@ -254,8 +253,7 @@ export default function ProfilePage({ demo = false }) {
                 <button
                   type="button"
                   className="vk-btn"
-                  onClick={handleDeleteAvatar}
-                  disabled={uploadingAvatar}
+                  onClick={() => setConfirmDeleteOpen(true)}
                 >
                   Удалить аватар
                 </button>
@@ -356,6 +354,38 @@ export default function ProfilePage({ demo = false }) {
           )}
         </div>
       </div>
+      {confirmDeleteOpen && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setConfirmDeleteOpen(false)}
+        >
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Удалить аватар?</h3>
+            <p style={{ color: "var(--text-muted)", marginBottom: 20 }}>
+              Действие нельзя отменить.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                type="button"
+                className="vk-btn vk-btn--primary"
+                onClick={() => {
+                  setConfirmDeleteOpen(false);
+                  handleDeleteAvatar();
+                }}
+              >
+                Удалить
+              </button>
+              <button
+                type="button"
+                className="vk-btn"
+                onClick={() => setConfirmDeleteOpen(false)}
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
