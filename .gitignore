@@ -132,3 +132,5 @@ ipython_config.py
 .DS_Store
 
 send_mail
+
+redisdata/
