@@ -69,7 +69,6 @@ async def update_me(
     )
 
 
-
 @user_router.post("/me/avatar", status_code=status.HTTP_201_CREATED)
 async def set_avatar(
     avatar: UploadFile,
