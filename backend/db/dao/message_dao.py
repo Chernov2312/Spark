@@ -46,6 +46,7 @@ class MessageDao(BaseDao[Message]):
         target_id: uuid.UUID,
         user_id: uuid.UUID,
         text: str,
+        reactions: dict,
     ) -> Message | None:
         query = (
             update(Message)
@@ -53,13 +54,13 @@ class MessageDao(BaseDao[Message]):
                 Message.id == target_id,
                 Message.user_id == user_id,
             )
-            .values(text=text)
+            .values(text=text, reactions_count=reactions)
             .returning(Message)
         )
 
         res = await session.execute(query)
 
-        return res.scalars().scalar_one_or_none()
+        return res.scalar_one_or_none()
 
     @classmethod
     async def delete_by_id(
