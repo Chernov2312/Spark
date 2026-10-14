@@ -44,7 +44,7 @@ async def test_get_chat_history(
 #             size=10000,
 #         )
 #         s3 = S3Storage()
-#         url = await s3.upload_avatar(upload_file, id_first_user)
+#         url = await s3.upload_file(upload_file, id_first_user)
 #         txt = await AttachmentDao.add(
 #             session=db_session,
 #             data={
@@ -91,7 +91,7 @@ async def test_get_chat_history(
 #             size=10000,
 #         )
 #         s3 = S3Storage()
-#         url = await s3.upload_avatar(upload_file, id_first_user)
+#         url = await s3.upload_file(upload_file, id_first_user)
 #         image = await AttachmentDao.add(session=db_session, data={
 #             "user_id": id_first_user,
 #             "attachment_url": url,
