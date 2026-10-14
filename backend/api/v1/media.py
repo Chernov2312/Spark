@@ -20,7 +20,7 @@ async def create_attachment(
     user_id: uuid.UUID = Depends(get_id_current_user),
 ) -> AttachmentResponse:
     s3 = S3Storage()
-    url = await s3.upload_avatar(file=file, user_id=user_id)
+    url = await s3.upload_file(file=file, user_id=user_id)
     res = await AttachmentDao.add(
         session=session,
         data={

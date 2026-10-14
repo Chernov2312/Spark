@@ -59,7 +59,7 @@ async def set_avatar(
             detail="incorrect file format",
         )
     s3 = S3Storage()
-    url = await s3.upload_avatar(file=avatar, user_id=current_user_id)
+    url = await s3.upload_file(file=avatar, user_id=current_user_id)
     await AttachmentDao.add(
         session=session,
         data={
