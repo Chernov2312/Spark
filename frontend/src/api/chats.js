@@ -3,7 +3,7 @@ import { api } from "./client";
 /* GET /chats → массив чатов */
 export async function listChats() {
   const { data } = await api.get("/chats");
-  return Array.isArray(data) ? data : [];
+  return data.chats
 }
 
 /* POST /chats */

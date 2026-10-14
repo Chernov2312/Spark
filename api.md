@@ -112,20 +112,20 @@
 
 - **Ответ (200 OK):**
   ```json
-  [
-    {
-      "id": "c3333333-eeee-aaaa-bbbb-cccccccccccc",
-      "title": "Команда разработки",
-      "description": "Рабочий чат проекта",
-      "author_id": "u1111111-eeee-aaaa-bbbb-cccccccccccc",
-      "avatar_url": "https://storage.cdn.com/avatars/chat_1.jpg",
-      "created_at": "2026-10-01T12:00:00Z",
-      "last_message": {
-        "text": "Привет! Как успехи?",
-        "created_at": "2026-10-03T09:15:00Z"
+  {"chats":
+    [
+      {
+        "id": "c3333333-eeee-aaaa-bbbb-cccccccccccc",
+        "title": "Команда разработки",
+        "description": "Рабочий чат проекта",
+        "owner_id": "u1111111-eeee-aaaa-bbbb-cccccccccccc",
+        "avatar_url": "https://storage.cdn.com/avatars/chat_1.jpg",
+        "created_at": "2026-10-01T12:00:00Z",
       }
-    }
-  ]
+    ]
+  }
+
+
   ```
 
 ### `POST /api/v1/chats` — Создание нового чата - DONE✅

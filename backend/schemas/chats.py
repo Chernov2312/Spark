@@ -35,7 +35,7 @@ class ChatResponse(BaseModel):
     owner_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
-
+    avatar_url: str = None
     model_config = ConfigDict(from_attributes=True)
 
 
