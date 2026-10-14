@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 
+import redis.asyncio as aioredis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -14,7 +15,14 @@ from api.v1.user import user_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.redis = aioredis.Redis(
+        host="localhost",
+        port=6379,
+        db=0,
+        decode_responses=True,
+    )
     yield
+    await app.state.redis.close()
 
 
 def create_app() -> FastAPI:
