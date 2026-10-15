@@ -10,6 +10,7 @@ from api.v1.chats import chat_router
 from api.v1.core import core_router
 from api.v1.media import attachment_router
 from api.v1.message import message_router
+from api.v1.reactions import reactions_router
 from api.v1.user import user_router
 
 
@@ -47,5 +48,6 @@ app.include_router(auth_router)
 app.include_router(user_router)
 app.include_router(chat_router)
 app.include_router(message_router)
+app.include_router(reactions_router)
 app.include_router(attachment_router)
 app.include_router(ai_router)
