@@ -43,7 +43,7 @@ async def post_reactions(
             await redis.hdel(reactions_count_key, user_emoji)
 
     current_counters = await redis.hgetall(reactions_count_key)
-
+    await redis.sadd("message:reactions:dirty_set", str(message_id))
     return ReactionsResponse(
         message_id=message_id,
         updated_reactions_count=current_counters,
@@ -70,6 +70,7 @@ async def delete(
         if new_old_count <= 0:
             await redis.hdel(reactions_count_key, user_emoji)
         current_counters = await redis.hgetall(reactions_count_key)
+        await redis.sadd("message:reactions:dirty_set", str(message_id))
         return ReactionsResponse(
             message_id=message_id, updated_reactions_count=current_counters,
         )
