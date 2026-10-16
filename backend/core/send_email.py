@@ -1,16 +1,35 @@
 import secrets
 import smtplib
+from config.app import settings
+from datetime import timedelta
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from core.security import (
+    authenticate_user,
+    create_access_token,
+    get_password_hash,
+)
+from db.database import get_session
+
+from db.dao.user_dao import UserDao
 from email.message import EmailMessage
+from core.security import create_access_token
 import stmplib
 
 
-def send_verification_email(user_email: str):
+async def send_verification_email(user_email: str, session: AsyncSession):
     msg = EmailMessage()
     msg["Subject"] = "Подтверждение регистрации в Мессенджере"
     msg["From"] = "testaccvova@gmail.com"
     msg["To"] = user_email
 
-    verification_link = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+    verification_token_expires = timedelta(days=settings.VERIFICATION_TOKEN_EXPIRE_DAYS)
+    verification_token = create_access_token(
+        data={"sub": user_email},
+    )
+
+    verification_link = "local"
 
     html_content = f"""
     <html>
