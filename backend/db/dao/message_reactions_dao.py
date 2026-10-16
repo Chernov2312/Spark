@@ -1,10 +1,17 @@
 import uuid
+from typing import TypedDict
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, bindparam, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.dao.basedao import BaseDao
 from db.models import MessageReaction
+
+
+class MessageReactionData(TypedDict):
+    id: uuid.UUID
+    users: dict[uuid.UUID, str]
+    reactions_count: dict[str, int]
 
 
 class MessageReactionDao(BaseDao[MessageReaction]):
@@ -25,3 +32,36 @@ class MessageReactionDao(BaseDao[MessageReaction]):
         )
         res = await session.execute(query)
         return res.scalars().all()
+
+    @classmethod
+    async def update_user_reactions(
+        cls,
+        session: AsyncSession,
+        message_reactions: list[MessageReactionData],
+    ):
+        users_data = []
+        for msg in message_reactions:
+            message_id = msg["id"]
+            for user_id, emoji in msg["users"].items():
+                users_data.append(
+                    {
+                        "user_id": user_id,
+                        "emoji": emoji,
+                        "message_id": message_id,
+                    },
+                )
+
+        if not users_data:
+            return
+
+        stmt = (
+            update(cls.model)
+            .where(
+                cls.model.user_id == bindparam("user_id"),
+                cls.model.message_id == bindparam("message_id"),
+            )
+            .values(
+                emoji=bindparam("emoji"),
+            )
+        )
+        await session.execute(stmt, users_data)

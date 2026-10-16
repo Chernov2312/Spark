@@ -35,7 +35,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       REDIS_USER: ${REDIS_USER}
       REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD}
-
+    command: bash ./entrypoint.sh
     depends_on:
       postgres:
         condition: service_healthy
@@ -92,9 +92,9 @@ services:
         echo "bind 0.0.0.0" > /usr/local/etc/redis/redis.conf &&
         echo "appendonly yes" >> /usr/local/etc/redis/redis.conf &&
         echo "appendfsync everysec" >> /usr/local/etc/redis/redis.conf &&
-        echo "user default on >$$REDIS_PASSWORD ~* +@all" > /usr/local/etc/redis/users.acl &&
-        echo "user $$REDIS_USER on >$$REDIS_USER_PASSWORD ~* +@all" >> /usr/local/etc/redis/users.acl &&
-        
+        echo "user default on >$$REDIS_PASSWORD ~* &* +@all" > /usr/local/etc/redis/users.acl &&
+        echo "user $$REDIS_USER on >$$REDIS_USER_PASSWORD ~* &* +@all" >> /usr/local/etc/redis/users.acl &&
+
         redis-server /usr/local/etc/redis/redis.conf --aclfile /usr/local/etc/redis/users.acl
       '
     healthcheck:
@@ -103,6 +103,53 @@ services:
       timeout: 10s
       retries: 5
     restart: unless-stopped
+  celery:
+    build: ./backend
+    profiles: ["dev"]
+    volumes:
+      - ./backend:/app
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SECRET_KEY: ${SECRET_KEY}
+      ALGORITHM: ${ALGORITHM}
+      YANDEX_CLOUD_KEY_ID: ${YANDEX_CLOUD_KEY_ID}
+      YANDEX_CLOUD_KEY: ${YANDEX_CLOUD_KEY}
+      BUCKET_NAME: ${BUCKET_NAME}
+      API_GEMINI: ${API_GEMINI}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_USER: ${REDIS_USER}
+      REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD}
+    command: celery -A worker.sync_db worker --loglevel=info --uid=nobody
+  celery-beat:
+    build: ./backend
+    profiles: ["dev"]
+    volumes:
+      - ./backend:/app
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SECRET_KEY: ${SECRET_KEY}
+      ALGORITHM: ${ALGORITHM}
+      YANDEX_CLOUD_KEY_ID: ${YANDEX_CLOUD_KEY_ID}
+      YANDEX_CLOUD_KEY: ${YANDEX_CLOUD_KEY}
+      BUCKET_NAME: ${BUCKET_NAME}
+      API_GEMINI: ${API_GEMINI}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_USER: ${REDIS_USER}
+      REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD}
+    command: celery -A worker.sync_db beat --loglevel=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   nginx:
     image: nginx:alpine
