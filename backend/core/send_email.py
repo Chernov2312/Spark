@@ -1,16 +1,14 @@
-import stmplib
-
-import smtplib
-
-from email.message import EmailMessage
 import secrets
+import smtplib
+from email.message import EmailMessage
+import stmplib
 
 
 def send_verification_email(user_email: str):
     msg = EmailMessage()
-    msg['Subject'] = "Подтверждение регистрации в Мессенджере"
-    msg['From'] = "testaccvova@gmail.com"
-    msg['To'] = user_email
+    msg["Subject"] = "Подтверждение регистрации в Мессенджере"
+    msg["From"] = "testaccvova@gmail.com"
+    msg["To"] = user_email
 
     verification_link = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
@@ -26,11 +24,11 @@ def send_verification_email(user_email: str):
     </html>
     """
 
-    msg.set_content(html_content, subtype='html')
+    msg.set_content(html_content, subtype="html")
 
     try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login('testaccvova@gmail.com', 'qzgr lhhl jfsc csfz')
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login("testaccvova@gmail.com", "qzgr lhhl jfsc csfz")
             server.send_message(msg)
         print("Message was successfully sended")
     except Exception as e:
