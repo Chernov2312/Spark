@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, String, Table, Boolean, false
+from sqlalchemy import Boolean, Column, ForeignKey, String, Table, false
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 

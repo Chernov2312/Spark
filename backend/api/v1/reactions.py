@@ -62,7 +62,8 @@ async def delete(
     if user_emoji is None:
         current_counters = await redis.hgetall(reactions_count_key)
         return ReactionsResponse(
-            message_id=message_id, updated_reactions_count=current_counters,
+            message_id=message_id,
+            updated_reactions_count=current_counters,
         )
     else:
         await redis.delete(user_reaction_key)
@@ -72,5 +73,6 @@ async def delete(
         current_counters = await redis.hgetall(reactions_count_key)
         await redis.sadd("message:reactions:dirty_set", str(message_id))
         return ReactionsResponse(
-            message_id=message_id, updated_reactions_count=current_counters,
+            message_id=message_id,
+            updated_reactions_count=current_counters,
         )
