@@ -53,7 +53,7 @@ class MessageDao(BaseDao[Message]):
                 Message.id == target_id,
                 Message.user_id == user_id,
             )
-            .values(text=text, reactions_count=reactions)
+            .values(text=text)
             .returning(Message)
         )
 

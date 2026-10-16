@@ -1,19 +1,20 @@
 import secrets
 import smtplib
-from config.app import settings
 from datetime import timedelta
+from email.message import EmailMessage
+
+import stmplib
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from config.app import settings
 from core.security import (
     authenticate_user,
     create_access_token,
     get_password_hash,
 )
-from db.database import get_session
-
 from db.dao.user_dao import UserDao
-from email.message import EmailMessage
-import stmplib
+from db.database import get_session
 
 
 async def send_verification_email(user_email: str, session: AsyncSession):

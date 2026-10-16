@@ -65,7 +65,8 @@ async def delete(
     if user_emoji is None:
         current_counters = await redis.hgetall(reactions_count_key)
         return ReactionsResponse(
-            message_id=message_id, updated_reactions_count=current_counters,
+            message_id=message_id,
+            updated_reactions_count=current_counters,
         )
 
     async with redis.pipeline(transaction=True) as pipe:
@@ -79,5 +80,6 @@ async def delete(
         current_counters = results[-2]
 
     return ReactionsResponse(
-        message_id=message_id, updated_reactions_count=current_counters,
+        message_id=message_id,
+        updated_reactions_count=current_counters,
     )

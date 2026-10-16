@@ -9,8 +9,9 @@ from config import RouteTags
 from core.security import get_id_current_user
 from core.storage import S3Storage
 from db.dao.message_dao import MessageDao
+from db.dao.message_reactions_dao import MessageReactionDao
 from db.database import get_session
-from db.models import Message
+from db.models import Message, MessageReaction
 from schemas.message import MessageHistory, MessageRequest, MessageResponse
 
 message_router = APIRouter(prefix="/api/v1", tags=[RouteTags.MESSAGES])
@@ -34,7 +35,15 @@ async def get_messages_history(
     )
     s3 = S3Storage()
     validated_messages = []
-
+    messages_id: List[uuid.UUID] = [i.chat_id for i in db_messages]
+    user_reactions: List[MessageReaction] = await MessageReactionDao.get_user_reactions(
+        session=session,
+        user_id=user_id,
+        loaded_message_ids=messages_id,
+    )
+    message_reactions_ids: List[uuid.UUID] = {
+        i.message_id: i.emoji for i in user_reactions
+    }
     for msg in db_messages:
         if msg.attachments:
             signed_attachments = []
@@ -42,7 +51,8 @@ async def get_messages_history(
                 url = await s3.get_temporary_url(file_key)
                 signed_attachments.append(url)
             msg.attachments = signed_attachments
-
+        if msg.id in message_reactions_ids:
+            msg.user_reaction = message_reactions_ids[msg.id]
         validated_messages.append(msg)
     return MessageHistory(messages=validated_messages)
 
