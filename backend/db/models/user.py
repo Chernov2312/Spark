@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, String, Table, Boolean
+from sqlalchemy import Column, ForeignKey, String, Table, Boolean, false
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -52,4 +52,5 @@ class User(Base):
     is_verified: Mapped[bool] = mapped_column(
         Boolean,
         default=False,
+        server_default=false(),
     )
