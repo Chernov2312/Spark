@@ -20,30 +20,32 @@ async def post_reactions(
 ) -> ReactionsResponse:
     user_reaction_key = f"message:user_reaction:{message_id}:{user_id}"
     reactions_count_key = f"message:reactions_count:{message_id}"
+    message_users_key = f"message:users:{message_id}"
 
     user_emoji = await redis.get(user_reaction_key)
 
-    if user_emoji is None:
-        await redis.hincrby(reactions_count_key, emoji.emoji, 1)
-        await redis.set(user_reaction_key, emoji.emoji)
+    async with redis.pipeline(transaction=True) as pipe:
+        if user_emoji is None:
+            pipe.hincrby(reactions_count_key, emoji.emoji, 1)
+            pipe.set(user_reaction_key, emoji.emoji)
+            pipe.sadd(message_users_key, str(user_id))
 
-    elif user_emoji == emoji.emoji:
-        new_count = await redis.hincrby(reactions_count_key, user_emoji, -1)
-        await redis.delete(user_reaction_key)
+        elif user_emoji == emoji.emoji:
+            pipe.hincrby(reactions_count_key, user_emoji, -1)
+            pipe.delete(user_reaction_key)
+            pipe.srem(message_users_key, str(user_id))
 
-        if new_count <= 0:
-            await redis.hdel(reactions_count_key, user_emoji)
+        else:
+            pipe.hincrby(reactions_count_key, user_emoji, -1)
+            pipe.hincrby(reactions_count_key, emoji.emoji, 1)
+            pipe.set(user_reaction_key, emoji.emoji)
 
-    else:
-        new_old_count = await redis.hincrby(reactions_count_key, user_emoji, -1)
-        await redis.hincrby(reactions_count_key, emoji.emoji, 1)
-        await redis.set(user_reaction_key, emoji.emoji)
+        pipe.hgetall(reactions_count_key)
+        pipe.sadd("message:reactions:dirty_set", str(message_id))
 
-        if new_old_count <= 0:
-            await redis.hdel(reactions_count_key, user_emoji)
+        results = await pipe.execute()
+        current_counters = results[-2]
 
-    current_counters = await redis.hgetall(reactions_count_key)
-    await redis.sadd("message:reactions:dirty_set", str(message_id))
     return ReactionsResponse(
         message_id=message_id,
         updated_reactions_count=current_counters,
@@ -58,21 +60,24 @@ async def delete(
 ) -> ReactionsResponse:
     user_reaction_key = f"message:user_reaction:{message_id}:{user_id}"
     reactions_count_key = f"message:reactions_count:{message_id}"
+    message_users_key = f"message:users:{message_id}"
     user_emoji = await redis.get(user_reaction_key)
     if user_emoji is None:
         current_counters = await redis.hgetall(reactions_count_key)
         return ReactionsResponse(
-            message_id=message_id,
-            updated_reactions_count=current_counters,
+            message_id=message_id, updated_reactions_count=current_counters,
         )
-    else:
-        await redis.delete(user_reaction_key)
-        new_old_count = await redis.hincrby(reactions_count_key, user_emoji, -1)
-        if new_old_count <= 0:
-            await redis.hdel(reactions_count_key, user_emoji)
-        current_counters = await redis.hgetall(reactions_count_key)
-        await redis.sadd("message:reactions:dirty_set", str(message_id))
-        return ReactionsResponse(
-            message_id=message_id,
-            updated_reactions_count=current_counters,
-        )
+
+    async with redis.pipeline(transaction=True) as pipe:
+        pipe.delete(user_reaction_key)
+        pipe.srem(message_users_key, str(user_id))
+        pipe.hincrby(reactions_count_key, user_emoji, -1)
+        pipe.hgetall(reactions_count_key)
+        pipe.sadd("message:reactions:dirty_set", str(message_id))
+
+        results = await pipe.execute()
+        current_counters = results[-2]
+
+    return ReactionsResponse(
+        message_id=message_id, updated_reactions_count=current_counters,
+    )

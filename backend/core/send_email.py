@@ -22,7 +22,6 @@ async def send_verification_email(user_email: str, session: AsyncSession):
     msg["From"] = "testaccvova@gmail.com"
     msg["To"] = user_email
 
-
     verification_token_expires = timedelta(days=settings.VERIFICATION_TOKEN_EXPIRE_DAYS)
     verification_token = create_access_token(
         data={"sub": user_email},
