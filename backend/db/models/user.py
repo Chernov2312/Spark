@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, String, Table
+from sqlalchemy import Column, ForeignKey, String, Table, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -48,4 +48,8 @@ class User(Base):
     avatars: Mapped[list["Attachment"]] = relationship(
         "Attachment",
         back_populates="user",
+    )
+    is_verified: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
     )
