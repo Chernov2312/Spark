@@ -13,7 +13,6 @@ from db.database import get_session
 
 from db.dao.user_dao import UserDao
 from email.message import EmailMessage
-from core.security import create_access_token
 import stmplib
 
 
