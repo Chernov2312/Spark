@@ -52,4 +52,5 @@ class User(Base):
     is_verified: Mapped[bool] = mapped_column(
         Boolean,
         default=False,
+        server_default=false(),
     )
