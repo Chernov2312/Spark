@@ -19,7 +19,7 @@ class MessageDao(BaseDao[Message]):
         user_id: uuid.UUID,
         limit: int = 50,
         before: datetime = None,
-    ):
+    ) -> list[Message]:
 
         query = (
             select(Message)

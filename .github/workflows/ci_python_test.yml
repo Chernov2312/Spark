@@ -50,5 +50,8 @@ jobs:
           YANDEX_CLOUD_KEY: choto
           BUCKET_NAME: name
           API_GEMINI: api
+          REDIS_PASSWORD: REDIS_PASSWORD
+          REDIS_USER: REDIS_USER
+          REDIS_USER_PASSWORD: REDIS_USER_PASSWORD
           PYTHONPATH: .
         run: pytest

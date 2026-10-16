@@ -1,3 +1,4 @@
+import redis.asyncio as aioredis
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +18,10 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
+    REDIS_PASSWORD: str
+    REDIS_USER: str
+    REDIS_USER_PASSWORD: str
+
     @property
     def db_url(self):
         return (
@@ -26,6 +31,17 @@ class Settings(BaseSettings):
             f":{self.POSTGRES_PORT}"
             f"/{self.POSTGRES_DB}"
         )
+
+    @property
+    def get_redis_client(self) -> aioredis.Redis:
+        pool = aioredis.ConnectionPool(
+            host="redis",
+            port=6379,
+            username=self.REDIS_USER,
+            password=self.REDIS_USER_PASSWORD,
+            decode_responses=True,
+        )
+        return aioredis.Redis(connection_pool=pool)
 
 
 settings = Settings()

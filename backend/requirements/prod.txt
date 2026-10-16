@@ -4,6 +4,8 @@ aioboto3>=1.13.15
 google-genai>=2.29.0
 greenlet>=3.0.0
 fastapi==0.137.0
+hiredis==3.4.2
+redis==8.1.0
 pydantic[email]>=2.13.4
 pydantic-settings==2.14.1
 python-dotenv==1.2.2
