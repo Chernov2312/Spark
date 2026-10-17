@@ -15,7 +15,7 @@ from db.dao.user_dao import UserDao
 from db.database import get_session
 
 
-async def send_verification_email(user_email: str, session: AsyncSession):
+async def send_verification_email(user_email: str):
     msg = EmailMessage()
     msg["Subject"] = "Подтверждение регистрации в Мессенджере"
     msg["From"] = email.FROM_EMAIL

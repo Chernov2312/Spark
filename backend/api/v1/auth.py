@@ -54,7 +54,7 @@ async def verification(
             )
             cur_user.is_verified = True
 
-            session.commit()
+            await session.commit()
     except (InvalidTokenError, KeyError, TypeError):
         raise credentials_exception
 
@@ -64,6 +64,8 @@ async def register(
     data: UserRegister,
     session: AsyncSession = Depends(get_session),
 ) -> UserResponse:
+    all = await UserDao.get_all(session=session)
+    print(all)
 
     exist = await UserDao.get_by_username_or_email(session, data.username)
     if exist:
@@ -80,9 +82,10 @@ async def register(
             "password": hashed_password,
         },
     )
+
     await session.commit()
 
-    await send_verification_email(user_email=data.email, session=session)
+    await send_verification_email(user_email=data.email)
 
     return UserResponse(
         id=new_user.id,
