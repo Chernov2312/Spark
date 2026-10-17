@@ -13,7 +13,7 @@ from core.security import (
     create_access_token,
     get_password_hash,
 )
-from core.send_email import send_verification_email
+from tasks.email import send_mail_task
 from db.dao.user_dao import UserDao
 from db.database import get_session
 from db.models import User
@@ -81,9 +81,7 @@ async def register(
         },
     )
     await session.commit()
-
-    await send_verification_email(user_email=data.email)
-
+    send_mail_task.delay(new_user.email)
     return UserResponse(
         id=new_user.id,
         username=new_user.username,

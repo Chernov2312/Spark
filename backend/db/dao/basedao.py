@@ -12,6 +12,7 @@ class BaseDao[T]:
     async def add(cls, session: AsyncSession, data: dict) -> T:
         stmt = insert(cls.model).values(**data).returning(cls.model)
         result = await session.execute(stmt)
+        await session.flush()
         return result.scalar_one()
 
     @classmethod

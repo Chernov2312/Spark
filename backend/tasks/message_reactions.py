@@ -3,25 +3,12 @@ import uuid
 from typing import TypedDict
 
 import redis.asyncio as aioredis
-from celery import Celery
-from celery.schedules import crontab
+from tasks.config import celery_app
 
 from config import settings
 from db.dao.message_dao import MessageDao
 from db.dao.message_reactions_dao import MessageReactionDao
 from db.database import get_session
-
-CELERY_REDIS_URL = (
-    f"redis://{settings.REDIS_USER}:{settings.REDIS_USER_PASSWORD}" f"@redis:6379/0"
-)
-
-app = Celery("sync_db", broker=CELERY_REDIS_URL)
-app.conf.beat_schedule = {
-    "sync-reactions-every-5-minutes": {
-        "task": "worker.sync_db.add_reactions_in_db",
-        "schedule": crontab(minute="*"),
-    },
-}
 
 
 class MessageReactionData(TypedDict):
@@ -114,6 +101,6 @@ async def sync_reactions_task_core():
     await session.commit()
 
 
-@app.task(ignore_result=True)
+@celery_app.task(ignore_result=True)
 def add_reactions_in_db():
     asyncio.run(sync_reactions_task_core())

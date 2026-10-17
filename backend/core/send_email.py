@@ -9,7 +9,7 @@ from core.security import (
 )
 
 
-async def send_verification_email(user_email: str):
+def send_verification_email(user_email: str):
     msg = EmailMessage()
     msg["Subject"] = "Подтверждение регистрации в Мессенджере"
     msg["From"] = email.FROM_EMAIL
