@@ -38,7 +38,11 @@ class S3Storage:
 
         return file_key
 
-    async def get_temporary_url(self, file_key: str, expires_in: int = 3600) -> str:
+    async def get_temporary_url(
+        self, file_key: str, expires_in: int = 3600,
+    ) -> str | None:
+        if file_key is None:
+            return None
         async with self.session.client("s3", **self.config) as s3:
             url = await s3.generate_presigned_url(
                 ClientMethod="get_object",
