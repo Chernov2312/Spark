@@ -10,6 +10,7 @@ class MessageResponse(BaseModel):
     chat_id: uuid.UUID
     user_id: uuid.UUID
     text: str | None
+    user_reaction: str = None
     attachments: List[dict[str, str]] = Field(default_factory=list)
     reactions_count: dict[str, int]
     created_at: datetime

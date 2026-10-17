@@ -206,6 +206,7 @@
         "user_id": "u1111111-eeee-aaaa-bbbb-cccccccccccc",
         "text": "Привет всем!",
         "reactions_count": { "👍": 3, "❤️": 1 },
+        "user_reaction": "👍" // Optional[None]
         "attachments": [
           {
             "id": "att-55555555-eeee-aaaa-bbbb-cccccccccccc",

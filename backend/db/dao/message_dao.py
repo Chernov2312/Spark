@@ -1,11 +1,18 @@
 import uuid
 from datetime import datetime
+from typing import TypedDict
 
-from sqlalchemy import and_, delete, select, update
+from sqlalchemy import and_, bindparam, delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.dao.basedao import BaseDao
 from db.models import Chat, Message, User
+
+
+class MessageReactionData(TypedDict):
+    id: uuid.UUID
+    users: dict[uuid.UUID, str]
+    reactions_count: dict[str, int]
 
 
 class MessageDao(BaseDao[Message]):
@@ -53,7 +60,7 @@ class MessageDao(BaseDao[Message]):
                 Message.id == target_id,
                 Message.user_id == user_id,
             )
-            .values(text=text, reactions_count=reactions)
+            .values(text=text)
             .returning(Message)
         )
 
@@ -74,3 +81,20 @@ class MessageDao(BaseDao[Message]):
         res = await session.execute(query)
         await session.flush()
         return res.rowcount > 0
+
+    @classmethod
+    async def update_msg_reactions_by_ids(
+        cls,
+        session: AsyncSession,
+        message_reactions: list[MessageReactionData],
+    ):
+        stmt = (
+            update(cls.model)
+            .where(
+                cls.model.id == bindparam("id"),
+            )
+            .values(
+                reactions_count=bindparam("reactions_count"),
+            )
+        )
+        await session.execute(stmt, message_reactions)
