@@ -2,20 +2,14 @@ import smtplib
 from datetime import timedelta
 from email.message import EmailMessage
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from config import email
 from config.app import settings
 from core.security import (
-    authenticate_user,
     create_access_token,
-    get_password_hash,
 )
-from db.dao.user_dao import UserDao
-from db.database import get_session
 
 
-async def send_verification_email(user_email: str, session: AsyncSession):
+async def send_verification_email(user_email: str):
     msg = EmailMessage()
     msg["Subject"] = "Подтверждение регистрации в Мессенджере"
     msg["From"] = email.FROM_EMAIL

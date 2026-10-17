@@ -82,7 +82,7 @@ async def register(
     )
     await session.commit()
 
-    await send_verification_email(user_email=data.email, session=session)
+    await send_verification_email(user_email=data.email)
 
     return UserResponse(
         id=new_user.id,
