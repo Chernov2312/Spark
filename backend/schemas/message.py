@@ -33,3 +33,12 @@ class MessageRequest(BaseModel):
         if self.text is None and self.attachments is None:
             raise ValueError("Empty message")
         return self
+
+
+class MessageInternalDTO(MessageRequest):
+    id: uuid.UUID
+    text: str | None
+    attachments: List[dict[str, str]] = Field(default_factory=list)
+    chat_id: uuid.UUID
+    user_id: uuid.UUID
+    created_at: datetime = Field(default_factory=datetime.utcnow)

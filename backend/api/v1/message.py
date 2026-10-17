@@ -4,7 +4,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-
+import redis.asyncio as aioredis
 from config import RouteTags
 from core.security import get_id_current_user
 from core.storage import S3Storage
@@ -12,7 +12,13 @@ from db.dao.message_dao import MessageDao
 from db.dao.message_reactions_dao import MessageReactionDao
 from db.database import get_session
 from db.models import Message, MessageReaction
-from schemas.message import MessageHistory, MessageRequest, MessageResponse
+from schemas.message import (
+    MessageHistory,
+    MessageRequest,
+    MessageResponse,
+    MessageInternalDTO,
+)
+from core.dependencies import get_redis
 
 message_router = APIRouter(prefix="/api/v1", tags=[RouteTags.MESSAGES])
 status.HTTP_422_UNPROCESSABLE_CONTENT
@@ -23,8 +29,9 @@ async def get_messages_history(
     chat_id: uuid.UUID,
     limit: int = 50,
     before: datetime = None,
-    session: AsyncSession = Depends(get_session),
     user_id: uuid.UUID = Depends(get_id_current_user),
+    session: AsyncSession = Depends(get_session),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> MessageHistory:
     db_messages: List[Message] = await MessageDao.get_chat_history(
         session=session,
@@ -63,7 +70,22 @@ async def create_message(
     message: MessageRequest,
     session: AsyncSession = Depends(get_session),
     user_id: uuid.UUID = Depends(get_id_current_user),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> MessageResponse:
+    message_id: uuid.UUID = uuid.uuid4()
+    chat_key_hash = f"chat:{chat_id}"
+    chat_set_key = "chats"
+    message_redis = MessageInternalDTO(
+        text=message.text,
+        attachments=message.attachments,
+        user_id=user_id,
+        id=message_id,
+        chat_id=chat_id,
+    )
+    async with redis.pipeline(transaction=False) as pipe:
+        pipe.hset(chat_key_hash, str(message_id), message_redis.model_dump_json())
+        pipe.sadd(chat_set_key, str(chat_id))
+        await pipe.execute()
     message_db: Message = await MessageDao.add(
         session=session,
         data={
