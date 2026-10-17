@@ -1,20 +1,14 @@
-import secrets
+
 import smtplib
 from datetime import timedelta
 from email.message import EmailMessage
 
-from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.app import settings
 from core.security import (
-    authenticate_user,
     create_access_token,
-    get_password_hash,
 )
-from db.dao.user_dao import UserDao
-from db.database import get_session
-
 
 async def send_verification_email(user_email: str, session: AsyncSession):
     msg = EmailMessage()
@@ -50,4 +44,3 @@ async def send_verification_email(user_email: str, session: AsyncSession):
         print("Message was successfully sended")
     except Exception as e:
         print(f"Error: {e}")
-
