@@ -39,7 +39,9 @@ class S3Storage:
         return file_key
 
     async def get_temporary_url(
-        self, file_key: str, expires_in: int = 3600,
+        self,
+        file_key: str,
+        expires_in: int = 3600,
     ) -> str | None:
         if file_key is None:
             return None

@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from jwt import InvalidTokenError
 from sqlalchemy.ext.asyncio import AsyncSession
-from core.send_email import send_verification_email
 
 from config import RouteTags, settings
 from core.security import (
@@ -14,6 +13,7 @@ from core.security import (
     create_access_token,
     get_password_hash,
 )
+from core.send_email import send_verification_email
 from db.dao.user_dao import UserDao
 from db.database import get_session
 from db.models import User
@@ -39,7 +39,9 @@ async def verification(
     )
     try:
         payload = jwt.decode(
-            verification_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM],
+            verification_token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
         )
         email = payload.get("sub")
         exp = payload.get("exp")
@@ -47,7 +49,8 @@ async def verification(
             raise credentials_exception
         else:
             cur_user: User = await UserDao.get_by_username_or_email(
-                session=session, target=email,
+                session=session,
+                target=email,
             )
             cur_user.is_verified = True
 

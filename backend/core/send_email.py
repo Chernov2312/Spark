@@ -1,25 +1,18 @@
-import secrets
 import smtplib
 from datetime import timedelta
 from email.message import EmailMessage
 
-from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import email
 from config.app import settings
-from core.security import (
-    authenticate_user,
-    create_access_token,
-    get_password_hash,
-)
-from db.dao.user_dao import UserDao
-from db.database import get_session
+from core.security import create_access_token
 
 
 async def send_verification_email(user_email: str, session: AsyncSession):
     msg = EmailMessage()
     msg["Subject"] = "Подтверждение регистрации в Мессенджере"
-    msg["From"] = "testaccvova@gmail.com"
+    msg["From"] = email.FROM_EMAIL
     msg["To"] = user_email
 
     verification_token_expires = timedelta(days=settings.VERIFICATION_TOKEN_EXPIRE_DAYS)
@@ -45,9 +38,8 @@ async def send_verification_email(user_email: str, session: AsyncSession):
 
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login("testaccvova@gmail.com", "qzgr lhhl jfsc csfz")
+            server.login(email.LOGIN_EMAIL, email.PASSWORD_EMAIL)
             server.send_message(msg)
         print("Message was successfully sended")
     except Exception as e:
         print(f"Error: {e}")
-

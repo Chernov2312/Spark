@@ -53,5 +53,8 @@ jobs:
           REDIS_PASSWORD: REDIS_PASSWORD
           REDIS_USER: REDIS_USER
           REDIS_USER_PASSWORD: REDIS_USER_PASSWORD
+          FROM_EMAIL: pochta
+          LOGIN_EMAIL: iwugefiyrg@mail.ru
+          PASSWORD_EMAIL: qwertyuiopasdfghjkl
           PYTHONPATH: .
         run: pytest
