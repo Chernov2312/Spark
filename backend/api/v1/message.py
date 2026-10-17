@@ -2,10 +2,12 @@ import uuid
 from datetime import datetime
 from typing import List
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-import redis.asyncio as aioredis
+
 from config import RouteTags
+from core.dependencies import get_redis
 from core.security import get_id_current_user
 from core.storage import S3Storage
 from db.dao.message_dao import MessageDao
@@ -14,11 +16,10 @@ from db.database import get_session
 from db.models import Message, MessageReaction
 from schemas.message import (
     MessageHistory,
+    MessageInternalDTO,
     MessageRequest,
     MessageResponse,
-    MessageInternalDTO,
 )
-from core.dependencies import get_redis
 
 message_router = APIRouter(prefix="/api/v1", tags=[RouteTags.MESSAGES])
 status.HTTP_422_UNPROCESSABLE_CONTENT

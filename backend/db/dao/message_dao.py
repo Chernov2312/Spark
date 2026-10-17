@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TypedDict
 
-from sqlalchemy import and_, bindparam, delete, select, update
+from sqlalchemy import and_, bindparam, delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.dao.basedao import BaseDao
@@ -98,3 +98,11 @@ class MessageDao(BaseDao[Message]):
             )
         )
         await session.execute(stmt, message_reactions)
+
+    @classmethod
+    async def bulk_insert_messages(
+        cls,
+        session: AsyncSession,
+        data_messages,
+    ):
+        await session.execute(insert(Message), data_messages)
