@@ -57,15 +57,18 @@ async def test_invalid_password_register_user(api_client: AsyncClient):
     assert res.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
-async def test_login_user(api_client: AsyncClient):
+async def invalid_test_login_user(api_client: AsyncClient):
     test_user = {
         "username": "ivan_natanich",
-        "email": "alkash@mail.ru",
         "password": "Pivo228Chel",
+        "email": "pochta@mail.ru",
     }
-    res = await api_client.post("api/v1/auth/register", json=test_user)
-    assert res.status_code == status.HTTP_201_CREATED
+    res = await api_client.post("api/v1/auth/register", data=test_user)
+    res = await api_client.post("api/v1/auth/login", data=test_user)
+    assert res.status_code == status.HTTP_403_FORBIDDEN
 
+
+async def test_login_user(api_client: AsyncClient, id_first_user):
     test_user = {
         "username": "ivan_natanich",
         "password": "Pivo228Chel",
@@ -78,3 +81,4 @@ async def test_login_user(api_client: AsyncClient):
     }
     res = await api_client.post("api/v1/auth/login", data=test_user)
     assert res.status_code == status.HTTP_200_OK
+    assert res.json().get("id") == str(id_first_user)

@@ -92,6 +92,7 @@ async def id_first_user(db_session):
         "username": "ivan_natanich",
         "email": "alkash@mail.ru",
         "password": get_password_hash("Pivo228Chel"),
+        "is_verified": True,
     }
     user = await UserDao.add(session=db_session, data=new_user)
     await db_session.flush()
