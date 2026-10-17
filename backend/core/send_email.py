@@ -4,9 +4,7 @@ from email.message import EmailMessage
 
 from config import email
 from config.app import settings
-from core.security import (
-    create_access_token,
-)
+from core.security import create_access_token
 
 
 def send_verification_email(user_email: str):

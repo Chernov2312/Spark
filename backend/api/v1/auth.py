@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from jwt import InvalidTokenError
 from sqlalchemy.ext.asyncio import AsyncSession
+from tasks.email import send_mail_task
 
 from config import RouteTags, settings
 from core.security import (
@@ -13,7 +14,6 @@ from core.security import (
     create_access_token,
     get_password_hash,
 )
-from tasks.email import send_mail_task
 from db.dao.user_dao import UserDao
 from db.database import get_session
 from db.models import User
