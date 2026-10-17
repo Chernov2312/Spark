@@ -3,7 +3,7 @@ import uuid
 
 from pydantic import ValidationError
 from tasks.config import celery_app, redis
-
+from redis.exceptions import ResponseError  
 from db.dao.message_dao import MessageDao
 from db.database import async_session_maker
 from schemas.message import MessageInternalDTO
@@ -13,7 +13,7 @@ async def clear_redis(chunk_size: int = 1000):
     temp_key = f"chats:sync:{uuid.uuid4().hex}"
     try:
         await redis.rename("chats", temp_key)
-    except redis.exceptions.ResponseError:
+    except ResponseError:
         chats_ids = set()
         temp_key = None
 
