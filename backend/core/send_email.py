@@ -1,19 +1,19 @@
 import secrets
 import smtplib
-from config.app import settings
 from datetime import timedelta
+from email.message import EmailMessage
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from config.app import settings
 from core.security import (
     authenticate_user,
     create_access_token,
     get_password_hash,
 )
-from db.database import get_session
-
 from db.dao.user_dao import UserDao
-from email.message import EmailMessage
-import stmplib
+from db.database import get_session
 
 
 async def send_verification_email(user_email: str, session: AsyncSession):
@@ -22,14 +22,13 @@ async def send_verification_email(user_email: str, session: AsyncSession):
     msg["From"] = "testaccvova@gmail.com"
     msg["To"] = user_email
 
-
     verification_token_expires = timedelta(days=settings.VERIFICATION_TOKEN_EXPIRE_DAYS)
     verification_token = create_access_token(
         data={"sub": user_email},
+        expires_delta=verification_token_expires,
     )
 
-    verification_link = "local"
-
+    verification_link = "localhost:8000/" + "api/v1/verification/" + verification_token
     html_content = f"""
     <html>
       <body>
@@ -52,5 +51,3 @@ async def send_verification_email(user_email: str, session: AsyncSession):
     except Exception as e:
         print(f"Error: {e}")
 
-
-send_verification_email("bulychev.v.m@gmail.com")
