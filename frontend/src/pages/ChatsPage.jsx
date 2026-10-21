@@ -121,11 +121,13 @@ export default function ChatsPage() {
   }, [chatId]);
 
   /* ---------- 3. WebSocket ---------- */
-  useEffect(() => {
-    if (!auth.isAuthenticated()) return;
+    useEffect(() => {
+    if (!auth.isAuthenticated() || !chatId) return; // Добавлена проверка на наличие chatId
+    
     let sock;
     try {
-      sock = createChatSocket({
+      // ✅ ИСПРАВЛЕНО: chatId передан первым аргументом, а объект с onEvent — вторым
+      sock = createChatSocket(chatId, {
         onEvent: (event, data) => {
           if (event === "message:new" && data.chat_id === chatId) {
             setMessages((prev) => [...prev, data]);
@@ -172,7 +174,7 @@ export default function ChatsPage() {
       });
       socketRef.current = sock;
     } catch (e) {
-      // Тихо игнорируем — WS опционален
+      console.error("[WS Component Error]", e);
     }
     return () => sock?.close();
   }, [chatId]);

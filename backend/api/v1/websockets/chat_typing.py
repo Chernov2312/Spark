@@ -1,71 +1,37 @@
-import uuid
 import asyncio
-from fastapi import WebSocket, APIRouter, Query
+import uuid
+
 import redis.asyncio as aioredis
-from core.dependencies import get_redis
-from schemas.message import MessageInternalDTO
-async def get_cached_user_chats(user_id: str, redis:aioredis.Redis) -> list[str]:
-    redis_key = f"user:{user_id}:chats"
-    chats = [c for c in await redis.smembers(redis_key)]
-    return chats
-async def redis_listener(websocket: WebSocket, user_id: str, initial_chats: list[str], redis: aioredis.Redis):
-    pubsub = redis.pubsub()
-    
-    control_channel = f"user:{user_id}:control"
-    channels = [f"chat:{chat_id}" for chat_id in initial_chats]
-    channels.append(control_channel)
-    
-    await pubsub.subscribe(*channels)
-    
-    try:
-        async for message in pubsub.listen():
-            if message["type"] != "message":
-                continue
-                
-            channel_name = message["channel"].decode("utf-8")
-            data = json.loads(message["data"].decode("utf-8"))
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+from pydantic import ValidationError
 
-            if channel_name == control_channel:
-                if data.get("action") == "subscribe_to_new_chat":
-                    new_chat_id = data.get("chat_id")
-                    new_channel = f"chat:{new_chat_id}"
-                    await pubsub.subscribe(new_channel)
-                    print(f"Сокет пользователя {user_id} динамически подписался на {new_channel}")
-                continue
-                
-            await websocket.send_json(data)
-            
-    except asyncio.CancelledError:
-        await pubsub.unsubscribe()
-    finally:
-        await pubsub.close()
-chat_websocket = APIRouter()
+from core.dependencies import get_redis, local_manager, redis_pubsub_listener
+from core.security import get_id_current_user
+from schemas.websockets import WsEvent
+
+ws_router = APIRouter()
 
 
-@chat_websocket.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, token: str):
-    user_id = "u1111111-eeee-aaaa-bbbb-cccccccccccc" 
+@ws_router.websocket("/{chat_id}/ws")
+async def on_message(
+    websocket: WebSocket,
+    chat_id: uuid.UUID,
+    token: str = Query(),
+):
     await websocket.accept()
-    
-    user_chat_ids = await get_cached_user_chats(user_id)
-    listener_task = asyncio.create_task(
-        redis_listener(websocket, user_id, user_chat_ids)
-    )
-    
+    redis: aioredis.Redis = websocket.app.state.redis
+    user_id = await get_id_current_user(token)
+    users_key = f"chat:{chat_id}:users"
+    await redis.sadd(users_key, str(user_id))
+    await local_manager.add(user_id, websocket)
+    task = asyncio.create_task(redis_pubsub_listener(chat_id=chat_id, redis=redis, websocket=websocket))
     try:
         while True:
-            client_data = await websocket.receive_json()
-            event = client_data.get("event")
-            event_data = client_data.get("data", {})
+            msg = WsEvent.model_validate(await websocket.receive_json())
+            if msg.event == "message:new" or msg.event == "chat:updated" or msg.event == "user:typing":
+                await redis.publish(f"chat:{chat_id}", msg.model_dump_json())
             
-            if event == "chat:typing":
-                chat_id = event_data.get("chat_id")
-                typing_payload = {
-                    "event": "user:typing",
-                    "data": {"chat_id": chat_id, "user_id": user_id}
-                }
-                # Транслируем статус печати в канал чата
-                await redis.publish(f"chat:{chat_id}", json.dumps(typing_payload))
-                
-    except WebSocketDisconnect:
-        listener_task.cancel()
+    except (WebSocketDisconnect, ValidationError):
+        await local_manager.remove(user_id)
+        await redis.srem(users_key, str(user_id))
+        task.cancel()

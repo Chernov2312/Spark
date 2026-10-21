@@ -12,13 +12,14 @@ from api.v1.media import attachment_router
 from api.v1.message import message_router
 from api.v1.reactions import reactions_router
 from api.v1.user import user_router
+from api.v1.websockets.chat_typing import ws_router
 from config import settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.redis = aioredis.Redis.from_url(
-        f"redis://{settings.REDIS_USER}:{settings.REDIS_PASSWORD}@{settings.EDIS_HOST}:6379/0",
+        f"redis://{settings.REDIS_USER}:{settings.REDIS_USER_PASSWORD}@redis:6379/0",
         decode_responses=True,
     )
     yield
@@ -32,7 +33,7 @@ def create_app() -> FastAPI:
     )
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "*"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -50,3 +51,4 @@ app.include_router(message_router)
 app.include_router(reactions_router)
 app.include_router(attachment_router)
 app.include_router(ai_router)
+app.include_router(ws_router)

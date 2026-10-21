@@ -362,7 +362,7 @@ POST /api/v1/ai/messages/rewrite — Улучшение и редактиров�
 
 ## ⚡ 8. Протокол реального времени (WebSocket API)
 
-**Подключение:** `ws://backend.com/ws?token=JWT_TOKEN`
+**Подключение:** `ws://backend.com/{chat_id}/ws?token=JWT_TOKEN`
 
 ### 📤 Исходящие события от клиента (Frontend -> Backend)
 
@@ -370,7 +370,7 @@ POST /api/v1/ai/messages/rewrite — Улучшение и редактиров�
    ```json
    {
      "event": "message:send",
-     "data": { "chat_id": "uuid", "text": "Текст сообщения" }
+     "data": { "chat_id": "uuid", "text": "Текст сообщения", "attachments": ["url"] }
    }
    ```
 2. **`chat:typing`** — Сигнал о том, что пользователь пишет текст:
@@ -384,7 +384,7 @@ POST /api/v1/ai/messages/rewrite — Улучшение и редактиров�
    ```json
    {
      "event": "message:new",
-     "data": { "id": "msg-uuid", "text": "Привет", "user_id": "uuid" }
+     "data": { "id": "msg-uuid", "chat_id": "cht-uuid", "text": "Привет", "user_id": "uuid", "attachments": ["url"] }
    }
    ```
 2. **`chat:updated`** — Мгновенное обновление параметров чата (название, аватар):
