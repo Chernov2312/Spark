@@ -85,6 +85,7 @@ export default function ChatsPage() {
   const bottomRef = useRef(null);
   const socketRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const typingUsersTimeoutsRef = useRef(new Map());
   const textareaRef = useRef(null);
 
   /* ---------- 1. Загрузка чатов ---------- */
@@ -121,13 +122,15 @@ export default function ChatsPage() {
   }, [chatId]);
 
   /* ---------- 3. WebSocket ---------- */
-    useEffect(() => {
-    if (!auth.isAuthenticated() || !chatId) return; // Добавлена проверка на наличие chatId
-    
+  useEffect(() => {
+    if (!auth.isAuthenticated() || !chatId) return;
+
     let sock;
     try {
-      // ✅ ИСПРАВЛЕНО: chatId передан первым аргументом, а объект с onEvent — вторым
       sock = createChatSocket(chatId, {
+        onOpen: () => {
+          console.info("[WS] Подключён к чату", chatId);
+        },
         onEvent: (event, data) => {
           if (event === "message:new" && data.chat_id === chatId) {
             setMessages((prev) => [...prev, data]);
@@ -159,24 +162,47 @@ export default function ChatsPage() {
             );
           }
           if (event === "user:typing" && data.chat_id === chatId) {
-            setTypingUsers((prev) => new Set(prev).add(data.user_id));
-            setTimeout(
-              () =>
-                setTypingUsers((prev) => {
-                  const next = new Set(prev);
-                  next.delete(data.user_id);
-                  return next;
-                }),
-              3000,
-            );
+            const uid = data.user_id;
+
+            // Сбрасываем предыдущий таймер для этого пользователя
+            const existing =
+              typingUsersTimeoutsRef.current.get(uid);
+            if (existing) clearTimeout(existing);
+
+            setTypingUsers((prev) => new Set(prev).add(uid));
+
+            const t = setTimeout(() => {
+              setTypingUsers((prev) => {
+                const next = new Set(prev);
+                next.delete(uid);
+                return next;
+              });
+              typingUsersTimeoutsRef.current.delete(uid);
+            }, 3000);
+            typingUsersTimeoutsRef.current.set(uid, t);
           }
+        },
+        onClose: (e) => {
+          console.info("[WS] Закрыт:", e.code, e.reason);
+        },
+        onError: () => {
+          // Тихо: детали будут в onclose
         },
       });
       socketRef.current = sock;
     } catch (e) {
       console.error("[WS Component Error]", e);
     }
-    return () => sock?.close();
+
+    return () => {
+      sock?.close();
+      if (socketRef.current === sock) socketRef.current = null;
+
+      // Чистим таймеры typing
+      typingUsersTimeoutsRef.current.forEach((t) => clearTimeout(t));
+      typingUsersTimeoutsRef.current.clear();
+      setTypingUsers(new Set());
+    };
   }, [chatId]);
 
   /* ---------- 4. Скролл вниз ---------- */
@@ -227,7 +253,11 @@ export default function ChatsPage() {
     e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
 
     if (!chatId || !socketRef.current) return;
-    socketRef.current.sendTyping(chatId);
+
+    // ✅ Отправляем через общий send(), а не несуществующий sendTyping()
+    socketRef.current.send("user:typing", { chat_id: chatId });
+
+    // Дебаунс: не спамим сервер чаще раза в секунду
     clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {}, 1000);
   };
@@ -334,7 +364,7 @@ export default function ChatsPage() {
     }
   };
 
-  /* ---------- 10. Реакции (тихо игнорируем 404, пока бэк не готов) ---------- */
+  /* ---------- 10. Реакции ---------- */
   const handleReaction = async (messageId, emoji) => {
     try {
       const res = await messagesApi.addReaction(messageId, emoji);
@@ -347,7 +377,6 @@ export default function ChatsPage() {
       );
     } catch (err) {
       if (err.response?.status === 404) {
-        // Эндпоинт реакций ещё не реализован на бэкенде — молча игнорируем
         console.info("[Reactions] Эндпоинт ещё не готов на бэкенде");
       } else {
         console.error("Не удалось поставить реакцию:", err);
