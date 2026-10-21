@@ -579,7 +579,7 @@ export default function ChatsPage() {
                       </div>
                       {m.reactions_count &&
                         Object.keys(m.reactions_count).length > 0 && (
-                          <div className="msg__reactions">
+                          <div className="msg__reactions" key={`reactions-${m.id}`}>
                             {Object.entries(m.reactions_count).map(
                               ([emoji, count]) => (
                                 <button

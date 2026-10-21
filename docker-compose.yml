@@ -177,7 +177,7 @@ services:
 
   cloudflare-tunnel:
     image: cloudflare/cloudflared:latest
-    profiles: ["prod"]
+    profiles: ["dev", "prod"]
     restart: always
     command: tunnel --no-autoupdate run --token eyJhIjoiM2MyMDBmNjAzNzNmZjA2ZDM2ZDdkYWU0MjgxNGFjODgiLCJ0IjoiZDMwMDBjNDctYWJkMi00OWY4LTliMTgtZDRmNzM4ODFmZjViIiwicyI6Ik9HRmxZekk1TldFdE1HTXhPQzAwT1dJeUxUaGpaamN0TldNNVlUVm1NekE1WmpZeCJ9
     depends_on:

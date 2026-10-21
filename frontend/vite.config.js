@@ -5,12 +5,16 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: "0.0.0.0",
+    host: '0.0.0.0',
+    port: 5173,
     strictPort: true,
-    allowedHosts: true,
-  },
-  hmr: {
-      clientPort: 443,
+    allowedHosts: true, // Позволяет Vite принимать запросы с любых хостов (включая Cloudflare)
+    hmr: {
+      // Так как трафик идет через Cloudflare HTTPS -> Nginx -> Vite,
+      // для самого браузера HMR должен выглядеть как безопасный WebSocket.
       protocol: 'wss',
+      // Мы НЕ указываем clientPort 443, чтобы порт наследовался от текущего URL в браузере,
+      // либо оставляем пустые настройки хоста, чтобы Nginx сам прокинул сокет.
+    },
   },
 })
