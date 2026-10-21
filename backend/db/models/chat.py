@@ -33,4 +33,5 @@ class Chat(Base):
     avatars: Mapped[list["Attachment"]] = relationship(
         "Attachment",
         back_populates="chat",
+        primaryjoin="and_(User.id == Attachment.user_id, Attachment.is_avatar == True)",
     )

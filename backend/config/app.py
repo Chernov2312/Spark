@@ -42,6 +42,7 @@ class Settings(BaseSettings):
             password=self.REDIS_USER_PASSWORD,
             decode_responses=True,
         )
+        
         return aioredis.Redis(connection_pool=pool)
 
 

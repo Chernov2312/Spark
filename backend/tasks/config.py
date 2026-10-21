@@ -5,7 +5,7 @@ from celery.schedules import crontab
 from config import settings
 
 CELERY_REDIS_URL = (
-    f"redis://{settings.REDIS_USER}:{settings.REDIS_USER_PASSWORD}" f"@redis:6379/0"
+    f"redis://{settings.REDIS_USER}:{settings.REDIS_USER_PASSWORD}@redis:6379/0"
 )
 
 celery_app = Celery("tasks", broker=CELERY_REDIS_URL)

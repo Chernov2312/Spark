@@ -1,7 +1,7 @@
 import uuid
 from typing import Optional
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import ForeignKey, Integer, String, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.database import Base
@@ -25,7 +25,7 @@ class Attachment(Base):
         "Chat",
         back_populates="avatars",
     )
-
+    is_avatar: Mapped[bool] = mapped_column(Boolean, default=False, server_default=False)
     file_name: Mapped[str] = mapped_column(String(250))
     file_size: Mapped[int] = mapped_column(Integer)
     mime_type: Mapped[str] = mapped_column(String(70), nullable=False)

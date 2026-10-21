@@ -48,6 +48,7 @@ class User(Base):
     avatars: Mapped[list["Attachment"]] = relationship(
         "Attachment",
         back_populates="user",
+        primaryjoin="and_(User.id == Attachment.user_id, Attachment.is_avatar == True)",
     )
     is_verified: Mapped[bool] = mapped_column(
         Boolean,

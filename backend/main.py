@@ -12,14 +12,13 @@ from api.v1.media import attachment_router
 from api.v1.message import message_router
 from api.v1.reactions import reactions_router
 from api.v1.user import user_router
+from config import settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.redis = aioredis.Redis(
-        host="localhost",
-        port=6379,
-        db=0,
+    app.state.redis = aioredis.Redis.from_url(
+        f"redis://{settings.REDIS_USER}:{settings.REDIS_PASSWORD}@{settings.EDIS_HOST}:6379/0",
         decode_responses=True,
     )
     yield

@@ -2,8 +2,9 @@ import asyncio
 import uuid
 
 from pydantic import ValidationError
+from redis.exceptions import ResponseError
 from tasks.config import celery_app, redis
-from redis.exceptions import ResponseError  
+
 from db.dao.message_dao import MessageDao
 from db.database import async_session_maker
 from schemas.message import MessageInternalDTO
