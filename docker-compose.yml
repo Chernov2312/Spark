@@ -81,7 +81,7 @@ services:
       - "127.0.0.1:6380:6379"
     volumes:
       - ./redisdata:/data
-      - redis.sh:/usr/local/bin/redis.sh:ro
+      - ./redis.sh:/usr/local/bin/redis.sh:ro
     deploy:
       resources:
         limits:
@@ -90,7 +90,7 @@ services:
         reservations:
           cpus: '0.25'
           memory: 256M
-    entrypoint: ["/bin/sh", "/usr/local/bin/redisconf.sh"]
+    entrypoint: ["/bin/sh", "/usr/local/bin/redis.sh"]
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "$$REDIS_PASSWORD", "ping"]
       interval: 30s
@@ -120,7 +120,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       REDIS_USER: ${REDIS_USER}
       REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD}
-    command: celery -A tasks.config.celery_app worker --loglevel=info --uid=nobody --concurrency=1
+    command: celery -A tasks.config_celery.celery_app worker --loglevel=info --uid=nobody --concurrency=1
   celery-beat:
     build: ./backend
     profiles: ["dev"]
@@ -144,7 +144,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       REDIS_USER: ${REDIS_USER}
       REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD}
-    command: celery -A tasks.config.celery_app beat --loglevel=info
+    command: celery -A tasks.config_celery.celery_app beat --loglevel=info
     depends_on:
       postgres:
         condition: service_healthy
