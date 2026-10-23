@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import datetime
 from typing import List
@@ -20,7 +21,6 @@ from schemas.message import (
     MessageRequest,
     MessageResponse,
 )
-import json
 
 message_router = APIRouter(prefix="/api/v1", tags=[RouteTags.MESSAGES])
 status.HTTP_422_UNPROCESSABLE_CONTENT
@@ -98,17 +98,19 @@ async def create_message(
         },
     )
     await redis.publish(
-    f"chat:{chat_id}",
-    json.dumps({
-        "event": "message:new",
-        "data": {
-            "id": str(message_db.id),
-            "chat_id": str(chat_id),
-            "text": message_db.text,
-            "user_id": str(user_id),
-            "created_at": message_db.created_at.isoformat()
-            }
-        })
+        f"chat:{chat_id}",
+        json.dumps(
+            {
+                "event": "message:new",
+                "data": {
+                    "id": str(message_db.id),
+                    "chat_id": str(chat_id),
+                    "text": message_db.text,
+                    "user_id": str(user_id),
+                    "created_at": message_db.created_at.isoformat(),
+                },
+            },
+        ),
     )
     await session.commit()
     return message_db

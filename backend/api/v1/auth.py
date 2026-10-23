@@ -2,7 +2,7 @@ from datetime import timedelta
 from typing import Annotated
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from jwt import InvalidTokenError
@@ -18,11 +18,7 @@ from core.security import (
 from db.dao.user_dao import UserDao
 from db.database import get_session
 from db.models import User
-from schemas.auth import (
-    UserLogin,
-    UserRegister,
-    UserResponse,
-)
+from schemas.auth import UserLogin, UserRegister, UserResponse
 
 auth_router = APIRouter(prefix="/api/v1/auth", tags=[RouteTags.AUTH])
 
@@ -59,7 +55,7 @@ async def verification(
             await session.commit()
     except (InvalidTokenError, KeyError, TypeError):
         raise credentials_exception
-    base_url = str(request.base_url) 
+    base_url = str(request.base_url)
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user_id},

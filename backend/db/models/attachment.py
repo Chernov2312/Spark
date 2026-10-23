@@ -25,7 +25,11 @@ class Attachment(Base):
         "Chat",
         back_populates="avatars",
     )
-    is_avatar: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    is_avatar: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+    )
     file_name: Mapped[str] = mapped_column(String(250))
     file_size: Mapped[int] = mapped_column(Integer)
     mime_type: Mapped[str] = mapped_column(String(70), nullable=False)

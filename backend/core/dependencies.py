@@ -10,6 +10,7 @@ from schemas.websockets import WsEvent
 async def get_redis(request: Request) -> aioredis.Redis:
     return request.app.state.redis
 
+
 class ManagerConnection:
     def __init__(self):
         self.localconnections: dict[uuid.UUID, WebSocket] = dict()
@@ -29,7 +30,11 @@ class ManagerConnection:
 local_manager = ManagerConnection()
 
 
-async def redis_pubsub_listener(chat_id: uuid.UUID, redis: aioredis.Redis, websocket: WebSocket):
+async def redis_pubsub_listener(
+    chat_id: uuid.UUID,
+    redis: aioredis.Redis,
+    websocket: WebSocket,
+):
     channel_key = f"chat:{chat_id}"
     pubsub = redis.pubsub()
     await pubsub.subscribe(channel_key)

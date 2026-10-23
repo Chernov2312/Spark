@@ -7,7 +7,7 @@ from config.app import settings
 from core.security import create_access_token
 
 
-def send_verification_email(user_email: str, user_id: str, base_url:str):
+def send_verification_email(user_email: str, user_id: str, base_url: str):
     msg = EmailMessage()
     msg["Subject"] = "Подтверждение регистрации в Мессенджере"
     msg["From"] = email.FROM_EMAIL

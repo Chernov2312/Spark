@@ -16,8 +16,10 @@ class ChatData(BaseModel):
     title: str
     avatar_url: str
 
+
 class UserTyping(BaseModel):
     chat_id: uuid.UUID
+
 
 class WsEvent(BaseModel):
     event: str
