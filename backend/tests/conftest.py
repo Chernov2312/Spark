@@ -1,10 +1,12 @@
+from unittest.mock import patch
+
 import pytest_asyncio
 import redis.asyncio as aioredis
 from httpx import ASGITransport, AsyncClient
+from main import app
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from backend.config import settings
-from backend.main import app
+from config import settings
 from core.security import create_access_token, get_password_hash
 from db.dao.user_dao import UserDao
 from db.database import Base, get_session
@@ -26,11 +28,11 @@ __all__ = (
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def db_engine():
     db_url = (
-        f"postgresql+asyncpg://{settings.POSTGRES_USER}_test"
-        f":{settings.POSTGRES_PASSWORD}_test"
-        f"@localhost"
-        f":5433"
-        f"/{settings.POSTGRES_DB}_test"
+        f"postgresql+asyncpg://{settings.POSTGRES_USER}"
+        f":{settings.POSTGRES_PASSWORD}"
+        f"@{settings.POSTGRES_HOST}"
+        f":{settings.POSTGRES_PORT}"
+        f"/{settings.POSTGRES_DB}"
     )
     engine = create_async_engine(url=db_url)
 
@@ -62,17 +64,12 @@ async def db_session(db_engine):
 
 @pytest_asyncio.fixture(scope="function", loop_scope="session")
 async def test_redis_client():
-    client = aioredis.Redis(
-        host="localhost",
-        port=6379,
-        db=1,
+    app.state.redis = aioredis.Redis.from_url(
+        settings.redis_url,
         decode_responses=True,
     )
-    app.state.redis = client
-
-    yield client
-
-    await client.aclose()
+    yield
+    await app.state.redis.aclose()
 
 
 @pytest_asyncio.fixture(scope="function", loop_scope="session")
@@ -116,3 +113,9 @@ async def id_second_user(db_session):
     user = await UserDao.add(session=db_session, data=new_user)
     await db_session.flush()
     yield user.id
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def mock_email_task():
+    with patch("api.v1.auth.send_mail_task.delay") as mock:
+        yield mock

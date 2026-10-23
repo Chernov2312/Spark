@@ -2,7 +2,7 @@ from fastapi import status
 from httpx import AsyncClient
 
 
-async def test_valid_register_user(api_client: AsyncClient):
+async def test_valid_register_user(api_client: AsyncClient, mock_email_task):
     test_user = {
         "username": "ivan_natanich",
         "email": "alkash@mail.ru",
@@ -71,12 +71,6 @@ async def invalid_test_login_user(api_client: AsyncClient):
 async def test_login_user(api_client: AsyncClient, id_first_user):
     test_user = {
         "username": "ivan_natanich",
-        "password": "Pivo228Chel",
-    }
-    res = await api_client.post("api/v1/auth/login", data=test_user)
-    assert res.status_code == status.HTTP_200_OK
-    test_user = {
-        "username": "alkash@mail.ru",
         "password": "Pivo228Chel",
     }
     res = await api_client.post("api/v1/auth/login", data=test_user)

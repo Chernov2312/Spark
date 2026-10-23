@@ -19,11 +19,11 @@ from config import settings
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.redis = aioredis.Redis.from_url(
-        f"redis://{settings.REDIS_USER}:{settings.REDIS_USER_PASSWORD}@redis:6379/0",
+        settings.redis_url,
         decode_responses=True,
     )
     yield
-    await app.state.redis.close()
+    await app.state.redis.aclose()
 
 
 def create_app() -> FastAPI:

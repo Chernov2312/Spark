@@ -1,0 +1,93 @@
+name: spark-test
+services:
+  redis-test:
+    image: redis:7-alpine
+    env_file:
+      - .env.test
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_USER: ${REDIS_USER}
+      REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD}
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    entrypoint: >
+      /bin/sh -c "
+      mkdir -p /usr/local/etc/redis &&
+      echo 'bind 0.0.0.0' > /usr/local/etc/redis/redis.conf &&
+      echo 'appendonly yes' >> /usr/local/etc/redis/redis.conf &&
+      echo 'appendfsync everysec' >> /usr/local/etc/redis/redis.conf &&
+      echo 'daemonize no' >> /usr/local/etc/redis/redis.conf &&
+      echo 'user default on >${REDIS_PASSWORD} ~* &* +@all' > /usr/local/etc/redis/users.acl &&
+      echo 'user ${REDIS_USER} on >${REDIS_USER_PASSWORD} ~* &* +@all' >> /usr/local/etc/redis/users.acl &&
+      exec redis-server /usr/local/etc/redis/redis.conf --aclfile /usr/local/etc/redis/users.acl
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  postgres-test:
+    image: postgres:15-alpine
+    env_file:
+      - .env.test
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend-test:
+    build: ./backend
+    env_file:
+      - .env.test
+    environment:
+      POSTGRES_HOST: postgres-test
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SECRET_KEY: ${SECRET_KEY}
+      ALGORITHM: ${ALGORITHM}
+      FROM_EMAIL: ${FROM_EMAIL}
+      LOGIN_EMAIL: ${LOGIN_EMAIL}
+      PASSWORD_EMAIL: ${PASSWORD_EMAIL}
+      YANDEX_CLOUD_KEY_ID: ${YANDEX_CLOUD_KEY_ID}
+      YANDEX_CLOUD_KEY: ${YANDEX_CLOUD_KEY}
+      BUCKET_NAME: ${BUCKET_NAME}
+      API_GEMINI: ${API_GEMINI}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_USER: ${REDIS_USER}
+      REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD}
+      REDIS_PORT: 6379
+      REDIS_HOST: redis-test
+    command: >
+        /bin/sh -c "
+        pip install --no-cache-dir -r requirements/test.txt && 
+        pytest -c /app/pytest.ini
+        "
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+
+volumes:
+  redis_data:

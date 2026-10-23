@@ -2,7 +2,7 @@ import asyncio
 import uuid
 from typing import TypedDict
 
-from tasks.config import celery_app, redis
+from tasks.config_celery import celery_app, redis
 
 from db.dao.message_dao import MessageDao
 from db.dao.message_reactions_dao import MessageReactionDao

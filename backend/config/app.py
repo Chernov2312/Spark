@@ -1,10 +1,13 @@
-import redis.asyncio as aioredis
+import os
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+ENV_MODE = os.getenv("ENV_MODE", "development")
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=("../.env", ".env"),
+        env_file=(".env.test" if ENV_MODE == "test" else ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -19,9 +22,11 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     VERIFICATION_TOKEN_EXPIRE_DAYS: int = 1
 
+    REDIS_HOST: str = "redis"
     REDIS_PASSWORD: str
     REDIS_USER: str
     REDIS_USER_PASSWORD: str
+    REDIS_PORT: int = 6379
 
     @property
     def db_url(self):
@@ -34,16 +39,13 @@ class Settings(BaseSettings):
         )
 
     @property
-    def get_redis_client(self) -> aioredis.Redis:
-        pool = aioredis.ConnectionPool(
-            host="redis",
-            port=6379,
-            username=self.REDIS_USER,
-            password=self.REDIS_USER_PASSWORD,
-            decode_responses=True,
+    def redis_url(self) -> str:
+        return (
+            f"redis://{self.REDIS_USER}"
+            f":{self.REDIS_USER_PASSWORD}"
+            f"@{self.REDIS_HOST}"
+            f":{self.REDIS_PORT}/0"
         )
-
-        return aioredis.Redis(connection_pool=pool)
 
 
 settings = Settings()

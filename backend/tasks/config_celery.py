@@ -4,11 +4,7 @@ from celery.schedules import crontab
 
 from config import settings
 
-CELERY_REDIS_URL = (
-    f"redis://{settings.REDIS_USER}:{settings.REDIS_USER_PASSWORD}@redis:6379/0"
-)
-
-celery_app = Celery("tasks", broker=CELERY_REDIS_URL)
+celery_app = Celery("tasks", broker=settings.redis_url)
 celery_app.conf.beat_schedule = {
     "sync-reactions-every-1-minutes": {
         "task": "tasks.scheduler.master_sync_scheduler",
@@ -24,10 +20,4 @@ celery_app.conf.update(
     ],
 )
 
-redis = aioredis.Redis(
-    host="redis",
-    port=6379,
-    username=settings.REDIS_USER,
-    password=settings.REDIS_USER_PASSWORD,
-    decode_responses=True,
-)
+redis = aioredis.from_url(settings.redis_url)

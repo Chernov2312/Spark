@@ -1,4 +1,4 @@
-from tasks.config import celery_app
+from tasks.config_celery import celery_app
 
 from core.send_email import send_verification_email
 
