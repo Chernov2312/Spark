@@ -133,7 +133,11 @@ export default function ChatsPage() {
         },
         onEvent: (event, data) => {
           if (event === "message:new" && data.chat_id === chatId) {
-            setMessages((prev) => [...prev, data]);
+            setMessages((prev) => {
+              const isDuplicate = prev.some((msg) => msg.id === data.id);
+              if (isDuplicate) return prev;
+              return [...prev, data];
+            });
             setChats((prev) =>
               prev.map((c) =>
                 c.id === chatId
@@ -218,7 +222,11 @@ export default function ChatsPage() {
     setSending(true);
     try {
       const created = await messagesApi.sendMessage(chatId, text.trim());
-      setMessages((prev) => [...prev, created]);
+      setMessages((prev) => {
+        const isDuplicate = prev.some((msg) => msg.id === created.id);
+        if (isDuplicate) return prev;
+        return [...prev, created];
+      });
       setText("");
       setShowFormat(false);
       if (textareaRef.current) textareaRef.current.style.height = "auto";
@@ -355,7 +363,11 @@ export default function ChatsPage() {
           .map((s) => s.trim())
           .filter(Boolean),
       });
-      setChats((prev) => [created, ...prev]);
+      setChats((prev) => {
+        const exists = prev.some((c) => c.id === created.id);
+        if (exists) return prev;
+        return [created, ...prev];
+      });
       setCreateOpen(false);
       setNewChat({ title: "", description: "", invited: "" });
       navigate(`/chats/${created.id}`);

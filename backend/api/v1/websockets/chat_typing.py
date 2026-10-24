@@ -20,7 +20,11 @@ async def on_message(
 ):
     await websocket.accept()
     redis: aioredis.Redis = websocket.app.state.redis
-    user_id = await get_id_current_user(token)
+    try:
+        user_id = await get_id_current_user(token)
+    except Exception:
+        await websocket.close()
+        return
     users_key = f"chat:{chat_id}:users"
     await redis.sadd(users_key, str(user_id))
     await local_manager.add(user_id, websocket)
@@ -30,11 +34,10 @@ async def on_message(
     try:
         while True:
             msg = WsEvent.model_validate(await websocket.receive_json())
-            if (
-                msg.event == "message:new"
-                or msg.event == "chat:updated"
-                or msg.event == "user:typing"
-            ):
+            if msg.event == "message:new" or msg.event == "chat:updated":
+                await redis.publish(f"chat:{chat_id}", msg.model_dump_json())
+            elif msg.event == "user:typing":
+                msg.data.user_id = user_id
                 await redis.publish(f"chat:{chat_id}", msg.model_dump_json())
 
     except (WebSocketDisconnect, ValidationError):

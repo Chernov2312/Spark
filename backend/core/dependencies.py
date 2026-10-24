@@ -42,6 +42,12 @@ async def redis_pubsub_listener(
         async for message in pubsub.listen():
             if message.get("type") == "message":
                 msg = WsEvent.model_validate_json(message.get("data"))
+                print(msg)
+                print()
+                print()
+                print()
+                print()
+
                 await websocket.send_text(msg.model_dump_json())
     except asyncio.CancelledError:
         await pubsub.unsubscribe()
