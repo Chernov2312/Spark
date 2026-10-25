@@ -1,7 +1,7 @@
 import uuid
 from typing import Optional
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.database import Base
@@ -9,6 +9,7 @@ from db.database import Base
 
 class Attachment(Base):
     attachment_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=True,
@@ -24,6 +25,10 @@ class Attachment(Base):
     chat: Mapped[Optional["Chat"]] = relationship(
         "Chat",
         back_populates="avatars",
+    )
+    msg_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        nullable=True,
     )
     is_avatar: Mapped[bool] = mapped_column(
         Boolean,

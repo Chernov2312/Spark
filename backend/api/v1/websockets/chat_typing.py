@@ -4,6 +4,7 @@ import uuid
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
+from tasks.audio_convert import convert_audio_task
 
 from core.dependencies import local_manager, redis_pubsub_listener
 from core.security import get_id_current_user
@@ -39,7 +40,13 @@ async def on_message(
             elif msg.event == "user:typing":
                 msg.data.user_id = user_id
                 await redis.publish(f"chat:{chat_id}", msg.model_dump_json())
-
+            elif msg.event == "attachment:text":
+                convert_audio_task.delay(
+                    user_id,
+                    msg.data.chat_id,
+                    msg.data.message_id,
+                    msg.data.audio_url,
+                )
     except (WebSocketDisconnect, ValidationError):
         await local_manager.remove(user_id)
         await redis.srem(users_key, str(user_id))

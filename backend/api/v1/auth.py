@@ -91,7 +91,6 @@ async def register(
         },
     )
     base_url = str(request.base_url)
-    await session.commit()
     send_mail_task.delay(new_user.email, str(new_user.id), base_url)
     return UserResponse(
         id=new_user.id,

@@ -1,8 +1,14 @@
 import uuid
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+class Attachment(BaseModel):
+    id: uuid.UUID
+    attachment_url: str
+    text: Optional[str]
 
 
 class MessageResponse(BaseModel):
@@ -11,7 +17,7 @@ class MessageResponse(BaseModel):
     user_id: uuid.UUID
     text: str | None
     user_reaction: str = None
-    attachments: List[dict[str, str]] = Field(default_factory=list)
+    attachments: Optional[List[Attachment]] = Field(default_factory=[])
     reactions_count: dict[str, int]
     created_at: datetime
 

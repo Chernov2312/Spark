@@ -23,9 +23,16 @@ class UserTyping(BaseModel):
     user_id: uuid.UUID = None
 
 
+class AttachmentText(BaseModel):
+    message_id: uuid.UUID
+    user_id: uuid.UUID = None
+    text: str = ""
+    audio_url: str
+
+
 class WsEvent(BaseModel):
-    event: Literal["user:typing", "chat:update", "message:new"]
-    data: Union[UserData, ChatData, UserTyping]
+    event: Literal["user:typing", "chat:update", "message:new", "attachment:text"]
+    data: Union[UserData, ChatData, UserTyping, AttachmentText]
 
     @model_validator(mode="before")
     @classmethod
@@ -37,6 +44,7 @@ class WsEvent(BaseModel):
                 "message:new": UserData,
                 "chat:update": ChatData,
                 "user:typing": UserTyping,
+                "attachment:text": AttachmentText,
             }
 
             target_model = mapping.get(event_type)

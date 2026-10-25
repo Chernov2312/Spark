@@ -4,6 +4,7 @@ from typing import TypedDict
 
 from sqlalchemy import and_, bindparam, delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from db.dao.basedao import BaseDao
 from db.models import Chat, Message, User
@@ -38,6 +39,7 @@ class MessageDao(BaseDao[Message]):
             )
             .order_by(Message.created_at.desc())
             .limit(limit)
+            .options(selectinload(Message.attachments))
         )
 
         if before is not None:

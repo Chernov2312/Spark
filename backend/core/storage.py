@@ -1,7 +1,9 @@
 import datetime
+import os
 import uuid
 
 import aioboto3
+import aiofiles
 from fastapi import UploadFile
 
 from config import yandex_storage
@@ -28,15 +30,28 @@ class S3Storage:
         file_key = f"{category}/{target_id}/{timestamp}.{file_extension}"
 
         async with self.session.client("s3", **self.config) as s3:
-            file_content = await file.read()
             await s3.put_object(
                 Bucket=self.bucket_name,
                 Key=file_key,
-                Body=file_content,
+                Body=file.file,
                 ContentType=file.content_type,
             )
 
         return file_key
+
+    async def load_file(
+        self,
+        file_key: str,
+        destination_path: str,
+    ) -> None:
+        async with self.session.client("s3", **self.config) as s3:
+            response = await s3.get_object(Bucket=self.bucket_name, Key=file_key)
+
+            os.makedirs(os.path.dirname(destination_path), exist_ok=True)
+
+            async with aiofiles.open(destination_path, "wb") as local_file:
+                async for chunk in response["Body"].iter_chunks(chunk_size=65536):
+                    await local_file.write(chunk)
 
     async def get_temporary_url(
         self,
@@ -56,9 +71,7 @@ class S3Storage:
             )
             return url
 
-    async def delete_avatar(self, file_url: str) -> bool:
-        splitted = file_url.split("/")
-        file_key = "/".join(splitted[-3:])
+    async def delete_file_by_key(self, file_key: str) -> bool:
         try:
             async with self.session.client("s3", **self.config) as s3:
                 await s3.delete_object(
