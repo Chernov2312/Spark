@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import StrEnum
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -16,7 +16,7 @@ class AI(BaseSettings):
 ai_settings = AI()
 
 
-class AIPrompts(str, Enum):
+class AIPrompts(StrEnum):
     GENERATE_SUMMARY = (
         "Ты — текстовый аналитик. "
         "Тебе предоставляется список реплик из рабочего чата. "
