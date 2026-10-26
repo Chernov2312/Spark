@@ -15,7 +15,6 @@ from schemas.ai_message import (
     SummarizeResponce,
 )
 
-
 async def get_ai_service() -> AIService:
     return AIService()
 
