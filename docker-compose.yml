@@ -65,8 +65,8 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      - CHOKIDAR_USEPOLLING=true
-      - VITE_API_URL=/api/v1
+      CHOKIDAR_USEPOLLING: true
+      VITE_API_URL: ${VITE_API_URL}
     depends_on:
       backend:
         condition: service_healthy
@@ -120,7 +120,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       REDIS_USER: ${REDIS_USER}
       REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD}
-    command: celery -A tasks.config_celery.celery_app worker --loglevel=info --uid=nobody --concurrency=1
+    command: celery -A tasks.config_celery.celery_app worker --loglevel=info --concurrency=1
   celery-beat:
     build: ./backend
     profiles: ["dev"]
@@ -163,8 +163,10 @@ services:
       - certbot-etc:/etc/letsencrypt:ro
       - certbot-var:/var/www/certbot:ro
     depends_on:
-      - backend
-      - frontend
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
 
   cloudflare-tunnel:
     image: cloudflare/cloudflared:latest

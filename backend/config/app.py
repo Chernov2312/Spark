@@ -7,7 +7,10 @@ ENV_MODE = os.getenv("ENV_MODE", "development")
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(".env.test" if ENV_MODE == "test" else ".env"),
+        env_file=(
+            "./../.env",
+            ".env.test" if ENV_MODE == "test" else ".env",
+        ),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -27,6 +30,8 @@ class Settings(BaseSettings):
     REDIS_USER: str
     REDIS_USER_PASSWORD: str
     REDIS_PORT: int = 6379
+
+    APP_BASE_URL: str = "http://localhost:5173/"
 
     @property
     def db_url(self):

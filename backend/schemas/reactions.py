@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class ReactionsRequest(BaseModel):
-    emoji: str = Field(..., max_length=1)
+    emoji: str = Field(..., max_length=10)
 
 
 class ReactionsResponse(BaseModel):

@@ -19,7 +19,7 @@ class Message(Base):
         nullable=False,
     )
     chat: Mapped["Chat"] = relationship("Chat")
-    text: Mapped[str] = mapped_column(String(1000), nullable=False)
+    text: Mapped[str] = mapped_column(String(1000), nullable=True)
     attachments: Mapped[list["Attachment"]] = relationship("Attachment")
     reactions_count: Mapped[dict] = mapped_column(
         JSONB,

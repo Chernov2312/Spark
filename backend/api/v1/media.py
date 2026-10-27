@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import RouteTags
+from config import RouteTags, StorageCategory
 from core.security import get_id_current_user
 from core.storage import S3Storage
 from db.dao.attachment_dao import AttachmentDao
@@ -20,7 +20,9 @@ async def create_attachment(
     user_id: uuid.UUID = Depends(get_id_current_user),
 ) -> AttachmentResponse:
     s3 = S3Storage()
-    url = await s3.upload_file(file=file, user_id=user_id)
+    url = await s3.upload_file(
+        file=file, target_id=user_id, category=StorageCategory.USER_MESSAGE.value
+    )
     res = await AttachmentDao.add(
         session=session,
         data={
@@ -31,5 +33,12 @@ async def create_attachment(
             "file_size": file.size,
         },
     )
-    await session.commit()
-    return res
+    temporary_url = await s3.get_temporary_url(res.attachment_url)
+    return AttachmentResponse(
+        id=res.id,
+        attachment_url=temporary_url,
+        user_id=res.user_id,
+        file_name=res.file_name,
+        file_size=res.file_size,
+        mime_type=res.mime_type,
+    )

@@ -55,7 +55,7 @@ async def verification(
             await session.commit()
     except (InvalidTokenError, KeyError, TypeError):
         raise credentials_exception
-    base_url = str(request.base_url)
+    base_url = settings.APP_BASE_URL
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user_id},

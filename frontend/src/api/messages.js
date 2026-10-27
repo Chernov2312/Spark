@@ -1,8 +1,6 @@
 import { api } from "./client";
 
-/* GET /chats/{id}/messages?limit=50&before=...
-   Универсально: если бэк отдаёт массив — берём его,
-   если объект { messages: [...] } — берём .messages */
+// GET /chats/{id}/messages
 export async function listMessages(chatId, { limit = 50, before } = {}) {
   const params = { limit };
   if (before) params.before = before;
@@ -10,32 +8,30 @@ export async function listMessages(chatId, { limit = 50, before } = {}) {
   return Array.isArray(data) ? data : data.messages || [];
 }
 
-/* POST /chats/{id}/messages — { text } */
-export async function sendMessage(chatId, text) {
-  const { data } = await api.post(`/chats/${chatId}/messages`, { text });
+// POST /chats/{id}/messages
+export async function sendMessage(chatId, body) {
+  const { data } = await api.post(`/chats/${chatId}/messages`, body);
   return data;
 }
 
-/* PUT /messages/{id} — { text } */
+// PUT /messages/{id}
 export async function updateMessage(messageId, text) {
   const { data } = await api.put(`/messages/${messageId}`, { text });
   return data;
 }
 
-/* DELETE /messages/{id} */
+// DELETE /messages/{id}
 export async function deleteMessage(messageId) {
   await api.delete(`/messages/${messageId}`);
 }
 
-/* POST /messages/{id}/reactions — { emoji } */
+// POST /messages/{id}/reactions
 export async function addReaction(messageId, emoji) {
-  const { data } = await api.post(`/messages/${messageId}/reactions`, {
-    emoji,
-  });
+  const { data } = await api.post(`/messages/${messageId}/reactions`, { emoji });
   return data;
 }
 
-/* DELETE /messages/{id}/reactions */
+// DELETE /messages/{id}/reactions
 export async function removeReaction(messageId) {
   const { data } = await api.delete(`/messages/${messageId}/reactions`);
   return data;

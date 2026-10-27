@@ -16,6 +16,7 @@ from db.dao.message_reactions_dao import MessageReactionDao
 from db.database import get_session
 from db.models import Message, MessageReaction
 from schemas.message import (
+    AttachmentRequest,
     MessageHistory,
     MessageInternalDTO,
     MessageRequest,
@@ -54,15 +55,38 @@ async def get_messages_history(
         i.message_id: i.emoji for i in user_reactions
     }
     for msg in db_messages:
+        signed_attachments = []
         if msg.attachments:
-            signed_attachments = []
             for file_key in msg.attachments:
-                url = await s3.get_temporary_url(file_key)
-                signed_attachments.append(url)
-            msg.attachments = signed_attachments
+                url = await s3.get_temporary_url(file_key.attachment_url)
+                signed_attachments.append(
+                    AttachmentRequest(
+                        attachment_url=url,
+                        file_name=file_key.file_name,
+                        file_size=file_key.file_size,
+                        mime_type=file_key.mime_type,
+                        text=file_key.text,
+                    ),
+                )
         if msg.id in message_reactions_ids:
             msg.user_reaction = message_reactions_ids[msg.id]
-        validated_messages.append(msg)
+
+        validated_messages.append(
+            MessageResponse(
+                id=msg.id,
+                chat_id=msg.chat_id,
+                user_id=msg.user_id,
+                text=msg.text,
+                user_reaction=(
+                    message_reactions_ids[msg.id]
+                    if msg.id in message_reactions_ids
+                    else None
+                ),
+                attachments=signed_attachments,
+                reactions_count=msg.reactions_count,
+                created_at=msg.created_at,
+            ),
+        )
     return MessageHistory(messages=validated_messages)
 
 
@@ -74,9 +98,15 @@ async def create_message(
     user_id: uuid.UUID = Depends(get_id_current_user),
     redis: aioredis.Redis = Depends(get_redis),
 ) -> MessageResponse:
+    s3 = S3Storage()
     message_id: uuid.UUID = uuid.uuid4()
     chat_key_hash = f"chat:{chat_id}"
     chat_set_key = "chats"
+    clean = []
+    for i in message.attachments:
+        i.attachment_url = "/".join(i.attachment_url.split("?")[0].split("/")[-3:])
+        clean.append(i)
+    message.attachments = clean.copy()
     message_redis = MessageInternalDTO(
         text=message.text,
         attachments=message.attachments,
@@ -88,14 +118,14 @@ async def create_message(
         pipe.hset(chat_key_hash, str(message_id), message_redis.model_dump_json())
         pipe.sadd(chat_set_key, str(chat_id))
         await pipe.execute()
-    message_db: Message = await MessageDao.add(
+    message_db: Message = await MessageDao.create_with_attachments(
         session=session,
         data={
             "user_id": user_id,
             "text": message.text,
-            "attachments": message.attachments,
             "chat_id": chat_id,
         },
+        attachments=[a.model_dump() for a in message.attachments],
     )
     await redis.publish(
         f"chat:{chat_id}",
@@ -113,7 +143,30 @@ async def create_message(
         ),
     )
     await session.commit()
-    return message_db
+    signed_attachments = []
+    if message_db.attachments:
+        for file_key in message_db.attachments:
+            url = await s3.get_temporary_url(file_key.attachment_url)
+            signed_attachments.append(
+                AttachmentRequest(
+                    attachment_url=url,
+                    file_name=file_key.file_name,
+                    file_size=file_key.file_size,
+                    mime_type=file_key.mime_type,
+                    text=file_key.text,
+                ),
+            )
+    valid = MessageResponse(
+        id=message_db.id,
+        chat_id=message_db.chat_id,
+        user_id=message_db.user_id,
+        text=message_db.text,
+        user_reaction=None,
+        attachments=signed_attachments,
+        reactions_count=message_db.reactions_count,
+        created_at=message_db.created_at,
+    )
+    return valid
 
 
 @message_router.put("/messages/{message_id}")

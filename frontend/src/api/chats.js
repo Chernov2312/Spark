@@ -3,7 +3,9 @@ import { api } from "./client";
 /* GET /chats → массив чатов */
 export async function listChats() {
   const { data } = await api.get("/chats");
-  return data.chats
+  // Если бэкенд вернул массив — берём его. Если объект {chats: [...]} — берём .chats.
+  // Если ничего нет — возвращаем пустой массив, чтобы фронтенд не упал.
+  return Array.isArray(data) ? data : data.chats || [];
 }
 
 /* POST /chats */

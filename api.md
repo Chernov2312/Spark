@@ -209,8 +209,9 @@
         "user_reaction": "👍" // Optional[None]
         "attachments": [
           {
-            "id": "att-55555555-eeee-aaaa-bbbb-cccccccccccc",
-            "url": "https://cdn.com",
+            "id": "55555555-eeee-aaaa-bbbb-cccccccccccc",
+            "url": "https://cdn.com/file.jpg",
+            "file_name": "file.jpg",
             "mime_type": "image/jpeg"
           }
         ],
@@ -227,12 +228,13 @@
   {
     "text": "Посмотрите на эти макеты",
     "attachments": [
-      "att-55555555-eeee-aaaa-bbbb-cccccccccccc",
-      "att-66666666-eeee-aaaa-bbbb-cccccccccccc"
+      "55555555-eeee-aaaa-bbbb-cccccccccccc",
+      "66666666-eeee-aaaa-bbbb-cccccccccccc"
     ]
   }
   ```
-- *Валидация: хотя бы одно из полей (`text` или `attachment_ids`) должно быть заполнено.*
+- `attachments` — массив UUID вложений, заранее загруженных через `POST /api/v1/attachments/`.
+- *Валидация: достаточно непустого `text` или хотя бы одного элемента в `attachments`; текст может быть `null` для сообщения только с файлами.*
 - **Ответ (201 Created):**
   ```json
   {
@@ -242,14 +244,16 @@
     "text": "Посмотрите на эти макеты",
     "attachments": [
       {
-        "id": "att-55555555-eeee-aaaa-bbbb-cccccccccccc",
-        "url": "https://cdn.com",
+        "id": "55555555-eeee-aaaa-bbbb-cccccccccccc",
+        "attachment_url": "https://cdn.com/file.jpg",
+        "file_name": "file.jpg",
         "mime_type": "image/jpeg"
       },
       {
-        "id": "att-66666666-eeee-aaaa-bbbb-cccccccccccc",
-        "url": "https://cdn.com",
-        "mime_type": "image/jpeg"
+        "id": "66666666-eeee-aaaa-bbbb-cccccccccccc",
+        "attachment_url": "https://cdn.com/file.pdf",
+        "file_name": "file.pdf",
+        "mime_type": "application/pdf"
       }
     ],
     "created_at": "2026-10-10T14:15:00Z"
@@ -292,14 +296,14 @@
 
 ### `POST /api/v1/attachments` — Изолированная предзагрузка файла
 
+- **Путь:** `POST /api/v1/attachments/` (со слэшем в конце; соответствует текущему backend route)
 - **Тело запроса:** `multipart/form-data`
   - `file` *(File, обязательно)*: Бинарный файл.
-- **Query-параметры:**
-  - `purpose` *(string, опционально)*: Назначение файла (`message_attachment`, `user_avatar`, `chat_avatar`). Помогает серверу определить права доступа и жизненный цикл (TTL) бесхозных файлов.
+- **Query-параметры:** не требуются.
 - **Ответ (201 Created):**
   ```json
   {
-    "id": "att-55555555-eeee-aaaa-bbbb-cccccccccccc",
+    "id": "55555555-eeee-aaaa-bbbb-cccccccccccc",
     "url": "https://cdn.com",
     "user_id": "u1111111-eeee-aaaa-bbbb-cccccccccccc",
     "file_name": "mockup.jpg",
@@ -307,7 +311,6 @@
     "mime_type": "image/jpeg"
   }
   ```
-
 ---
 
 ## 🤖 7. Интеграция с ИИ нейросетью (`/api/v1/ai`)

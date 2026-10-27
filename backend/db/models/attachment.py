@@ -30,6 +30,7 @@ class Attachment(Base):
         ForeignKey("messages.id", ondelete="CASCADE"),
         nullable=True,
     )
+    message: Mapped["Message"] = relationship("Message", back_populates="attachments")
     is_avatar: Mapped[bool] = mapped_column(
         Boolean,
         default=False,

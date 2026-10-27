@@ -1,15 +1,25 @@
-import { useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   chats as chatsApi,
   messages as messagesApi,
-  images as imagesApi,
+  attachments as attachmentsApi,
   auth,
   createChatSocket,
 } from "../api";
 import FormatToolbar from "../components/FormatToolbar";
 
-/* ---------- Утилиты времени ---------- */
+/* ============================================================
+   Утилиты времени
+   ============================================================ */
+
 function timeAgo(iso) {
   if (!iso) return "";
   const d = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -30,13 +40,18 @@ function msgTime(iso) {
   });
 }
 
-/* ---------- Рендер markdown ---------- */
+/* ============================================================
+   Рендер markdown (безопасный мини-парсер, без ссылок)
+   ============================================================ */
+
 function renderMarkdown(text) {
   if (!text) return "";
   let html = String(text)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
   html = html
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
@@ -48,10 +63,111 @@ function renderMarkdown(text) {
   return html;
 }
 
-/* ---------- Набор эмодзи для реакций ---------- */
+/* ============================================================
+   Набор эмодзи для реакций
+   ============================================================ */
+
 const EMOJI_SET = ["👍", "❤️", "🔥", "😂", "😮", "😢", "🎉", "👏"];
 
-/* ---------- Компонент ---------- */
+/* ============================================================
+   Компонент одного вложения (единый формат)
+   ============================================================ */
+
+const AttachmentItem = React.memo(function AttachmentItem({ attachment }) {
+  const { id, attachment_url, file_name, mime_type } = attachment;
+  const isImage = typeof mime_type === "string" && mime_type.startsWith("image/");
+  const fileName = file_name || "Вложение";
+
+  if (!attachment_url) return null;
+
+  return (
+    <div className="msg__attachment" key={id}>
+      {isImage && (
+        <a href={attachment_url} target="_blank" rel="noreferrer">
+          <img
+            className="msg__attachment-image"
+            src={attachment_url}
+            alt={fileName}
+            loading="lazy"
+          />
+        </a>
+      )}
+      <a
+        className="msg__attachment-link"
+        href={attachment_url}
+        target="_blank"
+        rel="noreferrer"
+        download={fileName}
+      >
+        {fileName}
+      </a>
+    </div>
+  );
+});
+
+/* ============================================================
+   Компонент одного сообщения
+   ============================================================ */
+
+const MessageItem = React.memo(function MessageItem({
+  message: m,
+  isMe,
+  onReaction,
+  onContextMenu,
+}) {
+  const html = useMemo(() => renderMarkdown(m.text), [m.text]);
+  const attachments = Array.isArray(m.attachments) ? m.attachments : [];
+  const reactions = m.reactions_count || {};
+  const hasReactions = Object.keys(reactions).length > 0;
+
+  return (
+    <div
+      className={`msg ${isMe ? "msg--me" : ""}`}
+      onContextMenu={(e) => onContextMenu(e, m.id)}
+      title="Правый клик — добавить реакцию"
+    >
+      {!isMe && (
+        <div className="msg__author">
+          {m.user_name || (m.user_id ? `@${String(m.user_id).slice(0, 6)}` : "")}
+        </div>
+      )}
+      <div className="msg__bubble">
+        {m.text && (
+          <span
+            className="msg__text"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        )}
+
+        {attachments.map((a) => (
+          <AttachmentItem key={a.id || a.attachment_url} attachment={a} />
+        ))}
+
+        <span className="msg__time">{msgTime(m.created_at)}</span>
+      </div>
+
+      {hasReactions && (
+        <div className="msg__reactions">
+          {Object.entries(reactions).map(([emoji, count]) => (
+            <button
+              key={emoji}
+              type="button"
+              className={`reaction ${m.user_reaction === emoji ? "reaction--active" : ""}`}
+              onClick={() => onReaction(m.id, emoji)}
+            >
+              {emoji} {count}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
+
+/* ============================================================
+   Главный компонент страницы
+   ============================================================ */
+
 export default function ChatsPage() {
   const navigate = useNavigate();
   const { chatId } = useParams();
@@ -67,6 +183,7 @@ export default function ChatsPage() {
 
   const [search, setSearch] = useState("");
   const [text, setText] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const [sending, setSending] = useState(false);
   const [typingUsers, setTypingUsers] = useState(new Set());
   const [createOpen, setCreateOpen] = useState(false);
@@ -76,66 +193,110 @@ export default function ChatsPage() {
     invited: "",
   });
 
-  // Форматирование
   const [showFormat, setShowFormat] = useState(false);
-
-  // Пикер реакций
   const [reactionPicker, setReactionPicker] = useState(null);
 
   const bottomRef = useRef(null);
   const socketRef = useRef(null);
-  const typingTimeoutRef = useRef(null);
+  const socketOpenRef = useRef(false);
+  const typingSentAtRef = useRef(0);
   const typingUsersTimeoutsRef = useRef(new Map());
   const textareaRef = useRef(null);
+  const sendingRef = useRef(false);
+  const blurTimeoutRef = useRef(null);
+
+  // Тикер для обновления относительного времени ("только что" -> "1 мин")
+  const [, tick] = useReducer((x) => x + 1, 0);
+  useEffect(() => {
+    const id = setInterval(tick, 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   /* ---------- 1. Загрузка чатов ---------- */
   useEffect(() => {
+    let cancelled = false;
     setChatsLoading(true);
     chatsApi
       .listChats()
-      .then((data) => setChats(data))
-      .catch((e) =>
-        setChatsError(e.response?.data?.detail || "Не удалось загрузить чаты"),
-      )
-      .finally(() => setChatsLoading(false));
+      .then((data) => {
+        if (!cancelled) setChats(data);
+      })
+      .catch((e) => {
+        if (!cancelled)
+          setChatsError(
+            e.response?.data?.detail || "Не удалось загрузить чаты",
+          );
+      })
+      .finally(() => {
+        if (!cancelled) setChatsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  /* ---------- 2. Загрузка сообщений ---------- */
+  /* ---------- 2. Загрузка сообщений + сброс композера при смене чата ---------- */
   useEffect(() => {
+    // Сбрасываем состояние композера при переходе между чатами
+    setText("");
+    setSelectedFiles([]);
+    setShowFormat(false);
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
+
     if (!chatId) {
       setMessages([]);
       return;
     }
+
+    let cancelled = false;
     setMessagesLoading(true);
     setMessagesError(null);
+
     messagesApi
       .listMessages(chatId)
       .then((list) => {
-        setMessages([...list].reverse());
+        if (cancelled) return;
+        // list уже в едином формате MessageResponse
+        const ordered = Array.isArray(list) ? list : [];
+        setMessages(
+          [...ordered].sort(
+            (a, b) => new Date(a.created_at) - new Date(b.created_at),
+          ),
+        );
       })
-      .catch((e) =>
-        setMessagesError(
-          e.response?.data?.detail || "Не удалось загрузить сообщения",
-        ),
-      )
-      .finally(() => setMessagesLoading(false));
+      .catch((e) => {
+        if (!cancelled)
+          setMessagesError(
+            e.response?.data?.detail || "Не удалось загрузить сообщения",
+          );
+      })
+      .finally(() => {
+        if (!cancelled) setMessagesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [chatId]);
 
   /* ---------- 3. WebSocket ---------- */
   useEffect(() => {
     if (!auth.isAuthenticated() || !chatId) return;
 
+    socketOpenRef.current = false;
     let sock;
+
     try {
       sock = createChatSocket(chatId, {
         onOpen: () => {
+          socketOpenRef.current = true;
           console.info("[WS] Подключён к чату", chatId);
         },
         onEvent: (event, data) => {
           if (event === "message:new" && data.chat_id === chatId) {
             setMessages((prev) => {
-              const isDuplicate = prev.some((msg) => msg.id === data.id);
-              if (isDuplicate) return prev;
+              const exists = prev.some((m) => m.id === data.id);
+              if (exists) return prev;
               return [...prev, data];
             });
             setChats((prev) =>
@@ -144,7 +305,7 @@ export default function ChatsPage() {
                   ? {
                       ...c,
                       last_message: {
-                        text: data.text,
+                        text: data.text || "Вложение",
                         created_at: data.created_at,
                       },
                     }
@@ -152,6 +313,7 @@ export default function ChatsPage() {
               ),
             );
           }
+
           if (event === "chat:updated") {
             setChats((prev) =>
               prev.map((c) =>
@@ -165,12 +327,12 @@ export default function ChatsPage() {
               ),
             );
           }
+
           if (event === "user:typing" && data.chat_id === chatId) {
             const uid = data.user_id;
+            if (uid === me?.id) return;
 
-            // Сбрасываем предыдущий таймер для этого пользователя
-            const existing =
-              typingUsersTimeoutsRef.current.get(uid);
+            const existing = typingUsersTimeoutsRef.current.get(uid);
             if (existing) clearTimeout(existing);
 
             setTypingUsers((prev) => new Set(prev).add(uid));
@@ -187,11 +349,10 @@ export default function ChatsPage() {
           }
         },
         onClose: (e) => {
+          socketOpenRef.current = false;
           console.info("[WS] Закрыт:", e.code, e.reason);
         },
-        onError: () => {
-          // Тихо: детали будут в onclose
-        },
+        onError: () => {},
       });
       socketRef.current = sock;
     } catch (e) {
@@ -201,12 +362,14 @@ export default function ChatsPage() {
     return () => {
       sock?.close();
       if (socketRef.current === sock) socketRef.current = null;
+      socketOpenRef.current = false;
 
-      // Чистим таймеры typing
       typingUsersTimeoutsRef.current.forEach((t) => clearTimeout(t));
       typingUsersTimeoutsRef.current.clear();
       setTypingUsers(new Set());
     };
+    // me?.id намеренно не в зависимостях: сокет пересоздаётся только при смене чата
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId]);
 
   /* ---------- 4. Скролл вниз ---------- */
@@ -215,59 +378,99 @@ export default function ChatsPage() {
   }, [messages]);
 
   /* ---------- 5. Отправка сообщения ---------- */
-  const handleSend = async (e) => {
-    if (e) e.preventDefault();
-    if (!text.trim() || !chatId || sending) return;
+  const handleSend = useCallback(
+    async (e) => {
+      if (e) e.preventDefault();
+      if (sendingRef.current) return;
+      if ((!text.trim() && selectedFiles.length === 0) || !chatId) return;
 
-    setSending(true);
-    try {
-      const created = await messagesApi.sendMessage(chatId, text.trim());
-      setMessages((prev) => {
-        const isDuplicate = prev.some((msg) => msg.id === created.id);
-        if (isDuplicate) return prev;
-        return [...prev, created];
-      });
-      setText("");
-      setShowFormat(false);
-      if (textareaRef.current) textareaRef.current.style.height = "auto";
+      sendingRef.current = true;
+      setSending(true);
+      setMessagesError(null);
 
-      setChats((prev) =>
-        prev.map((c) =>
-          c.id === chatId
-            ? {
-                ...c,
-                last_message: {
-                  text: created.text,
-                  created_at: created.created_at,
-                },
-              }
-            : c,
-        ),
-      );
-    } catch (err) {
-      setMessagesError(
-        err.response?.data?.detail || "Не удалось отправить сообщение",
-      );
-    } finally {
-      setSending(false);
-    }
-  };
+      try {
+        // 1) Загружаем файлы — каждый ответ в едином формате AttachmentResponse
+        const uploaded = await Promise.all(
+          selectedFiles.map((file) => attachmentsApi.uploadAttachment(file)),
+        );
 
-  /* ---------- 6. Ввод текста + typing ---------- */
+        // 2) Формируем тело запроса в формате MessageRequest:
+        //    attachments: [{ attachment_url, file_name, file_size, mime_type, text? }]
+        const attachmentRequests = uploaded.map((a) => ({
+          attachment_url: a.attachment_url,
+          file_name: a.file_name,
+          file_size: a.file_size,
+          mime_type: a.mime_type,
+          text: a.text ?? null,
+        }));
+
+        const messageText = text.trim() || null;
+
+        // 3) Отправляем сообщение — ответ в едином формате MessageResponse
+        const created = await messagesApi.sendMessage(chatId, {
+          text: messageText,
+          attachments: attachmentRequests,
+        });
+
+        // 4) Мержим в список по id (защита от дубля с WS)
+        setMessages((prev) => {
+          const idx = prev.findIndex((m) => m.id === created.id);
+          if (idx === -1) return [...prev, created];
+          const next = [...prev];
+          next[idx] = { ...next[idx], ...created };
+          return next;
+        });
+
+        setChats((prev) =>
+          prev.map((c) =>
+            c.id === chatId
+              ? {
+                  ...c,
+                  last_message: {
+                    text: created.text || "Вложение",
+                    created_at: created.created_at,
+                  },
+                }
+              : c,
+          ),
+        );
+
+        setText("");
+        setSelectedFiles([]);
+        setShowFormat(false);
+        if (textareaRef.current) textareaRef.current.style.height = "auto";
+      } catch (err) {
+        setMessagesError(
+          err.response?.data?.detail ||
+            err.message ||
+            "Не удалось отправить сообщение",
+        );
+      } finally {
+        sendingRef.current = false;
+        setSending(false);
+      }
+    },
+    [chatId, selectedFiles, text],
+  );
+
+  /* ---------- 6. Ввод текста + typing (с дебаунсом) ---------- */
   const handleTextChange = (e) => {
     setText(e.target.value);
 
     e.target.style.height = "auto";
     e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
 
-    if (!chatId || !socketRef.current) return;
+    if (!chatId || !socketRef.current || !socketOpenRef.current) return;
 
-    // ✅ Отправляем через общий send(), а не несуществующий sendTyping()
-    socketRef.current.send("user:typing", { chat_id: chatId });
+    const now = Date.now();
+    if (now - typingSentAtRef.current < 1000) return;
+    typingSentAtRef.current = now;
 
-    // Дебаунс: не спамим сервер чаще раза в секунду
-    clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(() => {}, 1000);
+    try {
+      socketRef.current.send("user:typing", { chat_id: chatId });
+    } catch {
+      // сокет мог закрыться между проверкой и send — игнорируем
+    }
   };
 
   /* ---------- 7. Форматирование ---------- */
@@ -312,7 +515,6 @@ export default function ChatsPage() {
   const handleKeyDown = (e) => {
     const isCtrl = e.ctrlKey || e.metaKey;
 
-    // Ctrl+Enter — перенос строки (проверяем ПЕРВЫМ)
     if (e.key === "Enter" && isCtrl) {
       e.preventDefault();
       const el = e.currentTarget;
@@ -327,7 +529,6 @@ export default function ChatsPage() {
       return;
     }
 
-    // Ctrl+B / I / U
     if (isCtrl) {
       if (e.key === "b" || e.key === "B") {
         e.preventDefault();
@@ -342,7 +543,6 @@ export default function ChatsPage() {
       return;
     }
 
-    // Enter — отправить, Shift+Enter — новая строка
     if (e.key === "Enter") {
       if (e.shiftKey) return;
       e.preventDefault();
@@ -363,11 +563,9 @@ export default function ChatsPage() {
           .map((s) => s.trim())
           .filter(Boolean),
       });
-      setChats((prev) => {
-        const exists = prev.some((c) => c.id === created.id);
-        if (exists) return prev;
-        return [created, ...prev];
-      });
+      setChats((prev) =>
+        prev.some((c) => c.id === created.id) ? prev : [created, ...prev],
+      );
       setCreateOpen(false);
       setNewChat({ title: "", description: "", invited: "" });
       navigate(`/chats/${created.id}`);
@@ -376,16 +574,27 @@ export default function ChatsPage() {
     }
   };
 
-  /* ---------- 10. Реакции ---------- */
-  const handleReaction = async (messageId, emoji) => {
+  /* ---------- 10. Реакции (с toggle и user_reaction) ---------- */
+  const handleReaction = useCallback(async (messageId, emoji) => {
     try {
+      // Ожидаем от API: { updated_reactions_count, user_reaction }
       const res = await messagesApi.addReaction(messageId, emoji);
       setMessages((prev) =>
-        prev.map((m) =>
-          m.id === messageId
-            ? { ...m, reactions_count: res.updated_reactions_count }
-            : m,
-        ),
+        prev.map((m) => {
+          if (m.id !== messageId) return m;
+
+          const wasMine = m.user_reaction === emoji;
+          const nextUserReaction = wasMine
+            ? null
+            : res.user_reaction ?? emoji;
+
+          return {
+            ...m,
+            reactions_count:
+              res.updated_reactions_count ?? m.reactions_count,
+            user_reaction: nextUserReaction,
+          };
+        }),
       );
     } catch (err) {
       if (err.response?.status === 404) {
@@ -394,16 +603,16 @@ export default function ChatsPage() {
         console.error("Не удалось поставить реакцию:", err);
       }
     }
-  };
+  }, []);
 
-  const openReactionPicker = (e, messageId) => {
+  const openReactionPicker = useCallback((e, messageId) => {
     e.preventDefault();
     setReactionPicker({
       messageId,
       x: e.clientX,
       y: e.clientY,
     });
-  };
+  }, []);
 
   const closeReactionPicker = () => setReactionPicker(null);
 
@@ -414,20 +623,35 @@ export default function ChatsPage() {
     await handleReaction(messageId, emoji);
   };
 
-  /* ---------- 11. Загрузка картинки ---------- */
-  const handleImageUpload = async (file) => {
-    if (!chatId) return;
-    try {
-      const res = await imagesApi.uploadImage(file, chatId);
-      await messagesApi.sendMessage(chatId, `![](${res.image_url})`);
-    } catch {}
+  /* ---------- 11. Выбор файлов ---------- */
+  const handleFileSelection = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length) setSelectedFiles((prev) => [...prev, ...files]);
+    e.target.value = "";
   };
 
-  const filtered = chats.filter((c) =>
-    (c.title || "").toLowerCase().includes(search.toLowerCase()),
+  /* ---------- 12. Производные ---------- */
+  const filtered = useMemo(
+    () =>
+      chats.filter((c) =>
+        (c.title || "").toLowerCase().includes(search.toLowerCase()),
+      ),
+    [chats, search],
   );
-  const activeChat = chats.find((c) => c.id === chatId);
 
+  const activeChat = useMemo(
+    () => chats.find((c) => c.id === chatId),
+    [chats, chatId],
+  );
+
+  const handleContextMenuMessage = useCallback(
+    (e, messageId) => openReactionPicker(e, messageId),
+    [openReactionPicker],
+  );
+
+  /* ============================================================
+     Рендер
+     ============================================================ */
   return (
     <main className="chats-page">
       {/* ---------- Левая колонка ---------- */}
@@ -511,10 +735,15 @@ export default function ChatsPage() {
 
       {/* ---------- Правая колонка ---------- */}
       <section className={`chat-view ${!chatId ? "chat-view--empty" : ""}`}>
-        {!activeChat ? (
+        {!chatId ? (
           <div className="chat-view__placeholder">
             <div className="chat-view__placeholder-icon">💬</div>
             <p>Выберите чат слева или создайте новый</p>
+          </div>
+        ) : !activeChat ? (
+          <div className="chat-view__placeholder">
+            <div className="chat-view__placeholder-icon">⏳</div>
+            <p>Загрузка чата…</p>
           </div>
         ) : (
           <>
@@ -564,50 +793,15 @@ export default function ChatsPage() {
               )}
 
               {!messagesLoading &&
-                messages.map((m) => {
-                  const isMe = m.user_id === me?.id;
-                  return (
-                    <div
-                      key={m.id}
-                      className={`msg ${isMe ? "msg--me" : ""}`}
-                      onContextMenu={(e) => openReactionPicker(e, m.id)}
-                      title="Правый клик — добавить реакцию"
-                    >
-                      {!isMe && (
-                        <div className="msg__author">
-                          @{String(m.user_id || "").slice(0, 6)}
-                        </div>
-                      )}
-                      <div className="msg__bubble">
-                        <span
-                          className="msg__text"
-                          dangerouslySetInnerHTML={{
-                            __html: renderMarkdown(m.text),
-                          }}
-                        />
-                        <span className="msg__time">
-                          {msgTime(m.created_at)}
-                        </span>
-                      </div>
-                      {m.reactions_count &&
-                        Object.keys(m.reactions_count).length > 0 && (
-                          <div className="msg__reactions" key={`reactions-${m.id}`}>
-                            {Object.entries(m.reactions_count).map(
-                              ([emoji, count]) => (
-                                <button
-                                  key={emoji}
-                                  className="reaction"
-                                  onClick={() => handleReaction(m.id, emoji)}
-                                >
-                                  {emoji} {count}
-                                </button>
-                              ),
-                            )}
-                          </div>
-                        )}
-                    </div>
-                  );
-                })}
+                messages.map((m) => (
+                  <MessageItem
+                    key={m.id}
+                    message={m}
+                    isMe={m.user_id === me?.id}
+                    onReaction={handleReaction}
+                    onContextMenu={handleContextMenuMessage}
+                  />
+                ))}
               <div ref={bottomRef} />
             </div>
 
@@ -620,11 +814,10 @@ export default function ChatsPage() {
                   📎
                   <input
                     type="file"
-                    accept="image/*"
+                    multiple
                     hidden
-                    onChange={(e) =>
-                      e.target.files[0] && handleImageUpload(e.target.files[0])
-                    }
+                    disabled={sending}
+                    onChange={handleFileSelection}
                   />
                 </label>
 
@@ -639,19 +832,52 @@ export default function ChatsPage() {
                   onMouseUp={updateFormatVisibility}
                   onKeyUp={updateFormatVisibility}
                   onKeyDown={handleKeyDown}
-                  onBlur={() => setTimeout(() => setShowFormat(false), 150)}
+                  onBlur={() => {
+                    blurTimeoutRef.current = setTimeout(
+                      () => setShowFormat(false),
+                      150,
+                    );
+                  }}
                   disabled={sending}
                 />
 
                 <button
                   type="submit"
                   className="composer-btn composer-btn--send"
-                  disabled={sending}
+                  disabled={
+                    sending || (!text.trim() && selectedFiles.length === 0)
+                  }
                   title="Отправить"
                 >
                   ➤
                 </button>
               </form>
+
+              {selectedFiles.length > 0 && (
+                <ul className="composer-attachments">
+                  {selectedFiles.map((file, index) => (
+                    <li
+                      className="composer-attachments__item"
+                      key={`${file.name}-${file.lastModified}-${index}`}
+                    >
+                      <span>{file.name}</span>
+                      <button
+                        type="button"
+                        className="composer-attachments__remove"
+                        aria-label={`Удалить файл ${file.name}`}
+                        disabled={sending}
+                        onClick={() =>
+                          setSelectedFiles((prev) =>
+                            prev.filter((_, i) => i !== index),
+                          )
+                        }
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </>
         )}

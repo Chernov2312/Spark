@@ -7,6 +7,7 @@ import LoginPage from "./pages/LoginPage";
 import ProfilePage from "./pages/ProfilePage";
 import FaqPage from "./pages/FaqPage";
 import ChatsPage from "./pages/ChatsPage";
+import EmailVerificationPage from "./pages/EmailVerificationPage";
 import NotFound from "./components/NotFound";
 import { auth } from "./api";
 
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/verify-email/:token" element={<EmailVerificationPage />} />
         <Route path="/faq" element={<FaqPage />} />
         <Route
           path="/chats"

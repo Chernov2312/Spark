@@ -45,7 +45,6 @@ async def post_reactions(
 
         results = await pipe.execute()
         current_counters = results[-2]
-
     return ReactionsResponse(
         message_id=message_id,
         updated_reactions_count=current_counters,

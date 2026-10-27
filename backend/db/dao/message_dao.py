@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from db.dao.basedao import BaseDao
-from db.models import Chat, Message, User
+from db.models import Attachment, Chat, Message, User
 
 
 class MessageReactionData(TypedDict):
@@ -18,6 +18,19 @@ class MessageReactionData(TypedDict):
 
 class MessageDao(BaseDao[Message]):
     model = Message
+
+    @classmethod
+    async def create_with_attachments(
+        cls,
+        session: AsyncSession,
+        data: dict,
+        attachments: list[dict],
+    ) -> Message:
+        message = Message(**data)
+        message.attachments = [Attachment(**a) for a in attachments]
+        session.add(message)
+        await session.flush()
+        return message
 
     @classmethod
     async def get_chat_history(
@@ -93,14 +106,17 @@ class MessageDao(BaseDao[Message]):
         stmt = (
             update(cls.model)
             .where(
-                cls.model.id == bindparam("id"),
+                cls.model.id == bindparam("b_id"),
             )
             .values(
                 reactions_count=bindparam("reactions_count"),
-            )
+            ).execution_options(synchronize_session=None)
         )
-        await session.execute(stmt, message_reactions)
-
+        formatted_reactions = [
+            {**r, "b_id": r["id"]} for r in message_reactions
+        ]
+        
+        await session.execute(stmt, formatted_reactions)
     @classmethod
     async def bulk_insert_messages(
         cls,

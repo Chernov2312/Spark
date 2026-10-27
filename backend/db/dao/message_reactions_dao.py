@@ -32,7 +32,6 @@ class MessageReactionDao(BaseDao[MessageReaction]):
         )
         res = await session.execute(query)
         return res.scalars().all()
-
     @classmethod
     async def update_user_reactions(
         cls,
@@ -41,13 +40,13 @@ class MessageReactionDao(BaseDao[MessageReaction]):
     ):
         users_data = []
         for msg in message_reactions:
-            message_id = msg["id"]
-            for user_id, emoji in msg["users"].items():
+            message_id = uuid.UUID(str(msg["id"]))
+            for user_id_str, emoji in msg["users"].items():
                 users_data.append(
                     {
-                        "user_id": user_id,
+                        "b_user_id": uuid.UUID(user_id_str),
+                        "b_message_id": message_id,
                         "emoji": emoji,
-                        "message_id": message_id,
                     },
                 )
 
@@ -57,11 +56,13 @@ class MessageReactionDao(BaseDao[MessageReaction]):
         stmt = (
             update(cls.model)
             .where(
-                cls.model.user_id == bindparam("user_id"),
-                cls.model.message_id == bindparam("message_id"),
+                cls.model.user_id == bindparam("b_user_id"),
+                cls.model.message_id == bindparam("b_message_id"),
             )
             .values(
                 emoji=bindparam("emoji"),
             )
         )
-        await session.execute(stmt, users_data)
+        
+        conn = await session.connection()
+        await conn.execute(stmt, users_data)

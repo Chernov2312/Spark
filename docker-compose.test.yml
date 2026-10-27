@@ -55,7 +55,9 @@ services:
       retries: 5
 
   backend-test:
-    build: ./backend
+    build:
+      context: ./build
+      dockerfile: Dockerfile.test
     env_file:
       - .env.test
     environment:
@@ -78,11 +80,7 @@ services:
       REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD}
       REDIS_PORT: 6379
       REDIS_HOST: redis-test
-    command: >
-        /bin/sh -c "
-        pip install --no-cache-dir -r requirements/test.txt && 
-        pytest -c /app/pytest.ini
-        "
+    command: ["sleep", "infinity"]
     depends_on:
       postgres-test:
         condition: service_healthy
