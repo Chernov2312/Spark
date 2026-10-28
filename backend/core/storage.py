@@ -4,8 +4,9 @@ import uuid
 
 import aioboto3
 import aiofiles
-from fastapi import UploadFile
 from botocore.client import Config
+from fastapi import UploadFile
+
 from config import yandex_storage
 
 
@@ -83,6 +84,7 @@ class S3Storage:
     def create_file_key(self, file_extension, target_id, category):
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         return f"{category}/{target_id}/{timestamp}.{file_extension}"
+
     async def delete_file_by_key(self, file_key: str) -> bool:
         try:
             async with self.session.client("s3", **self.config) as s3:

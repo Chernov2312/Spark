@@ -24,7 +24,7 @@ async def test_create_chat(api_client: AsyncClient, auth_token_and_user, id_seco
 async def test_get_chats(api_client: AsyncClient, auth_token_and_user, chat_id):
     headers = {"Authorization": f"Bearer {auth_token_and_user}"}
     res = await api_client.get(
-        f"/api/v1/chats",
+        "/api/v1/chats",
         headers=headers,
     )
     assert res.status_code == status.HTTP_200_OK

@@ -56,7 +56,12 @@ async def post_new_chat(
     else:
         new_chat: Chat = await ChatDao.add(
             session,
-            {"id": data.id, "owner_id": owner_id, "title": data.title, "description": data.description},
+            {
+                "id": data.id,
+                "owner_id": owner_id,
+                "title": data.title,
+                "description": data.description,
+            },
         )
 
     await ChatDao.add_users_to_chat(

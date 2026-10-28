@@ -1,25 +1,17 @@
 import uuid
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    Response,
-    UploadFile,
-    status,
-)
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import RouteTags, StorageCategory, StorageClientMethod
+from config import RouteTags, StorageClientMethod
 from core.security import get_id_current_user
 from core.storage import S3Storage
 from db.dao.attachment_dao import AttachmentDao
 from db.dao.user_dao import UserDao
 from db.database import get_session
-from schemas.user import Avatar, UserRead, UserUpdate, AvatarRequest
+from schemas.user import Avatar, UserRead, UserUpdate
 
 user_router = APIRouter(prefix="/api/v1/users", tags=[RouteTags.USERS])
-
 
 
 @user_router.get("/me", status_code=status.HTTP_200_OK)
@@ -31,7 +23,12 @@ async def get_me(
     avatar_urls = []
     s3 = S3Storage()
     for i in user.avatars:
-        avatar_urls.append(await s3.get_temporary_url(file_key=i.attachment_url, client_method=StorageClientMethod.GET.value))
+        avatar_urls.append(
+            await s3.get_temporary_url(
+                file_key=i.attachment_url,
+                client_method=StorageClientMethod.GET.value,
+            ),
+        )
     return UserRead(
         id=user.id,
         username=user.username,
