@@ -10,16 +10,16 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import RouteTags, StorageCategory
+from config import RouteTags, StorageCategory, StorageClientMethod
 from core.security import get_id_current_user
 from core.storage import S3Storage
 from db.dao.attachment_dao import AttachmentDao
 from db.dao.user_dao import UserDao
 from db.database import get_session
-from schemas.user import Avatar, UserRead, UserUpdate
+from schemas.user import Avatar, UserRead, UserUpdate, AvatarRequest
 
 user_router = APIRouter(prefix="/api/v1/users", tags=[RouteTags.USERS])
-ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
 
 
 @user_router.get("/me", status_code=status.HTTP_200_OK)
@@ -31,12 +31,12 @@ async def get_me(
     avatar_urls = []
     s3 = S3Storage()
     for i in user.avatars:
-        avatar_urls.append(await s3.get_temporary_url(i.attachment_url))
+        avatar_urls.append(await s3.get_temporary_url(file_key=i.attachment_url, client_method=StorageClientMethod.GET.value))
     return UserRead(
         id=user.id,
         username=user.username,
         email=user.email,
-        avatar_url=avatar_urls,
+        avatar_urls=avatar_urls,
         created_at=user.created_at,
     )
 
@@ -69,38 +69,6 @@ async def update_me(
     )
 
 
-@user_router.post("/me/avatar", status_code=status.HTTP_201_CREATED)
-async def set_avatar(
-    avatar: UploadFile,
-    session: AsyncSession = Depends(get_session),
-    current_user_id: uuid.UUID = Depends(get_id_current_user),
-) -> Avatar:
-    if avatar.content_type not in ALLOWED_IMAGE_TYPES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="incorrect file format",
-        )
-    s3 = S3Storage()
-    url = await s3.upload_file(
-        file=avatar,
-        target_id=current_user_id,
-        category=StorageCategory.USER_AVATAR,
-    )
-    await AttachmentDao.add(
-        session=session,
-        data={
-            "user_id": current_user_id,
-            "attachment_url": url,
-            "mime_type": avatar.content_type,
-            "file_name": avatar.filename,
-            "file_size": avatar.size,
-        },
-    )
-    await session.commit()
-    temporary_url = await s3.get_temporary_url(url)
-    return Avatar(url=temporary_url)
-
-
 @user_router.post("/me/delete/avatar", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_avatar(
     avatar: Avatar,
@@ -118,11 +86,10 @@ async def delete_avatar(
             detail="Image not found or you are not the owner",
         )
     s3 = S3Storage()
-    if not await s3.delete_avatar(file_url=avatar.url):
+    if not await s3.delete_file_by_key(file_key=avatar.url):
         await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="Failed to delete image from storage",
         )
-    await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

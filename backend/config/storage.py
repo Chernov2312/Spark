@@ -22,4 +22,9 @@ class StorageCategory(StrEnum):
     USER_MESSAGE = "user_message"
 
 
+class StorageClientMethod(StrEnum):
+    GET = "get_object"
+    PUT = "put_object"
+
+
 yandex_storage = YandexStorage()

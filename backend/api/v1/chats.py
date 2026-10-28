@@ -31,10 +31,10 @@ async def get_chats(
     user = await UserDao.get_user_with_chats(session=session, target_id=user_id)
     chats = []
     for chat in user.chats:
-        chat_model = ChatResponse.model_validate(chat)
         avatars = []
         for avatar in chat.avatars:
             avatars.append(await s3.get_temporary_url(avatar.attachment_url))
+        chat_model = ChatResponse.model_validate(chat)
         chat_model.avatar_urls = avatars.copy()
         chats.append(chat_model)
     return GetChatsResponse(chats=chats)
@@ -48,10 +48,16 @@ async def post_new_chat(
 ) -> NewChatResponse:
     s3 = S3Storage
     owner_id = user_id
-    new_chat: Chat = await ChatDao.add(
-        session,
-        {"owner_id": owner_id, "title": data.title, "description": data.description},
-    )
+    if data.id is None:
+        new_chat: Chat = await ChatDao.add(
+            session,
+            {"owner_id": owner_id, "title": data.title, "description": data.description},
+        )
+    else:
+        new_chat: Chat = await ChatDao.add(
+            session,
+            {"id": data.id, "owner_id": owner_id, "title": data.title, "description": data.description},
+        )
 
     await ChatDao.add_users_to_chat(
         session=session,

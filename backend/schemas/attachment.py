@@ -1,22 +1,32 @@
 import uuid
-from typing import Optional
+from typing import Optional, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class AvatarRequest(BaseModel):
-    user_id: Optional[uuid.UUID]
-    chat_id: Optional[uuid.UUID]
+class AvatarUrlRequest(BaseModel):
+    file_extension: str
+    file_content: str
+    target_id: str
+    type: Literal["message", "chat_avatar", "user_avatar"]
+
+
+class AvatarUrlResponse(BaseModel):
+    user_id: Optional[uuid.UUID] = None
+    chat_id: Optional[uuid.UUID] = None
+    temporary_url: str
+    file_key: str
 
 
 class AttachmentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
-    attachment_url: str
+    chat_id: Optional[uuid.UUID]
+    is_avatar: bool = False
+    file_key: str
     file_name: str
     file_size: int = Field(ge=0)
     mime_type: str
-    text: str | None = None
+    text: Optional[str] = None
 
 
 class AttachmentResponse(BaseModel):
@@ -28,5 +38,5 @@ class AttachmentResponse(BaseModel):
     file_size: int
     mime_type: str
     text: str | None = None
-    user_id: Optional[uuid.UUID]
-    chat_id: Optional[uuid.UUID]
+    user_id: Optional[uuid.UUID] = None
+    chat_id: Optional[uuid.UUID] = None

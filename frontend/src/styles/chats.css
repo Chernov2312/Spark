@@ -111,6 +111,48 @@
   font-size: 16px;
 }
 
+.chat-item__avatar--multiple {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+}
+
+.chat-item__avatar--count-2 {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.chat-item__avatar-cell {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat-item__avatar-cell img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chat-item__avatar--multiple .chat-item__avatar-cell:only-child {
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+}
+
+.chat-item__avatar-overflow {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgb(0 0 0 / 55%);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .chat-item__body {
   flex: 1;
   min-width: 0;
@@ -201,6 +243,22 @@
   padding: 12px 20px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
+}
+
+.chat-avatar-upload {
+  margin-left: auto;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chat-avatar-upload:hover {
+  border-color: var(--spark);
+  color: var(--spark);
 }
 
 .chat-view__back {
@@ -443,6 +501,55 @@
   margin: 0 0 20px;
   color: var(--text);
   font-size: 18px;
+}
+
+.chat-create-modal {
+  max-height: min(90vh, 680px);
+  overflow-y: auto;
+}
+
+.chat-user-search-results,
+.chat-selected-users,
+.chat-selected-avatars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.chat-user-search-results li,
+.chat-selected-users li,
+.chat-selected-avatars li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.chat-selected-users button,
+.chat-selected-avatars button {
+  border: 0;
+  color: var(--text-muted);
+  background: transparent;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.chat-create-hint {
+  margin: 8px 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.chat-create-error {
+  color: var(--danger);
+  font-size: 13px;
 }
 /* ============================================================
    Панель форматирования и textarea

@@ -1,7 +1,12 @@
 import axios from "axios";
 
-export const API_BASE =
-  import.meta.env.VITE_API_URL || "http://localhost:8080"/api/v1;
+const configuredApiUrl =
+  import.meta.env.VITE_API_URL || "http://localhost:8000";
+const normalizedApiUrl = configuredApiUrl.replace(/\/+$/, "");
+
+export const API_BASE = normalizedApiUrl.endsWith("/api/v1")
+  ? normalizedApiUrl
+  : `${normalizedApiUrl}/api/v1`;
 
 export const api = axios.create({
   baseURL: API_BASE,
@@ -16,7 +21,10 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (r) => r,
   (err) => {
-    if (err.response?.status === 401) {
+    if (
+      err.response?.status === 401 &&
+      !err.config?.url?.includes("/auth/verification/")
+    ) {
       localStorage.removeItem("access_token");
       localStorage.removeItem("user");
       if (window.location.pathname !== "/login") {

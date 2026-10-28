@@ -13,6 +13,7 @@ import {
   attachments as attachmentsApi,
   auth,
   createChatSocket,
+  translateApiError,
 } from "../api";
 import FormatToolbar from "../components/FormatToolbar";
 
@@ -68,6 +69,41 @@ function renderMarkdown(text) {
    ============================================================ */
 
 const EMOJI_SET = ["👍", "❤️", "🔥", "😂", "😮", "😢", "🎉", "👏"];
+
+function getChatAvatarUrls(chat) {
+  const avatarUrls = Array.isArray(chat?.avatar_urls)
+    ? chat.avatar_urls.filter((url) => typeof url === "string" && url)
+    : [];
+  if (avatarUrls.length) return avatarUrls;
+  return chat?.avatar_url ? [chat.avatar_url] : [];
+}
+
+function ChatAvatar({ chat, compact = false }) {
+  const urls = getChatAvatarUrls(chat);
+  const visibleUrls = urls.slice(0, 4);
+
+  return (
+    <div
+      className={`chat-item__avatar${compact ? " chat-item__avatar--sm" : ""}${visibleUrls.length > 1 ? ` chat-item__avatar--multiple chat-item__avatar--count-${visibleUrls.length}` : ""}`}
+      aria-label={`Аватары группы ${chat.title}`}
+    >
+      {visibleUrls.length ? (
+        visibleUrls.map((url, index) => (
+          <span className="chat-item__avatar-cell" key={`${url}-${index}`}>
+            <img src={url} alt="" />
+            {index === 3 && urls.length > 4 && (
+              <span className="chat-item__avatar-overflow">
+                +{urls.length - 3}
+              </span>
+            )}
+          </span>
+        ))
+      ) : (
+        (chat.title?.[0] || "?").toUpperCase()
+      )}
+    </div>
+  );
+}
 
 /* ============================================================
    Компонент одного вложения (единый формат)
@@ -190,8 +226,17 @@ export default function ChatsPage() {
   const [newChat, setNewChat] = useState({
     title: "",
     description: "",
-    invited: "",
   });
+  const [usernameQuery, setUsernameQuery] = useState("");
+  const [userSearchResults, setUserSearchResults] = useState([]);
+  const [selectedUsers, setSelectedUsers] = useState([]);
+  const [selectedAvatarFiles, setSelectedAvatarFiles] = useState([]);
+  const [userSearchLoading, setUserSearchLoading] = useState(false);
+  const [userSearchError, setUserSearchError] = useState(null);
+  const [creatingChat, setCreatingChat] = useState(false);
+  const [uploadingChatAvatars, setUploadingChatAvatars] = useState(false);
+  const [createChatError, setCreateChatError] = useState(null);
+  const [chatAvatarError, setChatAvatarError] = useState(null);
 
   const [showFormat, setShowFormat] = useState(false);
   const [reactionPicker, setReactionPicker] = useState(null);
@@ -211,6 +256,47 @@ export default function ChatsPage() {
     const id = setInterval(tick, 60_000);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    const query = usernameQuery.trim();
+    if (query.length < 2) {
+      setUserSearchResults([]);
+      setUserSearchError(null);
+      setUserSearchLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timeoutId = setTimeout(async () => {
+      setUserSearchLoading(true);
+      setUserSearchError(null);
+      try {
+        const users = await chatsApi.searchUsersByUsername(query);
+        if (!cancelled) {
+          setUserSearchResults(
+            users.filter(
+              (user) =>
+                user.id !== me?.id &&
+                !selectedUsers.some((selected) => selected.id === user.id),
+            ),
+          );
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setUserSearchError(
+            error.response?.data?.detail || "Не удалось найти пользователей",
+          );
+        }
+      } finally {
+        if (!cancelled) setUserSearchLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [usernameQuery, selectedUsers, me?.id]);
 
   /* ---------- 1. Загрузка чатов ---------- */
   useEffect(() => {
@@ -314,14 +400,14 @@ export default function ChatsPage() {
             );
           }
 
-          if (event === "chat:updated") {
+          if (event === "chat:update" && data.chat_id === chatId) {
             setChats((prev) =>
               prev.map((c) =>
                 c.id === data.chat_id
                   ? {
                       ...c,
                       title: data.title ?? c.title,
-                      avatar_url: data.avatar_url ?? c.avatar_url,
+                      avatar_url: data.avatar_url ?? getChatAvatarUrl(c),
                     }
                   : c,
               ),
@@ -391,13 +477,15 @@ export default function ChatsPage() {
       try {
         // 1) Загружаем файлы — каждый ответ в едином формате AttachmentResponse
         const uploaded = await Promise.all(
-          selectedFiles.map((file) => attachmentsApi.uploadAttachment(file)),
+          selectedFiles.map((file) =>
+            attachmentsApi.uploadAttachment(file, chatId),
+          ),
         );
 
-        // 2) Формируем тело запроса в формате MessageRequest:
-        //    attachments: [{ attachment_url, file_name, file_size, mime_type, text? }]
+        // 2) Формируем вложения в формате AttachmentRequest.
         const attachmentRequests = uploaded.map((a) => ({
-          attachment_url: a.attachment_url,
+          chat_id: chatId,
+          file_key: a.file_key,
           file_name: a.file_name,
           file_size: a.file_size,
           mime_type: a.mime_type,
@@ -441,9 +529,10 @@ export default function ChatsPage() {
         if (textareaRef.current) textareaRef.current.style.height = "auto";
       } catch (err) {
         setMessagesError(
-          err.response?.data?.detail ||
-            err.message ||
-            "Не удалось отправить сообщение",
+          translateApiError(
+            err,
+            err.message || "Не удалось отправить сообщение",
+          ),
         );
       } finally {
         sendingRef.current = false;
@@ -553,40 +642,105 @@ export default function ChatsPage() {
   /* ---------- 9. Создание чата ---------- */
   const handleCreateChat = async (e) => {
     e.preventDefault();
-    if (!newChat.title.trim()) return;
+    if (!newChat.title.trim() || !newChat.description.trim()) return;
+
+    setCreatingChat(true);
+    setCreateChatError(null);
+    let created;
     try {
-      const created = await chatsApi.createChat({
+      created = await chatsApi.createChat({
         title: newChat.title.trim(),
         description: newChat.description.trim(),
-        invited_user_ids: newChat.invited
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean),
+        invited_user_ids: selectedUsers.map((user) => user.id),
+        avatar_urls: [],
       });
-      setChats((prev) =>
-        prev.some((c) => c.id === created.id) ? prev : [created, ...prev],
-      );
-      setCreateOpen(false);
-      setNewChat({ title: "", description: "", invited: "" });
-      navigate(`/chats/${created.id}`);
     } catch (err) {
-      alert(err.response?.data?.detail || "Не удалось создать чат");
+      const detail = err.response?.data?.detail;
+      setCreateChatError(
+        typeof detail === "string"
+          ? detail
+          : Array.isArray(detail)
+            ? detail.map((item) => item.msg).filter(Boolean).join("; ")
+            : err.message || "Не удалось создать группу",
+      );
+      setCreatingChat(false);
+      return;
+    }
+
+    setChats((prev) =>
+      prev.some((c) => c.id === created.id) ? prev : [created, ...prev],
+    );
+    setCreateOpen(false);
+    setNewChat({ title: "", description: "" });
+    setUsernameQuery("");
+    setUserSearchResults([]);
+    setSelectedUsers([]);
+    setSelectedAvatarFiles([]);
+    setCreatingChat(false);
+
+    if (selectedAvatarFiles.length) {
+      setUploadingChatAvatars(true);
+      setChatAvatarError(null);
+      try {
+        await chatsApi.uploadChatAvatars(created.id, selectedAvatarFiles);
+        const updatedChats = await chatsApi.listChats();
+        setChats(updatedChats);
+      } catch (error) {
+        let errorMessage =
+          error.message || "Группа создана, но аватары загрузить не удалось";
+        try {
+          setChats(await chatsApi.listChats());
+        } catch (refreshError) {
+          errorMessage += `; не удалось обновить группу: ${refreshError.message}`;
+        }
+        setChatAvatarError(errorMessage);
+      } finally {
+        setUploadingChatAvatars(false);
+      }
+    }
+    navigate(`/chats/${created.id}`);
+  };
+
+  const handleChatAvatarSelection = async (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!files.length || !chatId) return;
+
+    setChatAvatarError(null);
+    setUploadingChatAvatars(true);
+    try {
+      await chatsApi.uploadChatAvatars(chatId, files);
+      const updatedChats = await chatsApi.listChats();
+      setChats(updatedChats);
+    } catch (error) {
+      let errorMessage =
+        error.message || "Не удалось загрузить аватары группы";
+      try {
+        setChats(await chatsApi.listChats());
+      } catch (refreshError) {
+        errorMessage += `; не удалось обновить группу: ${refreshError.message}`;
+      }
+      const detail = error.response?.data?.detail;
+      setChatAvatarError(
+        typeof detail === "string"
+          ? detail
+          : errorMessage,
+      );
+    } finally {
+      setUploadingChatAvatars(false);
     }
   };
 
   /* ---------- 10. Реакции (с toggle и user_reaction) ---------- */
   const handleReaction = useCallback(async (messageId, emoji) => {
     try {
-      // Ожидаем от API: { updated_reactions_count, user_reaction }
       const res = await messagesApi.addReaction(messageId, emoji);
       setMessages((prev) =>
         prev.map((m) => {
           if (m.id !== messageId) return m;
 
           const wasMine = m.user_reaction === emoji;
-          const nextUserReaction = wasMine
-            ? null
-            : res.user_reaction ?? emoji;
+          const nextUserReaction = wasMine ? null : emoji;
 
           return {
             ...m,
@@ -597,11 +751,7 @@ export default function ChatsPage() {
         }),
       );
     } catch (err) {
-      if (err.response?.status === 404) {
-        console.info("[Reactions] Эндпоинт ещё не готов на бэкенде");
-      } else {
-        console.error("Не удалось поставить реакцию:", err);
-      }
+      console.error("Не удалось поставить реакцию:", err);
     }
   }, []);
 
@@ -669,8 +819,15 @@ export default function ChatsPage() {
           <button
             className="chats-new"
             type="button"
-            title="Новый чат"
-            onClick={() => setCreateOpen(true)}
+            title="Создать группу"
+            onClick={() => {
+              setCreateChatError(null);
+              setUsernameQuery("");
+              setUserSearchResults([]);
+              setSelectedUsers([]);
+              setSelectedAvatarFiles([]);
+              setCreateOpen(true);
+            }}
           >
             +
           </button>
@@ -691,22 +848,7 @@ export default function ChatsPage() {
                 className={`chat-item ${chatId === c.id ? "chat-item--active" : ""}`}
                 onClick={() => navigate(`/chats/${c.id}`)}
               >
-                <div className="chat-item__avatar">
-                  {c.avatar_url ? (
-                    <img
-                      src={c.avatar_url}
-                      alt=""
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                        borderRadius: "50%",
-                      }}
-                    />
-                  ) : (
-                    (c.title?.[0] || "?").toUpperCase()
-                  )}
-                </div>
+                <ChatAvatar chat={c} />
                 <div className="chat-item__body">
                   <div className="chat-item__top">
                     <span className="chat-item__title">{c.title}</span>
@@ -756,22 +898,7 @@ export default function ChatsPage() {
               >
                 ←
               </button>
-              <div className="chat-item__avatar chat-item__avatar--sm">
-                {activeChat.avatar_url ? (
-                  <img
-                    src={activeChat.avatar_url}
-                    alt=""
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      borderRadius: "50%",
-                    }}
-                  />
-                ) : (
-                  (activeChat.title?.[0] || "?").toUpperCase()
-                )}
-              </div>
+              <ChatAvatar chat={activeChat} compact />
               <div>
                 <div className="chat-view__title">{activeChat.title}</div>
                 <div className="chat-view__status">
@@ -780,7 +907,27 @@ export default function ChatsPage() {
                     : activeChat.description || "был(а) недавно"}
                 </div>
               </div>
+              <label
+                className="chat-avatar-upload"
+                title="Добавить аватарки группы"
+              >
+                {uploadingChatAvatars ? "Загрузка…" : "Добавить фото"}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  multiple
+                  hidden
+                  disabled={uploadingChatAvatars}
+                  onChange={handleChatAvatarSelection}
+                />
+              </label>
             </header>
+
+            {chatAvatarError && (
+              <p className="chat-create-error" role="alert">
+                {chatAvatarError}
+              </p>
+            )}
 
             <div className="chat-view__messages">
               {messagesLoading && (
@@ -915,20 +1062,26 @@ export default function ChatsPage() {
         </>
       )}
 
-      {/* ---------- Модалка создания чата ---------- */}
+      {/* ---------- Модалка создания группы ---------- */}
       {createOpen && (
-        <div className="modal-backdrop" onClick={() => setCreateOpen(false)}>
+        <div
+          className="modal-backdrop"
+          onClick={() => {
+            if (!creatingChat) setCreateOpen(false);
+          }}
+        >
           <form
-            className="modal"
+            className="modal chat-create-modal"
             onClick={(e) => e.stopPropagation()}
             onSubmit={handleCreateChat}
           >
-            <h3>Новый чат</h3>
+            <h3>Новая группа</h3>
             <label className="vk-field">
               <span className="vk-field__label">Название</span>
               <input
                 type="text"
                 value={newChat.title}
+                maxLength={50}
                 onChange={(e) =>
                   setNewChat((p) => ({ ...p, title: e.target.value }))
                 }
@@ -940,30 +1093,123 @@ export default function ChatsPage() {
               <input
                 type="text"
                 value={newChat.description}
+                maxLength={150}
                 onChange={(e) =>
                   setNewChat((p) => ({ ...p, description: e.target.value }))
                 }
+                required
               />
             </label>
             <label className="vk-field">
-              <span className="vk-field__label">
-                ID приглашённых (через запятую)
-              </span>
+              <span className="vk-field__label">Добавить участников по username</span>
               <input
-                type="text"
-                value={newChat.invited}
-                onChange={(e) =>
-                  setNewChat((p) => ({ ...p, invited: e.target.value }))
-                }
+                type="search"
+                value={usernameQuery}
+                onChange={(event) => setUsernameQuery(event.target.value)}
+                placeholder="Введите минимум 2 символа"
+                autoComplete="off"
               />
             </label>
+            {userSearchLoading && (
+              <p className="chat-create-hint">Поиск пользователей…</p>
+            )}
+            {userSearchError && (
+              <p className="chat-create-error" role="alert">
+                {userSearchError}
+              </p>
+            )}
+            {userSearchResults.length > 0 && (
+              <ul className="chat-user-search-results">
+                {userSearchResults.map((user) => (
+                  <li key={user.id}>
+                    <span>@{user.username}</span>
+                    <button
+                      type="button"
+                      className="vk-btn"
+                      onClick={() => {
+                        setSelectedUsers((current) => [...current, user]);
+                        setUsernameQuery("");
+                        setUserSearchResults([]);
+                      }}
+                    >
+                      Добавить
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {selectedUsers.length > 0 && (
+              <ul className="chat-selected-users">
+                {selectedUsers.map((user) => (
+                  <li key={user.id}>
+                    <span>@{user.username}</span>
+                    <button
+                      type="button"
+                      aria-label={`Убрать @${user.username}`}
+                      onClick={() =>
+                        setSelectedUsers((current) =>
+                          current.filter((selected) => selected.id !== user.id),
+                        )
+                      }
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <label className="vk-field">
+              <span className="vk-field__label">Аватарки группы</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                multiple
+                onChange={(event) => {
+                  const files = Array.from(event.target.files || []);
+                  event.target.value = "";
+                  if (files.length) {
+                    setSelectedAvatarFiles((current) => [...current, ...files]);
+                  }
+                }}
+              />
+            </label>
+            {selectedAvatarFiles.length > 0 && (
+              <ul className="chat-selected-avatars">
+                {selectedAvatarFiles.map((file, index) => (
+                  <li key={`${file.name}-${file.lastModified}-${index}`}>
+                    <span>{file.name}</span>
+                    <button
+                      type="button"
+                      aria-label={`Убрать ${file.name}`}
+                      onClick={() =>
+                        setSelectedAvatarFiles((current) =>
+                          current.filter((_, fileIndex) => fileIndex !== index),
+                        )
+                      }
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {createChatError && (
+              <p className="chat-create-error" role="alert">
+                {createChatError}
+              </p>
+            )}
             <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-              <button type="submit" className="vk-btn vk-btn--primary">
-                Создать
+              <button
+                type="submit"
+                className="vk-btn vk-btn--primary"
+                disabled={creatingChat || uploadingChatAvatars}
+              >
+                {creatingChat ? "Создание…" : "Создать группу"}
               </button>
               <button
                 type="button"
                 className="vk-btn"
+                disabled={creatingChat}
                 onClick={() => setCreateOpen(false)}
               >
                 Отмена

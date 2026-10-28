@@ -27,7 +27,7 @@ class MessageResponse(BaseModel):
     user_id: uuid.UUID
     text: str | None = None
     user_reaction: str | None = None
-    attachments: list[AttachmentRequest] = Field(default_factory=list)
+    attachments: list[AttachmentResponse] = Field(default_factory=list)
     reactions_count: dict[str, int] = Field(default_factory=dict)
     created_at: datetime
 

@@ -11,6 +11,7 @@ export default function RegisterForm({ onSuccess, demo = false }) {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
 
   const update = (field) => (e) => {
     const value =
@@ -21,6 +22,7 @@ export default function RegisterForm({ onSuccess, demo = false }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+    setSuccess(null);
 
     // Валидация на клиенте
     if (!form.username.trim()) {
@@ -43,8 +45,16 @@ export default function RegisterForm({ onSuccess, demo = false }) {
       setError("Введите пароль");
       return;
     }
-    if (form.password.length < 6) {
-      setError("Пароль — минимум 6 символов");
+    if (form.password.length < 8) {
+      setError("Пароль должен содержать минимум 8 символов");
+      return;
+    }
+    if (
+      !/[a-z]/.test(form.password) ||
+      !/[A-Z]/.test(form.password) ||
+      !/\d/.test(form.password)
+    ) {
+      setError("Добавьте в пароль строчную и заглавную буквы и цифру");
       return;
     }
     if (form.password !== form.passwordRepeat) {
@@ -85,6 +95,13 @@ export default function RegisterForm({ onSuccess, demo = false }) {
           email: form.email.trim(),
           password: form.password,
         });
+      }
+
+      if (!data.access_token) {
+        setSuccess(
+          "Аккаунт создан. Перейдите по ссылке из письма, чтобы подтвердить email и войти.",
+        );
+        return;
       }
 
       onSuccess?.(data);
@@ -145,9 +162,10 @@ export default function RegisterForm({ onSuccess, demo = false }) {
             value={form.password}
             onChange={update("password")}
             required
-            minLength={6}
+            minLength={8}
+            maxLength={250}
             autoComplete="new-password"
-            placeholder="Минимум 6 символов"
+            placeholder="Минимум 8 символов, заглавная и строчная буквы, цифра"
           />
         </label>
 
@@ -160,7 +178,7 @@ export default function RegisterForm({ onSuccess, demo = false }) {
             value={form.passwordRepeat}
             onChange={update("passwordRepeat")}
             required
-            minLength={6}
+            minLength={8}
             autoComplete="new-password"
           />
         </label>
@@ -178,6 +196,7 @@ export default function RegisterForm({ onSuccess, demo = false }) {
         </label>
 
         {error && <p className="register-card__error">{error}</p>}
+        {success && <p role="status">{success}</p>}
 
         <div className="register-card__actions">
           <button type="submit" className="submit-btn" disabled={loading}>

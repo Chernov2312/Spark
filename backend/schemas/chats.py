@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,6 +15,7 @@ class ChatAddUserRequest(BaseModel):
 
 
 class NewChatRequest(BaseModel):
+    id: Optional[uuid.UUID]
     title: str = Field(..., max_length=50)
     description: str = Field(..., max_length=150)
     invited_user_ids: List[str]

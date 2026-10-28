@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { users } from "../api";
+import { getAvatarImageError } from "../api/imageUpload";
 
 const TABS = [
   { id: "info", label: "Информация" },
@@ -99,12 +100,9 @@ export default function ProfilePage({ demo = false }) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      setError("Можно загрузить только изображение");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Файл слишком большой (максимум 5 МБ)");
+    const fileError = getAvatarImageError(file);
+    if (fileError) {
+      setError(fileError);
       return;
     }
 
@@ -113,18 +111,15 @@ export default function ProfilePage({ demo = false }) {
     setUploadingAvatar(true);
 
     try {
-      const { avatar_url, avatar_url_raw } = await users.uploadAvatar(file);
+      const { avatar_url, avatar_file_key } = await users.uploadAvatar(file);
       setMe((prev) => ({
         ...prev,
         avatar_url,
-        avatar_url_raw,
+        avatar_file_key,
       }));
       setSuccess("Аватар обновлён");
     } catch (err) {
-      const detail = err.response?.data?.detail;
-      setError(
-        typeof detail === "string" ? detail : "Не удалось загрузить аватар",
-      );
+      setError(err.message || "Не удалось загрузить аватар");
     } finally {
       setUploadingAvatar(false);
       e.target.value = "";
@@ -136,29 +131,31 @@ export default function ProfilePage({ demo = false }) {
       return;
     }
 
-    const urlToSend = me.avatar_url_raw || me.avatar_url;
-    console.log("[DELETE] Отправляю:", urlToSend);
+    const fileKey = me.avatar_file_key;
+    if (!fileKey) {
+      setError("Не удалось определить ключ аватара для удаления");
+      return;
+    }
 
     setError(null);
     setSuccess(null);
     setUploadingAvatar(true);
 
     try {
-      const res = await users.deleteAvatar(urlToSend);
-      console.log("[DELETE] Успех:", res);
+      await users.deleteAvatar(fileKey);
 
       setMe((prev) => ({
         ...prev,
         avatar_url: null,
-        avatar_url_raw: null,
+        avatar_file_key: null,
       }));
       setSuccess("Аватар удалён");
     } catch (err) {
-      console.error("[DELETE] Ошибка:", err);
       const detail = err.response?.data?.detail;
       let msg = "Не удалось удалить аватар";
       if (typeof detail === "string") msg = detail;
       else if (Array.isArray(detail) && detail[0]?.msg) msg = detail[0].msg;
+      else if (err.message) msg = err.message;
       setError(msg);
     } finally {
       setUploadingAvatar(false);

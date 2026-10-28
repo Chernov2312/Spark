@@ -5,7 +5,7 @@ export async function listMessages(chatId, { limit = 50, before } = {}) {
   const params = { limit };
   if (before) params.before = before;
   const { data } = await api.get(`/chats/${chatId}/messages`, { params });
-  return Array.isArray(data) ? data : data.messages || [];
+  return data.messages;
 }
 
 // POST /chats/{id}/messages

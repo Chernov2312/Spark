@@ -73,46 +73,24 @@ export function isAuthenticated() {
 
 /* GET /auth/verification/{token} */
 export async function verifyEmailToken(token) {
-  const url = `${import.meta.env.VITE_API_URL || "http://localhost:8080"}/api/v1/auth/verification/${token}`;
-
-  const response = await fetch(url, {
-    method: "GET",
-    credentials: "include",
-    redirect: "manual",
-    headers: {
-      Accept: "application/json",
-    },
-  });
-
-  const authorization =
-    response.headers.get("authorization") ||
-    response.headers.get("Authorization");
-
-  const accessToken =
-    authorization && authorization.toLowerCase().startsWith("bearer ")
-      ? authorization.slice(7).trim()
-      : null;
-
-  if (!accessToken) {
-    const text = await response.text();
-    throw new Error(
-      text || "Не удалось подтвердить почту. Попробуйте ещё раз.",
-    );
-  }
-
-  setToken(accessToken);
-  const payload = JSON.parse(
-    atob(accessToken.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")),
+  const { data } = await api.get(
+    `/auth/verification/${encodeURIComponent(token)}`,
   );
 
+  if (!data.access_token) {
+    throw new Error("Ответ сервера не содержит access token");
+  }
+
+  setToken(data.access_token);
   localStorage.setItem(
     "user",
     JSON.stringify({
-      id: payload?.sub ?? null,
+      id: data.id,
+      username: data.username,
+      email: data.email,
     }),
   );
+  emitAuthChange();
 
-  window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
-
-  return { access_token: accessToken };
+  return data;
 }

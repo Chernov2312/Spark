@@ -1,10 +1,8 @@
-import { getToken } from "./client";
+import { API_BASE, getToken } from "./client";
 
 const WS_ENABLED = import.meta.env.VITE_WS_ENABLED !== "false";
 
-// VITE_API_URL = "https://sparkwork.dpdns.org/api/v1" в проде
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
-const WS_BASE = API_URL
+const WS_BASE = API_BASE
   .replace(/\/api\/v1\/?$/, "")
   .replace(/^http/, "ws"); // http->ws, https->wss
 

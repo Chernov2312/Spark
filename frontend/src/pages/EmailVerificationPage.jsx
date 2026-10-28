@@ -3,27 +3,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import { auth } from "../api";
 import "../styles/email-verification.css";
 
-function decodeJwtPayload(token) {
-  try {
-    const [, payloadPart] = token.split(".");
-    if (!payloadPart) return null;
-    const normalized = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(
-      Math.ceil(normalized.length / 4) * 4,
-      "=",
-    );
-    const json = decodeURIComponent(
-      atob(padded)
-        .split("")
-        .map((char) => `%${`00${char.charCodeAt(0).toString(16)}`.slice(-2)}`)
-        .join(""),
-    );
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-}
-
 export default function EmailVerificationPage() {
   const { token } = useParams();
   const navigate = useNavigate();
@@ -35,20 +14,8 @@ export default function EmailVerificationPage() {
 
     async function verify() {
       try {
-        const data = await auth.verifyEmailToken(token);
+        await auth.verifyEmailToken(token);
         if (cancelled) return;
-
-        if (data?.access_token) {
-          const payload = decodeJwtPayload(data.access_token);
-          if (payload?.sub) {
-            localStorage.setItem(
-              "user",
-              JSON.stringify({
-                id: payload.sub,
-              }),
-            );
-          }
-        }
 
         setStatus("success");
         setTimeout(() => navigate("/chats", { replace: true }), 1200);
@@ -56,7 +23,9 @@ export default function EmailVerificationPage() {
         if (cancelled) return;
         setStatus("error");
         setError(
-          err?.message || "Не удалось подтвердить почту. Попробуйте ещё раз.",
+          err.response?.data?.detail ||
+            err.message ||
+            "Не удалось подтвердить почту. Попробуйте ещё раз.",
         );
       }
     }

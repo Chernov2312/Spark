@@ -22,5 +22,10 @@ class UserUpdate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AvatarRequest(BaseModel):
+    file_key: str
+    content_type: str
+
+
 class Avatar(BaseModel):
     url: str = Field(..., max_length=512)

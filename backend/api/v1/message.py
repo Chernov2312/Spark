@@ -17,6 +17,7 @@ from db.database import get_session
 from db.models import Message, MessageReaction
 from schemas.message import (
     AttachmentRequest,
+    AttachmentResponse,
     MessageHistory,
     MessageInternalDTO,
     MessageRequest,
@@ -60,7 +61,10 @@ async def get_messages_history(
             for file_key in msg.attachments:
                 url = await s3.get_temporary_url(file_key.attachment_url)
                 signed_attachments.append(
-                    AttachmentRequest(
+                    AttachmentResponse(
+                        id=file_key.id,
+                        chat_id=chat_id,
+                        user_id=user_id,
                         attachment_url=url,
                         file_name=file_key.file_name,
                         file_size=file_key.file_size,
@@ -102,11 +106,6 @@ async def create_message(
     message_id: uuid.UUID = uuid.uuid4()
     chat_key_hash = f"chat:{chat_id}"
     chat_set_key = "chats"
-    clean = []
-    for i in message.attachments:
-        i.attachment_url = s3.get_file_key(i.attachment_url)
-        clean.append(i)
-    message.attachments = clean.copy()
     message_redis = MessageInternalDTO(
         text=message.text,
         attachments=message.attachments,

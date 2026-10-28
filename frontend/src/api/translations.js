@@ -94,6 +94,7 @@ export function translateApiError(err, fallback = "Что-то пошло не �
       text: "Текст",
       avatar: "Аватар",
       image: "Изображение",
+      data_req: "Данные вложения",
     };
     const fieldRu = fieldNames[field] || field;
     const msg = translateOne(first.msg);
