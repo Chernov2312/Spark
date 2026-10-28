@@ -32,6 +32,7 @@ class MessageReactionDao(BaseDao[MessageReaction]):
         )
         res = await session.execute(query)
         return res.scalars().all()
+
     @classmethod
     async def update_user_reactions(
         cls,
@@ -63,6 +64,6 @@ class MessageReactionDao(BaseDao[MessageReaction]):
                 emoji=bindparam("emoji"),
             )
         )
-        
+
         conn = await session.connection()
         await conn.execute(stmt, users_data)

@@ -7,7 +7,9 @@ from config.app import settings
 from core.security import create_access_token
 
 
-def send_verification_email(user_email: str, user_id: str, base_url: str):
+def send_verification_email(
+    user_email: str, user_username: str, user_id: str, base_url: str
+):
     msg = EmailMessage()
     msg["Subject"] = "Подтверждение регистрации в Мессенджере"
     msg["From"] = email.FROM_EMAIL
@@ -15,15 +17,15 @@ def send_verification_email(user_email: str, user_id: str, base_url: str):
 
     verification_token_expires = timedelta(days=settings.VERIFICATION_TOKEN_EXPIRE_DAYS)
     verification_token = create_access_token(
-        data={"sub": user_email, "user_id": user_id},
+        data={"sub": user_email, "username": user_username, "user_id": user_id},
         expires_delta=verification_token_expires,
     )
 
-    verification_link = base_url + "api/v1/auth/verification/" + verification_token
+    verification_link = f"{base_url}/auth/verification/{verification_token}"
     html_content = f"""
     <html>
       <body>
-        <h2>Добро пожаловать!</h2>
+        <h2>Добро пожаловать {user_username}!</h2>
         <p>Для подтверждения почты перейдите по ссылке:</p>
         <a href="{verification_link}">Подтвердить email</a>
         <p>Или скопируйте её: {verification_link}</p>

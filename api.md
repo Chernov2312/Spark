@@ -78,7 +78,7 @@
     "id": "u1111111-eeee-aaaa-bbbb-cccccccccccc",
     "username": "new_john_doe",
     "email": "new_email@example.com",
-    "avatar_url": "https://storage.cdn.com/avatars/user_1.jpg",
+    "avatar_urls": ["https://storage.cdn.com/avatars/user_1.jpg"],
     "updated_at": "2026-10-03T09:25:00Z"
   }
   ```
@@ -119,7 +119,8 @@
         "title": "Команда разработки",
         "description": "Рабочий чат проекта",
         "owner_id": "u1111111-eeee-aaaa-bbbb-cccccccccccc",
-        "avatar_url": "https://storage.cdn.com/avatars/chat_1.jpg",
+        "avatar_urls": ["https://storage.cdn.com/avatars/chat_1.jpg"
+        ],
         "created_at": "2026-10-01T12:00:00Z",
       }
     ]
@@ -146,6 +147,8 @@
       "title": ,
       "description": ,
       "users_count": ,
+      "avatar_urls": ["https://storage.cdn.com/avatars/chat_1.jpg"
+        ]
   }
 ```
 
@@ -166,6 +169,8 @@
     "title": "Новое название чата",
     "description": "Обновленное описание группы",
     "author_id": "u1111111-eeee-aaaa-bbbb-cccccccccccc",
+    "avatar_urls": ["https://storage.cdn.com/avatars/chat_1.jpg"
+        ]
     "updated_at": "2026-10-03T09:25:00Z"
   }
   ```
@@ -176,7 +181,7 @@
 - **Ответ (200 OK):**
   ```json
   {
-    "chat_avatar_url": "https://storage.cdn.com/avatars/new_chat_avatar.jpg"
+    "chat_avatar_urls": "https://storage.cdn.com/avatars/new_chat_avatar.jpg"
   }
   ```
 

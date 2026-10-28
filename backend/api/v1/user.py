@@ -64,7 +64,7 @@ async def update_me(
         id=user.id,
         username=user.username,
         email=user.email,
-        avatar_url=avatar_urls,
+        avatar_urls=avatar_urls,
         created_at=user.created_at,
     )
 

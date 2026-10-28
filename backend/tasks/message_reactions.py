@@ -75,25 +75,14 @@ async def clear_redis() -> list[MessageReactionData]:
         return res
 
 
-from celery.utils.log import get_task_logger
-
-# Создаем логгер Celery
-logger = get_task_logger(__name__)
-
 async def sync_reactions_task_core():
     try:
-        # Переносим while на самый верх, чтобы открывать сессию на каждую итерацию
         while True:
             async with async_session_maker() as session:
                 reactions = await clear_redis()
-                
-                # Вместо print используем logger.info или logger.warning
-                logger.warning(f"Извлечено из Redis: {reactions}")
-                
+
                 if not reactions:
                     break
-                
-                # Каждая пачка выполняется в своей изолированной транзакции
                 async with session.begin():
                     await MessageDao.update_msg_reactions_by_ids(
                         session=session,
@@ -103,11 +92,9 @@ async def sync_reactions_task_core():
                         session=session,
                         message_reactions=reactions,
                     )
-                
-                logger.warning("Успешно синхронизировано с базой данных!")
-                
-    except Exception as e:
-        logger.error(f"Ошибка в процессе синхронизации: {e}", exc_info=True)
+    except Exception:
+        pass
+
 
 @celery_app.task(ignore_result=True)
 def add_reactions_in_db():

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from db.dao.basedao import BaseDao
-from db.models import User
+from db.models import Chat, User
 
 
 class UserDao(BaseDao[User]):
@@ -27,7 +27,11 @@ class UserDao(BaseDao[User]):
         session: AsyncSession,
         target_id: str,
     ) -> User | None:
-        query = select(User).where(User.id == target_id).options(selectinload(User.chats))
+        query = (
+            select(User)
+            .where(User.id == target_id)
+            .options(selectinload(User.chats).selectinload(Chat.avatars))
+        )
         res = await session.execute(query)
         return res.scalar_one_or_none()
 

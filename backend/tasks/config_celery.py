@@ -1,7 +1,9 @@
+from contextlib import asynccontextmanager
+
 import redis.asyncio as aioredis
 from celery import Celery
 from celery.schedules import crontab
-from contextlib import asynccontextmanager
+
 from config import settings
 
 celery_app = Celery("tasks", broker=settings.redis_url)
@@ -19,6 +21,8 @@ celery_app.conf.update(
         "tasks.scheduler",
     ],
 )
+
+
 @asynccontextmanager
 async def get_redis():
     client = aioredis.Redis.from_url(settings.redis_url, decode_responses=True)

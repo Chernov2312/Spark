@@ -31,7 +31,3 @@ class UserResponse(BaseModel):
     email: EmailStr = Field(..., max_length=100)
     access_token: str = Field(..., max_length=250)
     token_type: str = "bearer"
-
-
-class GetVerificationResponse(BaseModel):
-    status: bool = Field(...)

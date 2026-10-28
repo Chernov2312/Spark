@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -9,7 +10,8 @@ class UserRead(BaseModel):
     username: str = Field(..., max_length=50)
     email: EmailStr = Field(..., max_length=100)
 
-    avatar_url: list[str] = []
+    avatar_urls: list[str] = Field(default_factory=list)
+    created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
 

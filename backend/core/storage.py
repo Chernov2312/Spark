@@ -71,6 +71,9 @@ class S3Storage:
             )
             return url
 
+    def get_file_key(self, url: str) -> str:
+        return "/".join(url.split("?")[0].split("/")[-3:])
+
     async def delete_file_by_key(self, file_key: str) -> bool:
         try:
             async with self.session.client("s3", **self.config) as s3:

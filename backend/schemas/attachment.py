@@ -1,6 +1,12 @@
 import uuid
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class AvatarRequest(BaseModel):
+    user_id: Optional[uuid.UUID]
+    chat_id: Optional[uuid.UUID]
 
 
 class AttachmentRequest(BaseModel):
@@ -22,4 +28,5 @@ class AttachmentResponse(BaseModel):
     file_size: int
     mime_type: str
     text: str | None = None
-    user_id: uuid.UUID
+    user_id: Optional[uuid.UUID]
+    chat_id: Optional[uuid.UUID]

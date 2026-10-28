@@ -5,7 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags
 from core.security import get_id_current_user
-from db.dao.chat_dao import ChatDao
+from core.storage import S3Storage
+from db.dao.chat_dao import Chat, ChatDao
 from db.dao.user_dao import UserDao
 from db.database import get_session
 from schemas.chats import (
@@ -26,8 +27,17 @@ async def get_chats(
     session: AsyncSession = Depends(get_session),
     user_id: uuid.UUID = Depends(get_id_current_user),
 ) -> GetChatsResponse:
+    s3 = S3Storage()
     user = await UserDao.get_user_with_chats(session=session, target_id=user_id)
-    return GetChatsResponse(chats=user.chats)
+    chats = []
+    for chat in user.chats:
+        chat_model = ChatResponse.model_validate(chat)
+        avatars = []
+        for avatar in chat.avatars:
+            avatars.append(await s3.get_temporary_url(avatar.attachment_url))
+        chat_model.avatar_urls = avatars.copy()
+        chats.append(chat_model)
+    return GetChatsResponse(chats=chats)
 
 
 @chat_router.post("/chats", status_code=status.HTTP_201_CREATED)
@@ -36,12 +46,9 @@ async def post_new_chat(
     session: AsyncSession = Depends(get_session),
     user_id: uuid.UUID = Depends(get_id_current_user),
 ) -> NewChatResponse:
+    s3 = S3Storage
     owner_id = user_id
-    users_in_chat_ids = [user_id]
-    for id in data.invited_user_ids:
-        users_in_chat_ids.append(id)
-
-    new_chat = await ChatDao.add(
+    new_chat: Chat = await ChatDao.add(
         session,
         {"owner_id": owner_id, "title": data.title, "description": data.description},
     )
@@ -49,19 +56,18 @@ async def post_new_chat(
     await ChatDao.add_users_to_chat(
         session=session,
         chat_id=new_chat.id,
-        new_user_ids=users_in_chat_ids,
+        new_user_ids=data.invited_user_ids + [user_id],
     )
-
-    await session.commit()
-    await session.flush()
-
+    avatars = [(await s3.get_temporary_url(i.avatar_url)) for i in data.avatar_urls]
     return NewChatResponse(
         id=str(new_chat.id),
         owner_id=str(new_chat.owner_id),
         title=new_chat.title,
         description=new_chat.description,
-        users_count=len(users_in_chat_ids),
-        invited_user_ids=[str(uid) for uid in users_in_chat_ids],
+        avater_urls=avatars,
+        users_count=len(data.invited_user_ids) + 1,
+        invited_user_ids=data.invited_user_ids + [user_id],
+        created_at=new_chat.created_at,
     )
 
 
@@ -90,8 +96,6 @@ async def update_chat(
     if data.title is not None:
         cur_chat.title = data.title
 
-    await session.commit()
-    await session.refresh(cur_chat)
     return cur_chat
 
 

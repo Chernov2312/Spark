@@ -110,13 +110,13 @@ class MessageDao(BaseDao[Message]):
             )
             .values(
                 reactions_count=bindparam("reactions_count"),
-            ).execution_options(synchronize_session=None)
+            )
+            .execution_options(synchronize_session=None)
         )
-        formatted_reactions = [
-            {**r, "b_id": r["id"]} for r in message_reactions
-        ]
-        
+        formatted_reactions = [{**r, "b_id": r["id"]} for r in message_reactions]
+
         await session.execute(stmt, formatted_reactions)
+
     @classmethod
     async def bulk_insert_messages(
         cls,

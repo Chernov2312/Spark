@@ -3,7 +3,6 @@ from typing import Annotated
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from jwt import InvalidTokenError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +25,6 @@ auth_router = APIRouter(prefix="/api/v1/auth", tags=[RouteTags.AUTH])
 @auth_router.get("/verification/{verification_token}")
 async def verification(
     verification_token: str,
-    request: Request,
     session: AsyncSession = Depends(get_session),
 ):
     credentials_exception = HTTPException(
@@ -41,9 +39,10 @@ async def verification(
             algorithms=[settings.ALGORITHM],
         )
         email = payload.get("sub")
+        username = payload.get("username")
         user_id = payload.get("user_id")
         exp = payload.get("exp")
-        if email is None or exp is None:
+        if email is None or exp is None or username is None:
             raise credentials_exception
         else:
             cur_user: User = await UserDao.get_by_username_or_email(
@@ -55,23 +54,22 @@ async def verification(
             await session.commit()
     except (InvalidTokenError, KeyError, TypeError):
         raise credentials_exception
-    base_url = settings.APP_BASE_URL
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user_id},
         expires_delta=access_token_expires,
     )
-    return RedirectResponse(
-        url=f"{base_url}api/v1/chats",
-        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
-        headers={"Authorization": f"Bearer {access_token}"},
+    return UserResponse(
+        id=user_id,
+        username=username,
+        email=email,
+        access_token=access_token,
     )
 
 
 @auth_router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(
     data: UserRegister,
-    request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> UserResponse:
 
@@ -90,8 +88,8 @@ async def register(
             "password": hashed_password,
         },
     )
-    base_url = str(request.base_url)
-    send_mail_task.delay(new_user.email, str(new_user.id), base_url)
+    base_url = settings.APP_BASE_URL
+    send_mail_task.delay(new_user.email, new_user.username, str(new_user.id), base_url)
     return UserResponse(
         id=new_user.id,
         username=new_user.username,

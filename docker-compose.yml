@@ -38,6 +38,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       REDIS_USER: ${REDIS_USER}
       REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD}
+      APP_BASE_URL: ${APP_BASE_URL}
     command: bash ./entrypoint.sh
     depends_on:
       postgres:
@@ -66,7 +67,7 @@ services:
       - /app/node_modules
     environment:
       CHOKIDAR_USEPOLLING: true
-      VITE_API_URL: ${VITE_API_URL}
+      VITE_API_URL: ${APP_BASE_URL}
     depends_on:
       backend:
         condition: service_healthy
@@ -120,6 +121,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       REDIS_USER: ${REDIS_USER}
       REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD}
+      APP_BASE_URL: ${APP_BASE_URL}
     command: celery -A tasks.config_celery.celery_app worker --loglevel=info --concurrency=1
   celery-beat:
     build: ./backend
@@ -144,6 +146,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       REDIS_USER: ${REDIS_USER}
       REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD}
+      APP_BASE_URL: ${APP_BASE_URL}
     command: celery -A tasks.config_celery.celery_app beat --loglevel=info
     depends_on:
       postgres:

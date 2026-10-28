@@ -4,6 +4,7 @@ from fastapi import status  # , UploadFile
 
 # from starlette.datastructures import Headers
 from httpx import AsyncClient
+from unit.schemas import GetMessageHistory
 
 # from core.storage import S3Storage
 # from db.dao.attachment_dao import AttachmentDao
@@ -21,6 +22,7 @@ async def test_get_chat_history(
         headers=headers,
     )
     assert res.status_code == status.HTTP_200_OK
+    assert GetMessageHistory.model_validate(res.json())
 
 
 # async def test_send_txt(

@@ -104,7 +104,7 @@ async def create_message(
     chat_set_key = "chats"
     clean = []
     for i in message.attachments:
-        i.attachment_url = "/".join(i.attachment_url.split("?")[0].split("/")[-3:])
+        i.attachment_url = s3.get_file_key(i.attachment_url)
         clean.append(i)
     message.attachments = clean.copy()
     message_redis = MessageInternalDTO(
