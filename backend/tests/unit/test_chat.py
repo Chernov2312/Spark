@@ -1,6 +1,6 @@
 from fastapi import status
 from httpx import AsyncClient
-from unit.schemas import ChatModel, GetChats
+from unit.schemas import ChatModel, GetChats, NewChatResponse
 
 from core.security import get_password_hash
 from db.dao.user_dao import UserDao
@@ -18,7 +18,7 @@ async def test_create_chat(api_client: AsyncClient, auth_token_and_user, id_seco
         },
     )
     assert res.status_code == status.HTTP_201_CREATED
-    assert ChatModel.model_validate(res.json())
+    assert NewChatResponse.model_validate(res.json())
 
 
 async def test_get_chats(api_client: AsyncClient, auth_token_and_user, chat_id):

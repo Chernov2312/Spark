@@ -15,7 +15,7 @@ class ChatAddUserRequest(BaseModel):
 
 
 class NewChatRequest(BaseModel):
-    id: Optional[uuid.UUID]
+    id: Optional[uuid.UUID] = None
     title: str = Field(..., max_length=50)
     description: str = Field(..., max_length=150)
     invited_user_ids: List[str]

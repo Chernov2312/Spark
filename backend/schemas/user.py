@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -29,3 +29,18 @@ class AvatarRequest(BaseModel):
 
 class Avatar(BaseModel):
     url: str = Field(..., max_length=512)
+
+
+class UserQuery(BaseModel):
+    username: str
+    limit: int = 20
+
+
+class UserResponse(BaseModel):
+    id: uuid.UUID
+    username: str
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserListResponse(BaseModel):
+    users: List[UserResponse] = Field(default_factory=[])

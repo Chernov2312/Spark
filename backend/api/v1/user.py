@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags, StorageClientMethod
@@ -9,7 +9,13 @@ from core.storage import S3Storage
 from db.dao.attachment_dao import AttachmentDao
 from db.dao.user_dao import UserDao
 from db.database import get_session
-from schemas.user import Avatar, UserRead, UserUpdate
+from schemas.user import (
+    Avatar,
+    UserListResponse,
+    UserQuery,
+    UserRead,
+    UserUpdate,
+)
 
 user_router = APIRouter(prefix="/api/v1/users", tags=[RouteTags.USERS])
 
@@ -90,3 +96,14 @@ async def delete_avatar(
             detail="Failed to delete image from storage",
         )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@user_router.get("/search")
+async def get_user_by_username(
+    user: UserQuery = Query(...),
+    user_id: uuid.UUID = Depends(get_id_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> UserListResponse:
+    return UserListResponse(
+        users=await UserDao.find_by_username(session=session, target=user.username),
+    )

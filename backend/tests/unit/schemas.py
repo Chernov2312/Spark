@@ -42,6 +42,16 @@ class ChatModel(BaseModel):
     created_at: datetime
 
 
+class NewChatResponse(BaseModel):
+    id: uuid.UUID
+    title: str
+    description: Optional[str]
+    owner_id: uuid.UUID
+    users_count: int
+    avatar_urls: List[str] = Field(default_factory=list)
+    created_at: datetime
+
+
 class GetChats(BaseModel):
     chats: List[ChatModel]
 

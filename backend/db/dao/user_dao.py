@@ -1,8 +1,9 @@
+import re
 import uuid
 
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only, selectinload
 
 from db.dao.basedao import BaseDao
 from db.models import Chat, User
@@ -20,6 +21,22 @@ class UserDao(BaseDao[User]):
         query = select(User).where(or_(User.username == target, User.email == target))
         res = await session.execute(query)
         return res.scalar_one_or_none()
+
+    @classmethod
+    async def find_by_username(
+        cls,
+        session: AsyncSession,
+        target: str,
+    ) -> list[User] | None:
+        safe = re.escape(target)
+        reg = rf"^{safe}"
+        query = (
+            select(User)
+            .where(User.username.op("~*")(reg))
+            .options(load_only(User.id, User.username))
+        )
+        res = await session.execute(query)
+        return res.scalars().all()
 
     @classmethod
     async def get_user_with_chats(
