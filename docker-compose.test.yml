@@ -4,10 +4,6 @@ services:
     image: redis:7-alpine
     env_file:
       - .env.test
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_USER: ${REDIS_USER}
-      REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD}
     ports:
       - "6380:6379"
     volumes:
@@ -42,10 +38,6 @@ services:
     image: postgres:15-alpine
     env_file:
       - .env.test
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5433:5432"
     healthcheck:
@@ -60,26 +52,6 @@ services:
       dockerfile: Dockerfile.test
     env_file:
       - .env.test
-    environment:
-      POSTGRES_HOST: postgres-test
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      SECRET_KEY: ${SECRET_KEY}
-      ALGORITHM: ${ALGORITHM}
-      FROM_EMAIL: ${FROM_EMAIL}
-      LOGIN_EMAIL: ${LOGIN_EMAIL}
-      PASSWORD_EMAIL: ${PASSWORD_EMAIL}
-      YANDEX_CLOUD_KEY_ID: ${YANDEX_CLOUD_KEY_ID}
-      YANDEX_CLOUD_KEY: ${YANDEX_CLOUD_KEY}
-      BUCKET_NAME: ${BUCKET_NAME}
-      API_GEMINI: ${API_GEMINI}
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_USER: ${REDIS_USER}
-      REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD}
-      REDIS_PORT: 6379
-      REDIS_HOST: redis-test
     command: ["sleep", "infinity"]
     depends_on:
       postgres-test:

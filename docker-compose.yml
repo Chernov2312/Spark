@@ -3,42 +3,22 @@ services:
   postgres:
     image: postgres:15-alpine
     profiles: ["dev"]
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    env_file:
+      - .env
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       timeout: 5s
       retries: 5
 
   backend:
     build: ./backend
     profiles: ["dev"]
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      SECRET_KEY: ${SECRET_KEY}
-      ALGORITHM: ${ALGORITHM}
-      FROM_EMAIL: ${FROM_EMAIL}
-      LOGIN_EMAIL: ${LOGIN_EMAIL}
-      PASSWORD_EMAIL: ${PASSWORD_EMAIL}
-      YANDEX_CLOUD_KEY_ID: ${YANDEX_CLOUD_KEY_ID}
-      YANDEX_CLOUD_KEY: ${YANDEX_CLOUD_KEY}
-      BUCKET_NAME: ${BUCKET_NAME}
-      API_GEMINI: ${API_GEMINI}
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_USER: ${REDIS_USER}
-      REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD}
-      APP_BASE_URL: ${APP_BASE_URL}
+    env_file:
+      - .env
     command: bash ./entrypoint.sh
     depends_on:
       postgres:
@@ -74,10 +54,8 @@ services:
   redis:
     image: redis:latest
     profiles: ["dev"]
-    environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - REDIS_USER=${REDIS_USER}
-      - REDIS_USER_PASSWORD=${REDIS_USER_PASSWORD}
+    env_file:
+      - .env
     ports:
       - "127.0.0.1:6380:6379"
     volumes:
@@ -101,52 +79,18 @@ services:
   celery:
     build: ./backend
     profiles: ["dev"]
+    env_file:
+      - .env
     volumes:
       - ./backend:/app
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      SECRET_KEY: ${SECRET_KEY}
-      ALGORITHM: ${ALGORITHM}
-      FROM_EMAIL: ${FROM_EMAIL}
-      LOGIN_EMAIL: ${LOGIN_EMAIL}
-      PASSWORD_EMAIL: ${PASSWORD_EMAIL}
-      YANDEX_CLOUD_KEY_ID: ${YANDEX_CLOUD_KEY_ID}
-      YANDEX_CLOUD_KEY: ${YANDEX_CLOUD_KEY}
-      BUCKET_NAME: ${BUCKET_NAME}
-      API_GEMINI: ${API_GEMINI}
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_USER: ${REDIS_USER}
-      REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD}
-      APP_BASE_URL: ${APP_BASE_URL}
     command: celery -A tasks.config_celery.celery_app worker --loglevel=info --concurrency=1
   celery-beat:
     build: ./backend
     profiles: ["dev"]
+    env_file:
+      - .env
     volumes:
       - ./backend:/app
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      SECRET_KEY: ${SECRET_KEY}
-      ALGORITHM: ${ALGORITHM}
-      FROM_EMAIL: ${FROM_EMAIL}
-      LOGIN_EMAIL: ${LOGIN_EMAIL}
-      PASSWORD_EMAIL: ${PASSWORD_EMAIL}
-      YANDEX_CLOUD_KEY_ID: ${YANDEX_CLOUD_KEY_ID}
-      YANDEX_CLOUD_KEY: ${YANDEX_CLOUD_KEY}
-      BUCKET_NAME: ${BUCKET_NAME}
-      API_GEMINI: ${API_GEMINI}
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_USER: ${REDIS_USER}
-      REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD}
-      APP_BASE_URL: ${APP_BASE_URL}
     command: celery -A tasks.config_celery.celery_app beat --loglevel=info
     depends_on:
       postgres:
@@ -174,8 +118,8 @@ services:
   cloudflare-tunnel:
     image: cloudflare/cloudflared:latest
     profiles: ["prod"]
-    environment:
-      TOKEN_TUNNEL: ${TOKEN_TUNNEL}
+    env_file:
+      - .env
     restart: always
     command: tunnel --no-autoupdate run --token ${TOKEN_TUNNEL}
     depends_on:
