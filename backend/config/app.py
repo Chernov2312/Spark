@@ -1,16 +1,9 @@
-import os
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-ENV_MODE = os.getenv("ENV_MODE", "development")
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(
-            "./../.env",
-            ".env.test" if ENV_MODE == "test" else ".env",
-        ),
+        env_file=("../.env", ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )

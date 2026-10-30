@@ -1,0 +1,31 @@
+name: deploy
+on:
+  push:
+    branches:
+      - master
+  workflow_run:
+    workflows: 
+      - "lint_test"
+      - "python_test"
+    types:
+      - completed
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'master' }}
+    steps:
+      - name: Remote deploy script
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{secrets.HOST}}
+          username: ${{secrets.HOST_USERNAME}}
+          key: ${{secrets.SSH_PRIVITE_KEY}}
+          script: |
+            if [ ! -d  "Spark"]; then
+              git@github.com:Chernov2312/Spark.git .
+            fi
+            cd Spark
+            git pull origin main
+            echo "${{secrets.ENV_SECRET}}" > .env
+            docker compose --profile prod up --build
+
