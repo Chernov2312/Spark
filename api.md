@@ -450,7 +450,7 @@ Content-Type: image/webp
 Подключение к чату:
 
 ```text
-ws://localhost:8000/{chat_id}/ws?token=<access_token>
+ws://localhost:8001/{chat_id}/ws?token=<access_token>
 ```
 
 Токен передается в query-параметре `token`. После подключения сервер подписывается на Redis-канал чата. Все события должны быть JSON-объектами с полями `event` и `data`; неподдерживаемый тип события приводит к ошибке валидации.

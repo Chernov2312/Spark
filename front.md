@@ -26,7 +26,7 @@ npm install
 npm run dev
 ```
 
-Открывается http://localhost:5173
+Открывается http://localhost:5174
 
 ### Переменные окружения
 
@@ -42,7 +42,7 @@ VITE_API_URL=http://localhost:8080/api/v1
 
 | Команда           | Что делает                 |
 | ----------------- | -------------------------- |
-| `npm run dev`     | Dev-сервер Vite, порт 5173 |
+| `npm run dev`     | Dev-сервер Vite, порт 5174 |
 | `npm run build`   | Prod-сборка в `dist/`      |
 | `npm run preview` | Просмотр `dist/` локально  |
 
@@ -493,7 +493,7 @@ Grid сам считает высоту — работает с любой дл�
 | `Failed to resolve import` | Опечатка / файла нет                    | Проверить `dir src\...`                     |
 | `X is not defined`         | Забыл импорт                            | Добавить `import X`                         |
 | `Invalid hook call`        | Разные версии React и роутера           | `npm install react-router-dom@latest`       |
-| `CORS policy`              | Бэкенд не разрешил origin               | `CORSMiddleware` с `http://localhost:5173`  |
+| `CORS policy`              | Бэкенд не разрешил origin               | `CORSMiddleware` с `http://localhost:5174`  |
 | `ERR_CONNECTION_REFUSED`   | Бэкенд не запущен                       | `uvicorn app.main:app --reload --port 8080` |
 | Стили не применяются       | `index.css` не импортирован             | Проверить `main.jsx`                        |
 | `VITE_API_URL` undefined   | `.env` не в корне / Vite не перезапущен | `.env` → `frontend/`, перезапуск            |

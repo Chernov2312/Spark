@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0',
-    port: 5173,
+    port: 5174,
     strictPort: true,
     allowedHosts: true,
     hmr: {
@@ -13,11 +13,11 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://backend:8000',
+        target: 'http://backend:8001',
         changeOrigin: true,
       },
       '^/[0-9a-f-]+/ws': {
-        target: 'ws://backend:8000',
+        target: 'ws://backend:8001',
         ws: true,
         changeOrigin: true,
       }

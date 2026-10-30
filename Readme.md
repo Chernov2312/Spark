@@ -51,11 +51,11 @@ Spark — мессенджер с REST API и WebSocket-соединениями
 
 После запуска:
 
-- API: <http://localhost:8000>
-- Swagger UI: <http://localhost:8000/docs>
-- OpenAPI-схема: <http://localhost:8000/openapi.json>
-- Проверка состояния бэкенда: <http://localhost:8000/health>
-- Фронтенд: <http://localhost:5173>
+- API: <http://localhost:8001>
+- Swagger UI: <http://localhost:8001/docs>
+- OpenAPI-схема: <http://localhost:8001/openapi.json>
+- Проверка состояния бэкенда: <http://localhost:8001/health>
+- Фронтенд: <http://localhost:5174>
 - PostgreSQL: `localhost:5432`
 - Redis: `localhost:6380` (внутри Docker-сети — `redis:6379`)
 
@@ -81,7 +81,7 @@ docker compose --profile dev down
 
 Большинство маршрутов требуют JWT-токен. Подробные параметры и схемы запросов доступны в Swagger UI после запуска сервера.
 
-WebSocket для чата подключается по адресу `ws://localhost:8000/{chat_id}/ws?token=<JWT>`.
+WebSocket для чата подключается по адресу `ws://localhost:8001/{chat_id}/ws?token=<JWT>`.
 
 ## Разработка и тесты бэкенда
 

@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const configuredApiUrl =
-  import.meta.env.VITE_API_URL || "http://localhost:8000";
+  import.meta.env.VITE_API_URL || "http://localhost:8001";
 const normalizedApiUrl = configuredApiUrl.replace(/\/+$/, "");
 
 export const API_BASE = normalizedApiUrl.endsWith("/api/v1")

@@ -77,7 +77,7 @@ async def api_client(db_session, test_redis_client):
     app.dependency_overrides[get_session] = lambda: db_session
     async with AsyncClient(
         transport=ASGITransport(app=app),
-        base_url="http://localhost:8000/",
+        base_url="http://localhost:8001/",
     ) as client:
         yield client
     app.dependency_overrides.clear()

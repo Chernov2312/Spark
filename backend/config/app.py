@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     REDIS_USER_PASSWORD: str
     REDIS_PORT: int = 6379
 
-    APP_BASE_URL: str = "http://localhost:5173/"
+    APP_BASE_URL: str = "http://localhost:5174/"
 
     @property
     def db_url(self):
