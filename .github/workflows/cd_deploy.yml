@@ -14,6 +14,7 @@ jobs:
           host: ${{secrets.HOST}}
           username: ${{secrets.HOST_USERNAME}}
           key: ${{secrets.SSH_PRIVATE_KEY}}
+          key_path: ""
           script: |
             if [ ! -d  "Spark" ]; then
               git clone git@github.com:Chernov2312/Spark.git
