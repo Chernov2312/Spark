@@ -22,6 +22,8 @@ jobs:
             fi
             cd Spark
             git pull origin master
-            echo "${{secrets.ENV_SECRET}}" > .env
+            cat << 'EOF' > .env
+              ${{ secrets.ENV_SECRET }}
+            EOF
             docker compose --profile prod up --build
 
