@@ -2,7 +2,7 @@ name: spark
 services:
   postgres:
     image: postgres:15-alpine
-    profiles: ["dev"]
+    profiles: ["dev", "prod"]
     env_file:
       - .env
     ports:
@@ -16,7 +16,7 @@ services:
 
   backend:
     build: ./backend
-    profiles: ["dev"]
+    profiles: ["dev", "prod"]
     environment:
       POSTGRES_HOST: postgres
     env_file:
@@ -40,7 +40,7 @@ services:
 
   frontend:
     build: ./frontend
-    profiles: ["dev"]
+    profiles: ["dev", "prod"]
     container_name: frontend
     ports:
       - "5173:5173"
@@ -55,7 +55,7 @@ services:
         condition: service_healthy
   redis:
     image: redis:latest
-    profiles: ["dev"]
+    profiles: ["dev", "prod"]
     env_file:
       - .env
     ports:
@@ -80,7 +80,7 @@ services:
     restart: unless-stopped
   celery:
     build: ./backend
-    profiles: ["dev"]
+    profiles: ["dev", "prod"]
     environment:
       POSTGRES_HOST: postgres
     env_file:
@@ -90,7 +90,7 @@ services:
     command: celery -A tasks.config_celery.celery_app worker --loglevel=info --concurrency=1
   celery-beat:
     build: ./backend
-    profiles: ["dev"]
+    profiles: ["dev", "prod"]
     environment:
       POSTGRES_HOST: postgres
     env_file:
