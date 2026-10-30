@@ -17,6 +17,8 @@ services:
   backend:
     build: ./backend
     profiles: ["dev"]
+    environment:
+      POSTGRES_HOST: postgres
     env_file:
       - .env
     command: bash ./entrypoint.sh
@@ -79,6 +81,8 @@ services:
   celery:
     build: ./backend
     profiles: ["dev"]
+    environment:
+      POSTGRES_HOST: postgres
     env_file:
       - .env
     volumes:
@@ -87,6 +91,8 @@ services:
   celery-beat:
     build: ./backend
     profiles: ["dev"]
+    environment:
+      POSTGRES_HOST: postgres
     env_file:
       - .env
     volumes:
