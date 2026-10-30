@@ -23,12 +23,12 @@ services:
       echo 'appendonly yes' >> /usr/local/etc/redis/redis.conf &&
       echo 'appendfsync everysec' >> /usr/local/etc/redis/redis.conf &&
       echo 'daemonize no' >> /usr/local/etc/redis/redis.conf &&
-      echo 'user default on >${REDIS_PASSWORD} ~* &* +@all' > /usr/local/etc/redis/users.acl &&
-      echo 'user ${REDIS_USER} on >${REDIS_USER_PASSWORD} ~* &* +@all' >> /usr/local/etc/redis/users.acl &&
+      echo 'user default on >$${REDIS_PASSWORD} ~* &* +@all' > /usr/local/etc/redis/users.acl &&
+      echo 'user $${REDIS_USER} on >$${REDIS_USER_PASSWORD} ~* &* +@all' >> /usr/local/etc/redis/users.acl &&
       exec redis-server /usr/local/etc/redis/redis.conf --aclfile /usr/local/etc/redis/users.acl
       "
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      test: ["CMD", "redis-cli", "-a", "$$REDIS_PASSWORD", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -41,7 +41,7 @@ services:
     ports:
       - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
