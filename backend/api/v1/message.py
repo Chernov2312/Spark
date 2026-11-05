@@ -16,7 +16,6 @@ from db.dao.message_reactions_dao import MessageReactionDao
 from db.database import get_session
 from db.models import Message, MessageReaction
 from schemas.message import (
-    AttachmentRequest,
     AttachmentResponse,
     MessageHistory,
     MessageInternalDTO,
