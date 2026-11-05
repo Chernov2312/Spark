@@ -58,18 +58,18 @@ async def get_messages_history(
     for msg in db_messages:
         signed_attachments = []
         if msg.attachments:
-            for file_key in msg.attachments:
-                url = await s3.get_temporary_url(file_key.attachment_url)
+            for file in msg.attachments:
+                url = await s3.get_temporary_url(file.file_key)
                 signed_attachments.append(
                     AttachmentResponse(
-                        id=file_key.id,
+                        id=file.id,
                         chat_id=chat_id,
                         user_id=user_id,
-                        attachment_url=url,
-                        file_name=file_key.file_name,
-                        file_size=file_key.file_size,
-                        mime_type=file_key.mime_type,
-                        text=file_key.text,
+                        file_key=url,
+                        file_name=file.file_name,
+                        file_size=file.file_size,
+                        mime_type=file.mime_type,
+                        text=file.text,
                     ),
                 )
         if msg.id in message_reactions_ids:
@@ -144,15 +144,17 @@ async def create_message(
     await session.commit()
     signed_attachments = []
     if message_db.attachments:
-        for file_key in message_db.attachments:
-            url = await s3.get_temporary_url(file_key.attachment_url)
+        for file in message_db.attachments:
+            url = await s3.get_temporary_url(file.file_key)
             signed_attachments.append(
-                AttachmentRequest(
-                    attachment_url=url,
-                    file_name=file_key.file_name,
-                    file_size=file_key.file_size,
-                    mime_type=file_key.mime_type,
-                    text=file_key.text,
+                AttachmentResponse(
+                    id=file.id,
+                    chat_id=chat_id,
+                    file_key=url,
+                    file_name=file.file_name,
+                    file_size=file.file_size,
+                    mime_type=file.mime_type,
+                    text=file.text,
                 ),
             )
     valid = MessageResponse(

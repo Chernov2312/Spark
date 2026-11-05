@@ -118,7 +118,7 @@ export async function uploadAvatar(file) {
     );
   }
 
-  const url = data.attachment_url;
+  const url = data.file_key;
   if (!url) {
     throw new Error("Сервер не вернул ссылку на загруженный аватар");
   }

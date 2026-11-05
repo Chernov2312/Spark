@@ -8,7 +8,7 @@ from db.database import Base
 
 
 class Attachment(Base):
-    attachment_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    file_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),

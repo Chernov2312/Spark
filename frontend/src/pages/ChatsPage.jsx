@@ -110,19 +110,19 @@ function ChatAvatar({ chat, compact = false }) {
    ============================================================ */
 
 const AttachmentItem = React.memo(function AttachmentItem({ attachment }) {
-  const { id, attachment_url, file_name, mime_type } = attachment;
+  const { id, file_key, file_name, mime_type } = attachment;
   const isImage = typeof mime_type === "string" && mime_type.startsWith("image/");
   const fileName = file_name || "Вложение";
 
-  if (!attachment_url) return null;
+  if (!file_key) return null;
 
   return (
     <div className="msg__attachment" key={id}>
       {isImage && (
-        <a href={attachment_url} target="_blank" rel="noreferrer">
+        <a href={file_key} target="_blank" rel="noreferrer">
           <img
             className="msg__attachment-image"
-            src={attachment_url}
+            src={file_key}
             alt={fileName}
             loading="lazy"
           />
@@ -130,7 +130,7 @@ const AttachmentItem = React.memo(function AttachmentItem({ attachment }) {
       )}
       <a
         className="msg__attachment-link"
-        href={attachment_url}
+        href={file_key}
         target="_blank"
         rel="noreferrer"
         download={fileName}
@@ -176,7 +176,7 @@ const MessageItem = React.memo(function MessageItem({
         )}
 
         {attachments.map((a) => (
-          <AttachmentItem key={a.id || a.attachment_url} attachment={a} />
+          <AttachmentItem key={a.id || a.file_key} attachment={a} />
         ))}
 
         <span className="msg__time">{msgTime(m.created_at)}</span>

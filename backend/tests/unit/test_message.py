@@ -51,7 +51,7 @@ async def test_get_chat_history(
 #             session=db_session,
 #             data={
 #                 "user_id": id_first_user,
-#                 "attachment_url": url,
+#                 "file_key": url,
 #                 "mime_type": upload_file.content_type,
 #                 "file_name": upload_file.filename,
 #                 "file_size": upload_file.size,
@@ -64,7 +64,7 @@ async def test_get_chat_history(
 #         headers=headers,
 #         json={
 #             "text": "look",
-#             "attachments": [{"id": str(txt.id), "url": txt.attachment_url}],
+#             "attachments": [{"id": str(txt.id), "url": txt.file_key}],
 #         },
 #     )
 #     assert res.status_code == status.HTTP_201_CREATED
@@ -96,7 +96,7 @@ async def test_get_chat_history(
 #         url = await s3.upload_file(upload_file, id_first_user)
 #         image = await AttachmentDao.add(session=db_session, data={
 #             "user_id": id_first_user,
-#             "attachment_url": url,
+#             "file_key": url,
 #             "mime_type": upload_file.content_type,
 #             "file_name": upload_file.filename,
 #             "file_size": upload_file.size,
@@ -109,7 +109,7 @@ async def test_get_chat_history(
 #         json={
 # "text": "look",
 #  "attachments": [{"id": str(image.id),
-#  "url": image.attachment_url}]},
+#  "url": image.file_key}]},
 #     )
 #     assert res.status_code == status.HTTP_201_CREATED
 

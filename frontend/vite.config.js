@@ -10,6 +10,7 @@ export default defineConfig({
     allowedHosts: true,
     hmr: {
       protocol: 'wss',
+      clientPort: 5174,
     },
     proxy: {
       '/api': {

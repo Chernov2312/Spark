@@ -33,7 +33,7 @@ async def get_chats(
     for chat in user.chats:
         avatars = []
         for avatar in chat.avatars:
-            avatars.append(await s3.get_temporary_url(avatar.attachment_url))
+            avatars.append(await s3.get_temporary_url(avatar.file_key))
         chat_model = ChatResponse.model_validate(chat)
         chat_model.avatar_urls = avatars.copy()
         chats.append(chat_model)

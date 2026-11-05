@@ -31,6 +31,16 @@ async def get_temprorary_url_for_create_media(
             target_id=user_id,
             category=StorageCategory.USER_MESSAGE.value,
         )
+        temporary_url = await s3.get_temporary_url(
+            file_key=file_key,
+            client_method=StorageClientMethod.PUT.value,
+        )
+        return AvatarUrlResponse(
+            user_id=user_id,
+            temporary_url=temporary_url,
+            file_key=file_key,
+        )
+
     elif data.type == "user_avatar":
         if data.file_content not in ALLOWED_IMAGE_TYPES:
             raise HTTPException(
@@ -84,7 +94,7 @@ async def create_attachment(
     if data_req.chat_id is None:
         data = {
             "user_id": user_id,
-            "attachment_url": data_req.file_key,
+            "file_key": data_req.file_key,
             "is_avatar": data_req.is_avatar,
             "mime_type": data_req.mime_type,
             "file_name": data_req.file_name,
@@ -93,7 +103,7 @@ async def create_attachment(
     else:
         data = {
             "chat_id": data_req.chat_id,
-            "attachment_url": data_req.file_key,
+            "file_key": data_req.file_key,
             "is_avatar": data_req.is_avatar,
             "mime_type": data_req.mime_type,
             "file_name": data_req.file_name,
@@ -105,12 +115,12 @@ async def create_attachment(
         data=data,
     )
     temporary_url = await s3.get_temporary_url(
-        res.attachment_url,
+        res.file_key,
         client_method=StorageClientMethod.GET.value,
     )
     return AttachmentResponse(
         id=res.id,
-        attachment_url=temporary_url,
+        file_key=temporary_url,
         file_name=res.file_name,
         file_size=res.file_size,
         mime_type=res.mime_type,

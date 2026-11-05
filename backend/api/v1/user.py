@@ -31,7 +31,7 @@ async def get_me(
     for i in user.avatars:
         avatar_urls.append(
             await s3.get_temporary_url(
-                file_key=i.attachment_url,
+                file_key=i.file_key,
                 client_method=StorageClientMethod.GET.value,
             ),
         )
@@ -61,7 +61,7 @@ async def update_me(
     avatar_urls = []
     s3 = S3Storage()
     for i in user.avatars:
-        avatar_urls.append(await s3.get_temporary_url(i.attachment_url))
+        avatar_urls.append(await s3.get_temporary_url(i.file_key))
     await session.commit()
     return UserRead(
         id=user.id,

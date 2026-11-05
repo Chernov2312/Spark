@@ -18,7 +18,7 @@ class AttachmentDao(BaseDao[Attachment]):
         user_id: uuid.UUID,
     ) -> bool:
         query = delete(cls.model).where(
-            and_(cls.model.attachment_url == target_url, cls.model.user_id == user_id),
+            and_(cls.model.file_key == target_url, cls.model.user_id == user_id),
         )
         res = await session.execute(query)
         await session.flush()
