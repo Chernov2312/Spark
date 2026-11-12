@@ -1,73 +1,45 @@
 import asyncio
-import uuid
 
-from pydantic import ValidationError
-from redis.exceptions import ResponseError
 from tasks.config_celery import celery_app, get_redis
 
+from core.message_queue import history_version_key
 from db.dao.message_dao import MessageDao
 from db.database import async_session_maker
 from schemas.message import MessageInternalDTO
 
 
-async def clear_redis(chunk_size: int = 1000):
+async def sync_messages_task_core(chunk_size: int = 1000) -> None:
     async with get_redis() as redis:
-        temp_key = f"chats:sync:{uuid.uuid4().hex}"
-        try:
-            await redis.rename("chats", temp_key)
-        except ResponseError:
-            chats_ids = set()
-            temp_key = None
+        async for queue_key in redis.scan_iter(match="messages:queue:*"):
+            while True:
+                entries = await redis.xrange(
+                    queue_key,
+                    min="-",
+                    max="+",
+                    count=chunk_size,
+                )
+                if not entries:
+                    break
 
-        if temp_key:
-            chats_ids = await redis.smembers(temp_key)
-            await redis.delete(temp_key)
-        else:
-            return
+                messages = [
+                    MessageInternalDTO.model_validate_json(fields["payload"])
+                    for _, fields in entries
+                ]
+                async with async_session_maker() as session:
+                    async with session.begin():
+                        await MessageDao.bulk_insert_messages(
+                            session=session,
+                            data_messages=messages,
+                        )
+                        await MessageDao.attach_queued_attachments(
+                            session=session,
+                            data_messages=messages,
+                        )
 
-        chats_ids_list = list(chats_ids)
-        async with redis.pipeline(transaction=False) as pipe:
-            for chat_id in chats_ids_list:
-                pipe.hgetall(f"chat:{chat_id}")
-            chat_data: list[dict] = await pipe.execute()
-
-        async with redis.pipeline(transaction=False) as pipe:
-            for chat_id, hash_dict in zip(chats_ids_list, chat_data):
-                if hash_dict:
-                    pipe.hdel(f"chat:{chat_id}", *hash_dict.keys())
-            await pipe.execute()
-
-        current_chunk = []
-
-        for hash_dict in chat_data:
-            if not hash_dict:
-                continue
-            for json_string in hash_dict.values():
-                try:
-                    message_dto = MessageInternalDTO.model_validate_json(json_string)
-                    current_chunk.append(message_dto)
-                    if len(current_chunk) >= chunk_size:
-                        yield current_chunk
-                        current_chunk = []
-
-                except ValidationError:
-                    continue
-
-        if current_chunk:
-            yield current_chunk
-
-
-async def sync_messages_task_core():
-    async with async_session_maker() as session:
-        async for message_chunk in clear_redis(chunk_size=1000):
-            async with session.begin():
-                try:
-                    await MessageDao.bulk_insert_messages(
-                        session=session,
-                        data_messages=message_chunk,
-                    )
-                except Exception:
-                    continue
+                # A Redis entry is acknowledged only after the database commit.
+                await redis.xdel(queue_key, *(entry_id for entry_id, _ in entries))
+                if messages:
+                    await redis.incr(history_version_key(messages[0].chat_id))
 
 
 @celery_app.task(ignore_result=True)

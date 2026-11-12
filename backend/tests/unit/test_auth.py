@@ -1,5 +1,5 @@
 from fastapi import status
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 from unit.schemas import AuthResponse
 
 

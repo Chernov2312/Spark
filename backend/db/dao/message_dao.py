@@ -2,7 +2,8 @@ import uuid
 from datetime import datetime
 from typing import TypedDict
 
-from sqlalchemy import and_, bindparam, delete, insert, select, update
+from sqlalchemy import and_, bindparam, delete, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -98,11 +99,23 @@ class MessageDao(BaseDao[Message]):
         return res.rowcount > 0
 
     @classmethod
+    async def get_chat_id_by_message(
+        cls,
+        session: AsyncSession,
+        message_id: uuid.UUID,
+    ) -> uuid.UUID | None:
+        query = select(Message.chat_id).where(Message.id == message_id)
+        result = await session.execute(query)
+        return result.scalar_one_or_none()
+
+    @classmethod
     async def update_msg_reactions_by_ids(
         cls,
         session: AsyncSession,
         message_reactions: list[MessageReactionData],
     ):
+        if not message_reactions:
+            return
         stmt = (
             update(cls.model)
             .where(
@@ -123,4 +136,53 @@ class MessageDao(BaseDao[Message]):
         session: AsyncSession,
         data_messages,
     ):
-        await session.execute(insert(Message), data_messages)
+        if not data_messages:
+            return
+        values = [
+            {
+                "id": message.id,
+                "chat_id": message.chat_id,
+                "user_id": message.user_id,
+                "text": message.text,
+                "created_at": message.created_at,
+            }
+            for message in data_messages
+        ]
+        statement = (
+            pg_insert(Message)
+            .values(values)
+            .on_conflict_do_nothing(
+                index_elements=[Message.id],
+            )
+        )
+        await session.execute(statement)
+
+    @classmethod
+    async def attach_queued_attachments(
+        cls,
+        session: AsyncSession,
+        data_messages,
+    ) -> None:
+        from db.models import Attachment
+
+        for message in data_messages:
+            for attachment in message.attachments:
+                if attachment.id is None:
+                    raise ValueError("Queued attachment is missing its database ID")
+                statement = (
+                    update(Attachment)
+                    .where(
+                        Attachment.id == attachment.id,
+                        or_(
+                            Attachment.msg_id.is_(None),
+                            Attachment.msg_id == message.id,
+                        ),
+                    )
+                    .values(msg_id=message.id)
+                )
+                result = await session.execute(statement)
+                if result.rowcount != 1:
+                    raise ValueError(
+                        f"Queued attachment {attachment.id} no longer exists "
+                        "or is in use",
+                    )

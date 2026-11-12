@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+﻿import { Routes, Route, Navigate } from "react-router-dom";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import HomePage from "./pages/HomePage";
@@ -50,8 +50,6 @@ export default function App() {
             </PrivateRoute>
           }
         />
-
-        {/* Реальный профиль — только для авторизованных, работает через API */}
         <Route
           path="/profile"
           element={
@@ -60,16 +58,13 @@ export default function App() {
             </PrivateRoute>
           }
         />
-
-        {/* Демо-профиль — публичный, без API */}
         <Route path="/profile-preview" element={<ProfilePage demo />} />
-
         <Route
           path="/features"
           element={
             <SimplePage
               title="Возможности Spark"
-              text="Скоро здесь появится подробный список."
+              text="Личные и групповые чаты, обмен файлами и удобный поиск по переписке."
             />
           }
         />
@@ -78,17 +73,10 @@ export default function App() {
           element={
             <SimplePage
               title="Скачать Spark"
-              text="Ссылки на iOS, Android, Windows и macOS появятся позже."
+              text="Мобильные и настольные приложения появятся здесь. Пока Spark доступен в браузере."
             />
           }
         />
-        <Route
-          path="/faq"
-          element={
-            <SimplePage title="FAQ" text="Отвечаем на частые вопросы." />
-          }
-        />
-
         <Route path="*" element={<NotFound />} />
       </Routes>
       <Footer />

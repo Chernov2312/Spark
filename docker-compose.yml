@@ -36,6 +36,7 @@ services:
     ports:
       - "8001:8000"
     volumes:
+      - ./whisper-cache:/root/.cache/whisper
       - ./backend:/app
 
   frontend:
@@ -87,6 +88,7 @@ services:
       - .env
     volumes:
       - ./backend:/app
+      - ./whisper-cache:/root/.cache/whisper
     command: celery -A tasks.config_celery.celery_app worker --loglevel=info --concurrency=1
   celery-beat:
     build: ./backend

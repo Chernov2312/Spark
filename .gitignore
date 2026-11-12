@@ -134,4 +134,7 @@ ipython_config.py
 send_mail
 
 redisdata/
+whisper-cache/
 celery*
+frontend/playwright-report/
+frontend/test-results/

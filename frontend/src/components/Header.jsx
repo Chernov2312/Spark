@@ -1,4 +1,4 @@
-import { Link, NavLink, useNavigate } from "react-router-dom";
+﻿import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import SparkLogo from "./SparkLogo";
 import { auth, AUTH_EVENT } from "../api";
@@ -13,8 +13,8 @@ export default function Header() {
   useEffect(() => {
     const sync = () => setUser(auth.getCurrentUser());
 
-    window.addEventListener(AUTH_EVENT, sync); // своё событие
-    window.addEventListener("storage", sync); // другие вкладки
+    window.addEventListener(AUTH_EVENT, sync);
+    window.addEventListener("storage", sync);
 
     return () => {
       window.removeEventListener(AUTH_EVENT, sync);
@@ -37,27 +37,17 @@ export default function Header() {
           <span className="brand__text">Spark</span>
         </Link>
 
-        <nav className="site-header__nav">
+        <nav className="site-header__nav" aria-label="Основная навигация">
           {user ? (
             <>
-              <NavLink to="/chats" className={navCls}>
-                Чаты
-              </NavLink>
-              <NavLink to="/profile" className={navCls}>
-                Профиль
-              </NavLink>
+              <NavLink to="/chats" className={navCls}>Чаты</NavLink>
+              <NavLink to="/profile" className={navCls}>Профиль</NavLink>
             </>
           ) : (
             <>
-              <NavLink to="/features" className={navCls}>
-                Возможности
-              </NavLink>
-              <NavLink to="/download" className={navCls}>
-                Скачать
-              </NavLink>
-              <NavLink to="/faq" className={navCls}>
-                FAQ
-              </NavLink>
+              <NavLink to="/features" className={navCls}>Возможности</NavLink>
+              <NavLink to="/download" className={navCls}>Скачать</NavLink>
+              <NavLink to="/faq" className={navCls}>FAQ</NavLink>
             </>
           )}
         </nav>
@@ -65,29 +55,17 @@ export default function Header() {
         <div className="site-header__actions">
           {user ? (
             <>
-              <NavLink
-                to="/profile"
-                className="header-user"
-                title="Открыть профиль"
-              >
+              <NavLink to="/profile" className="header-user" title="Открыть профиль">
                 @{user.username}
               </NavLink>
-              <button
-                type="button"
-                className="register-btn"
-                onClick={handleLogout}
-              >
+              <button type="button" className="register-btn" onClick={handleLogout}>
                 Выйти
               </button>
             </>
           ) : (
             <>
-              <NavLink to="/login" className={navCls}>
-                Войти
-              </NavLink>
-              <Link to="/register" className="register-btn">
-                Начать бесплатно
-              </Link>
+              <NavLink to="/login" className={navCls}>Войти</NavLink>
+              <Link to="/register" className="register-btn">Начать бесплатно</Link>
             </>
           )}
         </div>

@@ -16,6 +16,7 @@ class S3Storage:
         s3_config = Config(
             signature_version="s3v4",
             region_name="ru-central1",
+            s3={"addressing_style": "path"},
         )
         self.config = {
             "aws_access_key_id": yandex_storage.YANDEX_CLOUD_KEY_ID,

@@ -1,19 +1,40 @@
 name: python_test
+
 on:
   push:
-    branches:
-      - main
-      - master
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
 
 jobs:
   python_test:
     runs-on: ubuntu-latest
-    environment: .env
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      POSTGRES_DB: spark_test
+      POSTGRES_USER: spark_test
+      POSTGRES_PASSWORD: spark_test_password
+      SECRET_KEY: test-only-secret-key
+      REDIS_PASSWORD: test-only-password
+      REDIS_USER: default
+      REDIS_USER_PASSWORD: test-only-password
+      API_GEMINI: test-only-gemini-key
+      YANDEX_CLOUD_KEY_ID: test-only-access-key
+      YANDEX_CLOUD_KEY: test-only-secret-key
+      BUCKET_NAME: spark-test-bucket
+      FROM_EMAIL: test@example.com
+      LOGIN_EMAIL: test@example.com
+      PASSWORD_EMAIL: test-only-password
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Free Disk Space (Ubuntu)
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install --yes ffmpeg
+
+      - name: Free disk space
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
           tool-cache: true
@@ -21,19 +42,27 @@ jobs:
           dotnet: true
           haskell: true
           large-packages: true
-      - name: Create env.test
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install test dependencies
         run: |
-          echo "${{secrets.ENV_TEST_SECRET}}" > .env.test
-          cat .env.test
-      - name: Run docker-compose
-        run: docker compose -f docker-compose.test.yml up --build -d
-      
-      - name: Api Test
-        run: docker compose -f docker-compose.test.yml exec -T backend-test pytest tests/unit
-      
-      - name: Integration Test
-        run: docker compose -f docker-compose.test.yml exec -T backend-test pytest tests/integration
-      
-      - name: Down
+          python -m pip install --upgrade pip
+          pip install -r requirements/test.txt
+
+      - name: Run unit and integration tests with coverage
+        run: >-
+          python -m pytest tests/unit tests/integration
+          --cov=api --cov=core --cov=config --cov=db --cov=schemas --cov=tasks --cov=main
+          --cov-report=term-missing --cov-report=xml:coverage.xml
+
+      - name: Upload coverage report
         if: always()
-        run: docker compose -f docker-compose.test.yml down -v
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-coverage
+          path: backend/coverage.xml
+          if-no-files-found: ignore

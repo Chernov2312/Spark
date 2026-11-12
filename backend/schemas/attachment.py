@@ -20,6 +20,7 @@ class AvatarUrlResponse(BaseModel):
 
 class AttachmentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    id: Optional[uuid.UUID] = None
     chat_id: Optional[uuid.UUID]
     is_avatar: bool = False
     file_key: str

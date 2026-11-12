@@ -1,15 +1,19 @@
 import uuid
+from datetime import datetime
 from typing import Any, Literal, Union
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class UserData(BaseModel):
     id: uuid.UUID
-    text: str
+    text: str | None = None
     chat_id: uuid.UUID
-    attachments: list[str] = []
+    attachments: list[dict[str, Any]] = Field(default_factory=list)
     user_id: uuid.UUID
+    created_at: datetime | None = None
+    user_reaction: str | None = None
+    reactions_count: dict[str, int] = Field(default_factory=dict)
 
 
 class ChatData(BaseModel):
@@ -20,14 +24,16 @@ class ChatData(BaseModel):
 
 class UserTyping(BaseModel):
     chat_id: uuid.UUID
-    user_id: uuid.UUID = None
+    user_id: uuid.UUID | None = None
 
 
 class AttachmentText(BaseModel):
+    chat_id: uuid.UUID
     message_id: uuid.UUID
-    user_id: uuid.UUID = None
+    attachment_id: uuid.UUID
+    user_id: uuid.UUID
     text: str = ""
-    audio_url: str
+    error: bool = False
 
 
 class WsEvent(BaseModel):

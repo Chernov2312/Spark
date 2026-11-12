@@ -48,6 +48,16 @@ async def post_new_chat(
 ) -> NewChatResponse:
     s3 = S3Storage
     owner_id = user_id
+    missing_user_ids = await ChatDao.get_missing_user_ids(
+        session=session,
+        user_ids=data.invited_user_ids,
+    )
+    if missing_user_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="One or more invited users do not exist",
+        )
+
     if data.id is None:
         new_chat: Chat = await ChatDao.add(
             session,
@@ -131,6 +141,15 @@ async def add_users_in_chat(
             detail="You are not allowed to edit this chat",
         )
     if data.user_ids is not None:
+        missing_user_ids = await ChatDao.get_missing_user_ids(
+            session=session,
+            user_ids=data.user_ids,
+        )
+        if missing_user_ids:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="One or more invited users do not exist",
+            )
         await ChatDao.add_users_to_chat(
             session=session,
             chat_id=chat_id,

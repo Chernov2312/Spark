@@ -6,11 +6,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from db.dao.basedao import BaseDao
-from db.models import Chat, user_chat
+from db.models import Chat, User, user_chat
 
 
 class ChatDao(BaseDao[Chat]):
     model = Chat
+
+    @classmethod
+    async def get_missing_user_ids(
+        cls,
+        session: AsyncSession,
+        user_ids: list[uuid.UUID],
+    ) -> set[uuid.UUID]:
+        requested_ids = set(user_ids)
+        if not requested_ids:
+            return set()
+        query = select(User.id).where(User.id.in_(requested_ids))
+        result = await session.execute(query)
+        existing_ids = set(result.scalars().all())
+        return requested_ids - existing_ids
 
     @classmethod
     async def add_users_to_chat(

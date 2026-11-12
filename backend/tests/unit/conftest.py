@@ -1,5 +1,10 @@
+import pytest
 import pytest_asyncio
+from main import app
+from testcontainers.ollama import OllamaContainer
 
+from api.v1.ai import get_ai_service
+from core.ai_service import AIService
 from db.dao.chat_dao import ChatDao
 from db.dao.message_dao import MessageDao
 
@@ -75,3 +80,30 @@ async def summarize_chat(db_session, id_first_user, id_second_user, chat_id):
 
     await db_session.flush()
     yield chat_id
+
+
+OLLAMA_MODEL = "qwen3:0.6b"
+
+
+class CpuOllamaContainer(OllamaContainer):
+    """Run Ollama without requesting a GPU in CPU-only CI environments."""
+
+    def _check_and_add_gpu_capabilities(self):
+        pass
+
+
+@pytest.fixture(scope="session")
+def ollama_container():
+    with CpuOllamaContainer(image="ollama/ollama:0.34.2") as container:
+        container.pull_model(OLLAMA_MODEL)
+        yield container
+
+
+@pytest_asyncio.fixture(scope="function", loop_scope="session")
+async def ai_api_client(api_client, ollama_container):
+    app.dependency_overrides[get_ai_service] = lambda: AIService(
+        model_name=OLLAMA_MODEL,
+        ollama_base_url=ollama_container.get_endpoint(),
+    )
+    yield api_client
+    app.dependency_overrides.pop(get_ai_service, None)

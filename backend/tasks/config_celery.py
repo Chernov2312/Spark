@@ -9,8 +9,12 @@ from config import settings
 celery_app = Celery("tasks", broker=settings.redis_url)
 celery_app.conf.beat_schedule = {
     "sync-reactions-every-1-minutes": {
-        "task": "tasks.scheduler.master_sync_scheduler",
+        "task": "tasks.message_reactions.add_reactions_in_db",
         "schedule": crontab(minute="*"),
+    },
+    "sync-messages-every-2-minutes": {
+        "task": "tasks.message.add_messages_in_db",
+        "schedule": crontab(minute="*/2"),
     },
 }
 celery_app.conf.update(
@@ -19,6 +23,7 @@ celery_app.conf.update(
         "tasks.message",
         "tasks.message_reactions",
         "tasks.scheduler",
+        "tasks.audio_convert",
     ],
 )
 

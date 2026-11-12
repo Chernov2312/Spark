@@ -18,7 +18,7 @@ class NewChatRequest(BaseModel):
     id: Optional[uuid.UUID] = None
     title: str = Field(..., max_length=50)
     description: str = Field(..., max_length=150)
-    invited_user_ids: List[str]
+    invited_user_ids: List[uuid.UUID]
     avatar_urls: List[str] = Field(default_factory=list)
 
 

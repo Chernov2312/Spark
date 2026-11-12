@@ -1,5 +1,5 @@
 from fastapi import status
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 from unit.schemas import UserProfile
 
 from core.security import get_password_hash

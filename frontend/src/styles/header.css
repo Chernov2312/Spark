@@ -102,17 +102,25 @@
 
 .register-btn {
   display: inline-block;
+  border: 0;
   background: var(--spark);
   color: #fff;
   text-decoration: none;
   padding: 9px 20px;
   font-weight: 600;
   font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
   border-radius: 9px;
   transition:
     background 0.15s,
     box-shadow 0.15s;
   box-shadow: 0 4px 16px rgba(124, 108, 255, 0.25);
+}
+
+.register-btn:focus-visible {
+  outline: 3px solid rgba(170, 157, 255, 0.6);
+  outline-offset: 3px;
 }
 
 .register-btn:hover {

@@ -110,14 +110,27 @@ function ChatAvatar({ chat, compact = false }) {
    ============================================================ */
 
 const AttachmentItem = React.memo(function AttachmentItem({ attachment }) {
-  const { id, file_key, file_name, mime_type } = attachment;
+  const {
+    id,
+    file_key,
+    file_name,
+    mime_type,
+    text: attachmentText,
+    transcription_error: transcriptionError,
+  } = attachment;
   const isImage = typeof mime_type === "string" && mime_type.startsWith("image/");
+  const isAudio =
+    (typeof mime_type === "string" && mime_type.startsWith("audio/")) ||
+    /\.(wav|mp3|ogg|opus|m4a|aac|flac|webm)$/i.test(file_name || "");
+  const isText =
+    (typeof mime_type === "string" && mime_type.startsWith("text/")) ||
+    /\.(txt|md|csv|json|xml|log)$/i.test(file_name || "");
   const fileName = file_name || "Вложение";
 
   if (!file_key) return null;
 
   return (
-    <div className="msg__attachment" key={id}>
+    <div className={`msg__attachment${isImage ? " msg__attachment--image" : ""}`} key={id}>
       {isImage && (
         <a href={file_key} target="_blank" rel="noreferrer">
           <img
@@ -128,15 +141,44 @@ const AttachmentItem = React.memo(function AttachmentItem({ attachment }) {
           />
         </a>
       )}
-      <a
-        className="msg__attachment-link"
-        href={file_key}
-        target="_blank"
-        rel="noreferrer"
-        download={fileName}
-      >
-        {fileName}
-      </a>
+      {isAudio && (
+        <audio className="msg__attachment-audio" controls preload="none" src={file_key}>
+          Ваш браузер не поддерживает аудио.
+        </audio>
+      )}
+      {(isText ||
+        isAudio ||
+        (attachmentText !== null && attachmentText !== undefined)) && (
+        <div className="msg__attachment-text">
+          <div className="msg__attachment-text-title">
+            {isAudio ? "Распознанный текст" : fileName}
+          </div>
+          {transcriptionError ? (
+            <div className="msg__attachment-text-content">
+              Не удалось распознать аудио.
+            </div>
+          ) : attachmentText !== null && attachmentText !== undefined ? (
+            <div className="msg__attachment-text-content">
+              {attachmentText || (isAudio ? "Речь не распознана." : "Файл пуст.")}
+            </div>
+          ) : (
+            <div className="msg__attachment-text-content msg__attachment-text-content--pending">
+              Текст появится после загрузки файла.
+            </div>
+          )}
+        </div>
+      )}
+      {!isImage && !isAudio && (
+        <a
+          className="msg__attachment-link"
+          href={file_key}
+          target="_blank"
+          rel="noreferrer"
+          download={fileName}
+        >
+          {fileName}
+        </a>
+      )}
     </div>
   );
 });
@@ -400,6 +442,27 @@ export default function ChatsPage() {
             );
           }
 
+          if (event === "attachment:text" && data.chat_id === chatId) {
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id !== data.message_id
+                  ? message
+                  : {
+                      ...message,
+                      attachments: (message.attachments || []).map((attachment) =>
+                        attachment.id === data.attachment_id
+                          ? {
+                              ...attachment,
+                              text: data.text,
+                              transcription_error: data.error,
+                            }
+                          : attachment,
+                      ),
+                    },
+              ),
+            );
+          }
+
           if (event === "chat:update" && data.chat_id === chatId) {
             setChats((prev) =>
               prev.map((c) =>
@@ -477,13 +540,21 @@ export default function ChatsPage() {
       try {
         // 1) Загружаем файлы — каждый ответ в едином формате AttachmentResponse
         const uploaded = await Promise.all(
-          selectedFiles.map((file) =>
-            attachmentsApi.uploadAttachment(file, chatId),
-          ),
+          selectedFiles.map(async (file) => {
+            const isText =
+              file.type.startsWith("text/") ||
+              /\.(txt|md|csv|json|xml|log)$/i.test(file.name);
+            const fileText = isText ? await file.text() : null;
+            return {
+              ...(await attachmentsApi.uploadAttachment(file, chatId)),
+              text: fileText,
+            };
+          }),
         );
 
         // 2) Формируем вложения в формате AttachmentRequest.
         const attachmentRequests = uploaded.map((a) => ({
+          id: a.id,
           chat_id: chatId,
           file_key: a.file_key,
           file_name: a.file_name,
