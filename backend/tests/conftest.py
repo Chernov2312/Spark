@@ -131,7 +131,7 @@ async def test_redis_client(redis_container):
         decode_responses=True,
     )
     await app.state.redis.flushdb()
-    yield
+    yield app.state.redis
     await app.state.redis.aclose()
 
 

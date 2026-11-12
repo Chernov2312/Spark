@@ -1,4 +1,4 @@
-import json
+import uuid
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -7,18 +7,9 @@ import pytest
 from tasks import audio_convert, message_reactions, scheduler
 
 from core import send_email
+from db.dao.attachment_dao import AttachmentDao
+from db.dao.message_dao import MessageDao
 from schemas.websockets import WsEvent
-
-
-class AsyncContext:
-    def __init__(self, value=None):
-        self.value = value
-
-    async def __aenter__(self):
-        return self.value
-
-    async def __aexit__(self, *args):
-        return False
 
 
 def redis_context(redis):
@@ -29,59 +20,14 @@ def redis_context(redis):
     return get_redis
 
 
-class FakeRedisPipeline:
-    def __init__(self, redis):
-        self.redis = redis
-        self.commands = []
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *args):
-        return False
-
-    def __getattr__(self, name):
-        def queue(*args, **kwargs):
-            self.commands.append((name, args, kwargs))
-            return self
-
-        return queue
-
-    async def execute(self):
-        results = []
-        for command, args, _ in self.commands:
-            if command == "hgetall":
-                results.append(self.redis.hashes.get(args[0], {}).copy())
-            elif command == "smembers":
-                results.append(self.redis.sets.get(args[0], set()).copy())
-            elif command == "get":
-                results.append(self.redis.values.get(args[0]))
-            else:
-                results.append(None)
-        return results
-
-
-class FakeRedis:
-    def __init__(self):
-        self.hashes = {}
-        self.sets = {}
-        self.values = {}
-        self.dirty = []
-
-    async def spop(self, key, count):
-        result, self.dirty = self.dirty[:count], self.dirty[count:]
-        return result
-
-    def pipeline(self, transaction=False):
-        return FakeRedisPipeline(self)
-
-
 def test_send_verification_email_builds_and_sends_html_message(monkeypatch):
     smtp = MagicMock()
     smtp_context = MagicMock()
     smtp_context.__enter__.return_value = smtp
     monkeypatch.setattr(
-        send_email.smtplib, "SMTP_SSL", MagicMock(return_value=smtp_context)
+        send_email.smtplib,
+        "SMTP_SSL",
+        MagicMock(return_value=smtp_context),
     )
 
     send_email.send_verification_email(
@@ -101,25 +47,45 @@ def test_send_verification_email_swallows_smtp_errors(monkeypatch):
     smtp_context = MagicMock()
     smtp_context.__enter__.side_effect = OSError("smtp unavailable")
     monkeypatch.setattr(
-        send_email.smtplib, "SMTP_SSL", MagicMock(return_value=smtp_context)
+        send_email.smtplib, "SMTP_SSL", MagicMock(return_value=smtp_context),
     )
 
     send_email.send_verification_email(
-        "person@example.com", "person", "id", "https://example.com"
+        "person@example.com",
+        "person",
+        "id",
+        "https://example.com",
     )
 
 
 @pytest.mark.parametrize("fail_upload", [False, True])
 async def test_audio_task_persists_transcript_and_publishes_result(
-    monkeypatch, fail_upload
+    monkeypatch,
+    db_session,
+    test_redis_client,
+    id_first_user,
+    chat_id,
+    fail_upload,
 ):
-    user_id, chat_id, message_id, attachment_id = [
-        "6a0af6f3-6280-4ab7-8507-29dbd2c2e1b1",
-        "5e4a94a8-b79b-4af9-a712-85f3f722a7e5",
-        "4bc8b10b-460c-435a-b42e-9a5b2f72c86c",
-        "b6b4bb68-3639-4e29-9fe8-991b3711ddf0",
-    ]
-    redis = SimpleNamespace(publish=AsyncMock())
+    user_id = str(id_first_user)
+    chat_id = str(chat_id)
+    message_id = str(uuid.uuid4())
+    attachment = await AttachmentDao.add(
+        db_session,
+        {
+            "chat_id": uuid.UUID(chat_id),
+            "file_key": "user_message/audio.ogg",
+            "file_name": "audio.ogg",
+            "file_size": 4,
+            "mime_type": "audio/ogg",
+        },
+    )
+    await db_session.flush()
+    attachment_id = str(attachment.id)
+    redis = test_redis_client
+    pubsub = redis.pubsub()
+    channel_name = f"chat:{chat_id}"
+    await pubsub.subscribe(channel_name)
     storage = SimpleNamespace(load_file=AsyncMock())
     if fail_upload:
         storage.load_file.side_effect = OSError("object unavailable")
@@ -131,82 +97,136 @@ async def test_audio_task_persists_transcript_and_publishes_result(
         MagicMock(return_value="spoken words"),
     )
 
-    transaction = AsyncContext()
-    session = SimpleNamespace(begin=MagicMock(return_value=transaction))
-
     @asynccontextmanager
     async def session_context():
-        yield session
+        yield db_session
 
+    @asynccontextmanager
+    async def existing_transaction():
+        yield db_session
+
+    monkeypatch.setattr(db_session, "begin", lambda: existing_transaction())
     monkeypatch.setattr(audio_convert, "async_session_maker", session_context)
-    update = AsyncMock()
-    monkeypatch.setattr(audio_convert.AttachmentDao, "update_by_id", update)
 
     await audio_convert.send_text(
-        user_id, chat_id, message_id, attachment_id, "audio/key"
+        user_id, chat_id, message_id, attachment_id, "audio/key",
     )
 
-    saved = update.await_args.args[2]
-    assert saved == {"text": "" if fail_upload else "spoken words"}
-    channel, payload = redis.publish.await_args.args
-    event = WsEvent.model_validate_json(payload)
-    assert channel == f"chat:{chat_id}"
+    await db_session.refresh(attachment)
+    assert attachment.text == ("" if fail_upload else "spoken words")
+    published = None
+    for _ in range(5):
+        published = await pubsub.get_message(
+            ignore_subscribe_messages=True,
+            timeout=1,
+        )
+        if published and published["type"] == "message":
+            break
+    event = WsEvent.model_validate_json(published["data"])
+    assert published["channel"] == channel_name
     assert event.event == "attachment:text"
     assert event.data.error is fail_upload
+    await pubsub.aclose()
 
 
-async def test_clear_redis_maps_reactions_and_drops_zero_counts(monkeypatch):
-    redis = FakeRedis()
-    message_id, user_id = "message-1", "user-1"
-    redis.dirty = [message_id]
-    redis.hashes[f"message:reactions_count:{message_id}"] = {"🔥": "2", "🫥": "0"}
-    redis.sets[f"message:users:{message_id}"] = {user_id}
-    redis.values[f"message:user_reaction:{message_id}:{user_id}"] = "🔥"
+async def test_clear_redis_maps_reactions_and_drops_zero_counts(
+    monkeypatch,
+    test_redis_client,
+):
+    redis = test_redis_client
+    message_id, user_id = str(uuid.uuid4()), str(uuid.uuid4())
+    await redis.sadd("message:reactions:dirty_set", message_id)
+    await redis.hset(
+        f"message:reactions_count:{message_id}", mapping={"🔥": "2", "🫥": "0"},
+    )
+    await redis.sadd(f"message:users:{message_id}", user_id)
+    await redis.set(f"message:user_reaction:{message_id}:{user_id}", "🔥")
     monkeypatch.setattr(message_reactions, "get_redis", redis_context(redis))
 
     result = await message_reactions.clear_redis()
 
     assert result == [
-        {"id": message_id, "users": {user_id: "🔥"}, "reactions_count": {"🔥": 2}},
+        {
+            "id": uuid.UUID(message_id),
+            "users": {user_id: "🔥"},
+            "reactions_count": {"🔥": 2},
+        },
     ]
     assert await message_reactions.clear_redis() == []
 
 
-async def test_reaction_sync_persists_batches_until_queue_is_empty(monkeypatch):
-    changes = [{"id": "message-1", "users": {}, "reactions_count": {"🔥": 1}}]
-    clear = AsyncMock(side_effect=[changes, []])
-    update_counts = AsyncMock()
-    update_users = AsyncMock()
-    monkeypatch.setattr(message_reactions, "clear_redis", clear)
-    monkeypatch.setattr(
-        message_reactions.MessageDao, "update_msg_reactions_by_ids", update_counts
+async def test_reaction_sync_persists_batches_until_queue_is_empty(
+    monkeypatch,
+    db_session,
+    test_redis_client,
+    chat_id,
+    id_first_user,
+):
+    redis = test_redis_client
+    message = await MessageDao.add(
+        db_session,
+        {"chat_id": chat_id, "user_id": id_first_user, "text": "react to me"},
     )
-    monkeypatch.setattr(
-        message_reactions.MessageReactionDao, "update_user_reactions", update_users
-    )
+    await db_session.flush()
+    await redis.sadd("message:reactions:dirty_set", str(message.id))
+    await redis.hset(f"message:reactions_count:{message.id}", mapping={"🔥": "1"})
+
+    monkeypatch.setattr(message_reactions, "get_redis", redis_context(redis))
+
+    @asynccontextmanager
+    async def session_context():
+        yield db_session
+
+    @asynccontextmanager
+    async def existing_transaction():
+        yield db_session
+
+    monkeypatch.setattr(db_session, "begin", lambda: existing_transaction())
     monkeypatch.setattr(
         message_reactions,
         "async_session_maker",
-        MagicMock(
-            return_value=AsyncContext(
-                SimpleNamespace(begin=MagicMock(return_value=AsyncContext()))
-            )
-        ),
+        session_context,
     )
 
     await message_reactions.sync_reactions_task_core()
 
-    assert clear.await_count == 2
-    update_counts.assert_awaited_once()
-    update_users.assert_awaited_once()
+    await db_session.refresh(message)
+    assert message.reactions_count == {"🔥": 1}
+    assert await redis.scard("message:reactions:dirty_set") == 0
 
 
-async def test_reaction_sync_swallows_database_errors(monkeypatch):
+async def test_reaction_sync_swallows_database_errors(
+    monkeypatch,
+    db_session,
+    test_redis_client,
+):
+    redis = test_redis_client
+    message_id = str(uuid.uuid4())
+    await redis.sadd("message:reactions:dirty_set", message_id)
+    await redis.hset(f"message:reactions_count:{message_id}", mapping={"🔥": "1"})
+    monkeypatch.setattr(message_reactions, "get_redis", redis_context(redis))
+
+    async def fail_update(*args, **kwargs):
+        raise RuntimeError("database unavailable")
+
     monkeypatch.setattr(
-        message_reactions, "clear_redis", AsyncMock(side_effect=RuntimeError("db failed"))
+        message_reactions.MessageDao,
+        "update_msg_reactions_by_ids",
+        fail_update,
+    )
+
+    @asynccontextmanager
+    async def session_context():
+        yield db_session
+
+    monkeypatch.setattr(
+        message_reactions,
+        "async_session_maker",
+        session_context,
     )
 
     await message_reactions.sync_reactions_task_core()
+    assert await redis.scard("message:reactions:dirty_set") == 0
 
 
 def test_scheduler_chains_message_and_reaction_sync(monkeypatch):

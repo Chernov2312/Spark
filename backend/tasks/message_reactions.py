@@ -67,7 +67,7 @@ async def clear_redis() -> list[MessageReactionData]:
         for msg_id, data in result_data.items():
             res.append(
                 {
-                    "id": msg_id,
+                    "id": uuid.UUID(str(msg_id)),
                     "users": data["users"],
                     "reactions_count": data["reactions"],
                 },

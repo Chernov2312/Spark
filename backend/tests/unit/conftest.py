@@ -9,6 +9,12 @@ from db.dao.chat_dao import ChatDao
 from db.dao.message_dao import MessageDao
 
 
+@pytest_asyncio.fixture(autouse=True, scope="function", loop_scope="session")
+async def testcontainer_services(db_engine, test_redis_client):
+    """Run every unit test with the shared PostgreSQL and Redis test containers."""
+    yield
+
+
 @pytest_asyncio.fixture(scope="function", loop_scope="session")
 async def chat_id(db_session, id_first_user, id_second_user):
     users_in_chat_ids = [id_first_user, id_second_user]

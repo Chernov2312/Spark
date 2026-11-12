@@ -84,7 +84,11 @@ async def test_temporary_avatar_url_rejects_non_image_content(monkeypatch, file_
 
 
 @pytest.mark.parametrize("chat_id", [None, uuid.uuid4()])
-async def test_create_attachment_supports_user_and_chat_ownership(monkeypatch, chat_id):
+async def test_create_attachment_supports_user_and_chat_ownership(
+    monkeypatch,
+    db_session,
+    chat_id,
+):
     storage = mock_s3(monkeypatch)
     attachment_id = uuid.uuid4()
     user_id = uuid.uuid4()
@@ -109,7 +113,9 @@ async def test_create_attachment_supports_user_and_chat_ownership(monkeypatch, c
     )
 
     response = await media_api.create_attachment(
-        request, session=object(), user_id=user_id
+        request,
+        session=db_session,
+        user_id=user_id,
     )
 
     stored_data = add.await_args.kwargs["data"]
@@ -123,27 +129,36 @@ async def test_create_attachment_supports_user_and_chat_ownership(monkeypatch, c
     storage.get_temporary_url.assert_awaited_once()
 
 
-async def test_auth_register_rejects_existing_username(monkeypatch):
+async def test_auth_register_rejects_existing_username(monkeypatch, db_session):
     monkeypatch.setattr(
-        auth_api.UserDao, "get_by_username_or_email", AsyncMock(return_value=object())
+        auth_api.UserDao,
+        "get_by_username_or_email",
+        AsyncMock(return_value=object()),
     )
     with pytest.raises(HTTPException) as exc:
         await auth_api.register(
             auth_api.UserRegister(
-                username="taken", email="taken@example.com", password="Password123"
+                username="taken",
+                email="taken@example.com",
+                password="Password123",
             ),
-            session=object(),
+            session=db_session,
         )
     assert exc.value.status_code == 409
 
 
-async def test_auth_register_hashes_password_and_sends_verification(monkeypatch):
+async def test_auth_register_hashes_password_and_sends_verification(
+    monkeypatch,
+    db_session,
+):
     user_id = uuid.uuid4()
     new_user = SimpleNamespace(id=user_id, username="new", email="new@example.com")
     add = AsyncMock(return_value=new_user)
     mail = MagicMock()
     monkeypatch.setattr(
-        auth_api.UserDao, "get_by_username_or_email", AsyncMock(return_value=None)
+        auth_api.UserDao,
+        "get_by_username_or_email",
+        AsyncMock(return_value=None),
     )
     monkeypatch.setattr(auth_api.UserDao, "add", add)
     monkeypatch.setattr(auth_api, "get_password_hash", MagicMock(return_value="hashed"))
@@ -151,22 +166,31 @@ async def test_auth_register_hashes_password_and_sends_verification(monkeypatch)
 
     response = await auth_api.register(
         auth_api.UserRegister(
-            username="new", email="new@example.com", password="Password123"
+            username="new",
+            email="new@example.com",
+            password="Password123",
         ),
-        session=object(),
+        session=db_session,
     )
 
     assert add.await_args.args[1]["password"] == "hashed"
     mail.assert_called_once_with(
-        "new@example.com", "new", str(user_id), auth_api.settings.APP_BASE_URL
+        "new@example.com",
+        "new",
+        str(user_id),
+        auth_api.settings.APP_BASE_URL,
     )
     assert response.id == user_id
 
 
-async def test_verification_marks_user_verified_and_returns_access_token(monkeypatch):
+async def test_verification_marks_user_verified_and_returns_access_token(
+    monkeypatch,
+    db_session,
+):
     user_id = uuid.uuid4()
     current_user = SimpleNamespace(is_verified=False)
-    session = SimpleNamespace(commit=AsyncMock())
+    commit = AsyncMock(wraps=db_session.commit)
+    monkeypatch.setattr(db_session, "commit", commit)
     monkeypatch.setattr(
         auth_api.jwt,
         "decode",
@@ -176,18 +200,20 @@ async def test_verification_marks_user_verified_and_returns_access_token(monkeyp
                 "username": "user",
                 "user_id": str(user_id),
                 "exp": 123,
-            }
+            },
         ),
     )
     monkeypatch.setattr(
-        auth_api.UserDao, "get_by_username_or_email", AsyncMock(return_value=current_user)
+        auth_api.UserDao,
+        "get_by_username_or_email",
+        AsyncMock(return_value=current_user),
     )
     monkeypatch.setattr(auth_api, "create_access_token", MagicMock(return_value="access"))
 
-    response = await auth_api.verification("valid-token", session)
+    response = await auth_api.verification("valid-token", db_session)
 
     assert current_user.is_verified is True
-    session.commit.assert_awaited_once()
+    commit.assert_awaited_once()
     assert response.access_token == "access"
 
 
@@ -199,7 +225,9 @@ async def test_verification_marks_user_verified_and_returns_access_token(monkeyp
     ],
 )
 async def test_verification_rejects_missing_claims_and_bad_tokens(
-    monkeypatch, decode_result
+    monkeypatch,
+    db_session,
+    decode_result,
 ):
     if isinstance(decode_result, Exception):
         decode = MagicMock(side_effect=decode_result)
@@ -207,25 +235,28 @@ async def test_verification_rejects_missing_claims_and_bad_tokens(
         decode = MagicMock(return_value=decode_result)
     monkeypatch.setattr(auth_api.jwt, "decode", decode)
     with pytest.raises(HTTPException) as exc:
-        await auth_api.verification("invalid-token", object())
+        await auth_api.verification("invalid-token", db_session)
     assert exc.value.status_code == 401
 
 
-async def test_login_rejects_bad_credentials_and_unverified_user(monkeypatch):
+async def test_login_rejects_bad_credentials_and_unverified_user(
+    monkeypatch,
+    db_session,
+):
     form = SimpleNamespace(username="user", password="ValidPassword123")
     monkeypatch.setattr(auth_api, "authenticate_user", AsyncMock(return_value=None))
     with pytest.raises(HTTPException) as exc:
-        await auth_api.login_for_access_token(form, object())
+        await auth_api.login_for_access_token(form, db_session)
     assert exc.value.status_code == 401
 
     unverified = SimpleNamespace(is_verified=False)
     monkeypatch.setattr(auth_api, "authenticate_user", AsyncMock(return_value=unverified))
     with pytest.raises(HTTPException) as exc:
-        await auth_api.login_for_access_token(form, object())
+        await auth_api.login_for_access_token(form, db_session)
     assert exc.value.status_code == 403
 
 
-async def test_user_get_me_signs_avatar_urls(monkeypatch):
+async def test_user_get_me_signs_avatar_urls(monkeypatch, db_session):
     user_id = uuid.uuid4()
     created_at = datetime.now(timezone.utc)
     user = SimpleNamespace(
@@ -236,24 +267,29 @@ async def test_user_get_me_signs_avatar_urls(monkeypatch):
         avatars=[SimpleNamespace(file_key="avatar/key")],
     )
     monkeypatch.setattr(
-        user_api.UserDao, "get_user_with_avatars", AsyncMock(return_value=user)
+        user_api.UserDao, "get_user_with_avatars", AsyncMock(return_value=user),
     )
     storage = mock_s3(monkeypatch)
 
-    response = await user_api.get_me(session=object(), user_id=user_id)
+    response = await user_api.get_me(session=db_session, user_id=user_id)
 
     assert response.avatar_urls == ["https://signed.test/file"]
     storage.get_temporary_url.assert_awaited_once_with(
-        file_key="avatar/key", client_method="get_object"
+        file_key="avatar/key", client_method="get_object",
     )
 
 
-async def test_user_update_not_found_rolls_back_avatar_delete_and_search(monkeypatch):
+async def test_user_update_not_found_rolls_back_avatar_delete_and_search(
+    monkeypatch,
+    db_session,
+):
     user_id = uuid.uuid4()
     monkeypatch.setattr(user_api.UserDao, "update_by_id", AsyncMock(return_value=None))
     with pytest.raises(HTTPException) as exc:
         await user_api.update_me(
-            UserUpdate(username="missing"), session=object(), current_user_id=user_id
+            UserUpdate(username="missing"),
+            session=db_session,
+            current_user_id=user_id,
         )
     assert exc.value.status_code == 404
 
@@ -262,86 +298,85 @@ async def test_user_update_not_found_rolls_back_avatar_delete_and_search(monkeyp
         "delete_attachment_by_url_and_user_id",
         AsyncMock(return_value=object()),
     )
-    session = SimpleNamespace(rollback=AsyncMock())
+    await db_session.begin()
     mock_s3(monkeypatch, delete=False)
     with pytest.raises(HTTPException) as exc:
         await user_api.delete_avatar(
-            Avatar(url="avatar/key"), session=session, current_user_id=user_id
+            Avatar(url="avatar/key"), session=db_session, current_user_id=user_id,
         )
     assert exc.value.status_code == 504
-    session.rollback.assert_awaited_once()
+    assert not db_session.in_transaction()
 
     monkeypatch.setattr(user_api.UserDao, "find_by_username", AsyncMock(return_value=[]))
     response = await user_api.get_user_by_username(
-        UserQuery(username="search"), user_id, object()
+        UserQuery(username="search"), user_id, db_session,
     )
     assert response.users == []
 
 
-async def test_user_delete_avatar_missing_and_success(monkeypatch):
+async def test_user_delete_avatar_missing_and_success(monkeypatch, db_session):
     user_id = uuid.uuid4()
-    session = SimpleNamespace(rollback=AsyncMock())
     delete_attachment = AsyncMock(return_value=None)
     monkeypatch.setattr(
-        user_api.AttachmentDao, "delete_attachment_by_url_and_user_id", delete_attachment
+        user_api.AttachmentDao, "delete_attachment_by_url_and_user_id", delete_attachment,
     )
     with pytest.raises(HTTPException) as exc:
         await user_api.delete_avatar(
-            Avatar(url="missing"), session=session, current_user_id=user_id
+            Avatar(url="missing"), session=db_session, current_user_id=user_id,
         )
     assert exc.value.status_code == 404
 
     delete_attachment.return_value = object()
     mock_s3(monkeypatch, delete=True)
     response = await user_api.delete_avatar(
-        Avatar(url="avatar/key"), session=session, current_user_id=user_id
+        Avatar(url="avatar/key"), session=db_session, current_user_id=user_id,
     )
     assert isinstance(response, Response)
     assert response.status_code == 204
 
 
-async def test_reaction_routes_cover_add_change_remove_and_missing_reaction(monkeypatch):
+async def test_reaction_routes_cover_add_change_remove_and_missing_reaction(
+    monkeypatch,
+    db_session,
+    test_redis_client,
+):
     message_id, user_id, chat_id = uuid.uuid4(), uuid.uuid4(), str(uuid.uuid4())
-    redis = AsyncMock()
-    redis.get.side_effect = [None, chat_id, "🔥", chat_id, "🔥", chat_id, None, chat_id]
-    pipe = MagicMock()
-    pipe.__aenter__.return_value = pipe
-    pipe.execute = AsyncMock(return_value=[None, None, {}, None])
-    redis.pipeline = MagicMock(return_value=pipe)
-    redis.hgetall = AsyncMock(return_value={})
+    redis = test_redis_client
+    await redis.set(f"message:chat:{message_id}", chat_id)
     invalidate = AsyncMock()
     monkeypatch.setattr(reactions_api, "invalidate_chat_history", invalidate)
-    session = object()
 
     await reactions_api.post_reactions(
-        message_id, ReactionsRequest(emoji="🔥"), user_id, redis, session
+        message_id, ReactionsRequest(emoji="🔥"), user_id, redis, db_session,
     )
+    assert await redis.hget(f"message:reactions_count:{message_id}", "🔥") == "1"
     await reactions_api.post_reactions(
-        message_id, ReactionsRequest(emoji="❤️"), user_id, redis, session
+        message_id, ReactionsRequest(emoji="❤️"), user_id, redis, db_session,
     )
-    await reactions_api.delete(message_id, user_id, redis, session)
-    await reactions_api.delete(message_id, user_id, redis, session)
+    assert await redis.hget(f"message:reactions_count:{message_id}", "🔥") == "0"
+    assert await redis.hget(f"message:reactions_count:{message_id}", "❤️") == "1"
+    await reactions_api.delete(message_id, user_id, redis, db_session)
+    await reactions_api.delete(message_id, user_id, redis, db_session)
 
-    assert pipe.hincrby.call_count == 4
+    assert await redis.get(f"message:user_reaction:{message_id}:{user_id}") is None
+    assert await redis.smembers(f"message:users:{message_id}") == set()
     assert invalidate.await_count == 3
-    assert redis.hgetall.await_count == 1
 
 
-async def test_reaction_route_falls_back_to_database_for_chat_id(monkeypatch):
+async def test_reaction_route_falls_back_to_database_for_chat_id(
+    monkeypatch,
+    db_session,
+    test_redis_client,
+):
     message_id, user_id, chat_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
-    redis = AsyncMock()
-    redis.get.side_effect = [None, None]
-    pipe = MagicMock()
-    pipe.__aenter__.return_value = pipe
-    pipe.execute = AsyncMock(return_value=[None, None, {}, None])
-    redis.pipeline = MagicMock(return_value=pipe)
+    redis = test_redis_client
     lookup = AsyncMock(return_value=chat_id)
     invalidate = AsyncMock()
     monkeypatch.setattr(reactions_api.MessageDao, "get_chat_id_by_message", lookup)
     monkeypatch.setattr(reactions_api, "invalidate_chat_history", invalidate)
 
     await reactions_api.post_reactions(
-        message_id, ReactionsRequest(emoji="🔥"), user_id, redis, object()
+        message_id, ReactionsRequest(emoji="🔥"), user_id, redis, db_session,
     )
 
     lookup.assert_awaited_once()
@@ -350,13 +385,14 @@ async def test_reaction_route_falls_back_to_database_for_chat_id(monkeypatch):
 
 async def test_chat_routes_cover_empty_avatar_lists_permissions_and_missing_chat(
     monkeypatch,
+    db_session,
 ):
     user_id, chat_id = uuid.uuid4(), uuid.uuid4()
     user = SimpleNamespace(chats=[])
     monkeypatch.setattr(
-        chats_api.UserDao, "get_user_with_chats", AsyncMock(return_value=user)
+        chats_api.UserDao, "get_user_with_chats", AsyncMock(return_value=user),
     )
-    await chats_api.get_chats(session=object(), user_id=user_id)
+    await chats_api.get_chats(session=db_session, user_id=user_id)
 
     missing_lookup = AsyncMock(return_value=None)
     monkeypatch.setattr(chats_api.ChatDao, "get_chat_with_users", missing_lookup)
@@ -364,42 +400,45 @@ async def test_chat_routes_cover_empty_avatar_lists_permissions_and_missing_chat
         await chats_api.update_chat(
             str(chat_id),
             PatchChatRequest(title="x", description="y"),
-            object(),
+            db_session,
             str(user_id),
         )
     assert exc.value.status_code == 404
     with pytest.raises(HTTPException) as exc:
         await chats_api.add_users_in_chat(
-            ChatAddUserRequest(user_ids=[]), str(chat_id), object(), str(user_id)
+            ChatAddUserRequest(user_ids=[]), str(chat_id), db_session, str(user_id),
         )
     assert exc.value.status_code == 404
 
     chat = SimpleNamespace(owner_id=str(uuid.uuid4()), id=chat_id, users=[])
     monkeypatch.setattr(
-        chats_api.ChatDao, "get_chat_with_users", AsyncMock(return_value=chat)
+        chats_api.ChatDao, "get_chat_with_users", AsyncMock(return_value=chat),
     )
     with pytest.raises(HTTPException) as exc:
         await chats_api.update_chat(
             str(chat_id),
             PatchChatRequest(title="x", description="y"),
-            object(),
+            db_session,
             str(user_id),
         )
     assert exc.value.status_code == 403
     with pytest.raises(HTTPException) as exc:
         await chats_api.add_users_in_chat(
-            ChatAddUserRequest(user_ids=[]), str(chat_id), object(), str(user_id)
+            ChatAddUserRequest(user_ids=[]), str(chat_id), db_session, str(user_id),
         )
     assert exc.value.status_code == 403
 
 
-async def test_chat_route_rejects_missing_invites_and_updates_members(monkeypatch):
+async def test_chat_route_rejects_missing_invites_and_updates_members(
+    monkeypatch,
+    db_session,
+):
     user_id, chat_id = uuid.uuid4(), uuid.uuid4()
     missing_user_ids = AsyncMock(return_value=[uuid.uuid4()])
     monkeypatch.setattr(chats_api.ChatDao, "get_missing_user_ids", missing_user_ids)
     request = NewChatRequest(title="chat", description="", invited_user_ids=[])
     with pytest.raises(HTTPException) as exc:
-        await chats_api.post_new_chat(request, object(), user_id)
+        await chats_api.post_new_chat(request, db_session, user_id)
     assert exc.value.status_code == 404
 
     created_at = datetime.now(timezone.utc)
@@ -411,12 +450,12 @@ async def test_chat_route_rejects_missing_invites_and_updates_members(monkeypatc
         created_at=created_at,
     )
     monkeypatch.setattr(
-        chats_api.ChatDao, "get_missing_user_ids", AsyncMock(return_value=[])
+        chats_api.ChatDao, "get_missing_user_ids", AsyncMock(return_value=[]),
     )
     monkeypatch.setattr(chats_api.ChatDao, "add", AsyncMock(return_value=chat))
     monkeypatch.setattr(chats_api.ChatDao, "add_users_to_chat", AsyncMock())
     monkeypatch.setattr(chats_api, "S3Storage", MagicMock())
-    response = await chats_api.post_new_chat(request, object(), user_id)
+    response = await chats_api.post_new_chat(request, db_session, user_id)
     assert response.id == chat_id
 
     existing_chat = SimpleNamespace(
@@ -428,31 +467,39 @@ async def test_chat_route_rejects_missing_invites_and_updates_members(monkeypatc
         updated_at=created_at,
     )
     monkeypatch.setattr(
-        chats_api.ChatDao, "get_chat_with_users", AsyncMock(return_value=existing_chat)
+        chats_api.ChatDao, "get_chat_with_users", AsyncMock(return_value=existing_chat),
     )
     updated = await chats_api.update_chat(
         str(chat_id),
         PatchChatRequest(title="new", description="changed"),
-        object(),
+        db_session,
         str(user_id),
     )
     assert updated.title == "new"
     assert updated.description == "changed"
 
-    session = SimpleNamespace(commit=AsyncMock(), refresh=AsyncMock())
+    commit = AsyncMock(wraps=db_session.commit)
+    monkeypatch.setattr(db_session, "commit", commit)
+    monkeypatch.setattr(db_session, "refresh", AsyncMock())
     monkeypatch.setattr(
-        chats_api.ChatDao, "get_missing_user_ids", AsyncMock(return_value=[])
+        chats_api.ChatDao, "get_missing_user_ids", AsyncMock(return_value=[]),
     )
     added = await chats_api.add_users_in_chat(
-        ChatAddUserRequest(user_ids=[uuid.uuid4()]), str(chat_id), session, str(user_id)
+        ChatAddUserRequest(user_ids=[uuid.uuid4()]),
+        str(chat_id),
+        db_session,
+        str(user_id),
     )
     assert added.status == "success"
-    session.commit.assert_awaited_once()
+    commit.assert_awaited_once()
 
 
-async def test_typing_websocket_closes_when_token_is_invalid(monkeypatch):
+async def test_typing_websocket_closes_when_token_is_invalid(
+    monkeypatch,
+    test_redis_client,
+):
     chat_id = uuid.uuid4()
-    redis = AsyncMock()
+    redis = test_redis_client
     websocket = SimpleNamespace(
         app=SimpleNamespace(state=SimpleNamespace(redis=redis)),
         accept=AsyncMock(),
@@ -465,9 +512,14 @@ async def test_typing_websocket_closes_when_token_is_invalid(monkeypatch):
     websocket.close.assert_awaited_once()
 
 
-async def test_typing_websocket_publishes_events_and_cleans_up(monkeypatch):
+async def test_typing_websocket_publishes_events_and_cleans_up(
+    monkeypatch,
+    test_redis_client,
+):
     user_id, chat_id, message_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
-    redis = AsyncMock()
+    redis = test_redis_client
+    pubsub = redis.pubsub()
+    await pubsub.subscribe(f"chat:{chat_id}")
     websocket = SimpleNamespace(
         app=SimpleNamespace(state=SimpleNamespace(redis=redis)),
         accept=AsyncMock(),
@@ -491,15 +543,21 @@ async def test_typing_websocket_publishes_events_and_cleans_up(monkeypatch):
     manager = SimpleNamespace(add=AsyncMock(), remove=AsyncMock())
     listener = AsyncMock()
     monkeypatch.setattr(
-        chat_typing, "get_id_current_user", AsyncMock(return_value=user_id)
+        chat_typing, "get_id_current_user", AsyncMock(return_value=user_id),
     )
     monkeypatch.setattr(chat_typing, "local_manager", manager)
     monkeypatch.setattr(chat_typing, "redis_pubsub_listener", listener)
 
     await chat_typing.on_message(websocket, chat_id, "token")
 
-    assert redis.publish.await_count == 2
-    assert '"event":"user:typing"' in redis.publish.await_args_list[1].args[1]
-    assert str(user_id) in redis.publish.await_args_list[1].args[1]
-    redis.srem.assert_awaited_once_with(f"chat:{chat_id}:users", str(user_id))
+    published_events = []
+    while len(published_events) < 2:
+        item = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1)
+        if item and item["type"] == "message":
+            published_events.append(item["data"])
+    assert '"event":"message:new"' in published_events[0]
+    assert '"event":"user:typing"' in published_events[1]
+    assert str(user_id) in published_events[1]
+    assert await redis.smembers(f"chat:{chat_id}:users") == set()
     manager.remove.assert_awaited_once_with(user_id)
+    await pubsub.aclose()
