@@ -47,7 +47,9 @@ def test_send_verification_email_swallows_smtp_errors(monkeypatch):
     smtp_context = MagicMock()
     smtp_context.__enter__.side_effect = OSError("smtp unavailable")
     monkeypatch.setattr(
-        send_email.smtplib, "SMTP_SSL", MagicMock(return_value=smtp_context),
+        send_email.smtplib,
+        "SMTP_SSL",
+        MagicMock(return_value=smtp_context),
     )
 
     send_email.send_verification_email(
@@ -109,7 +111,11 @@ async def test_audio_task_persists_transcript_and_publishes_result(
     monkeypatch.setattr(audio_convert, "async_session_maker", session_context)
 
     await audio_convert.send_text(
-        user_id, chat_id, message_id, attachment_id, "audio/key",
+        user_id,
+        chat_id,
+        message_id,
+        attachment_id,
+        "audio/key",
     )
 
     await db_session.refresh(attachment)
@@ -137,7 +143,8 @@ async def test_clear_redis_maps_reactions_and_drops_zero_counts(
     message_id, user_id = str(uuid.uuid4()), str(uuid.uuid4())
     await redis.sadd("message:reactions:dirty_set", message_id)
     await redis.hset(
-        f"message:reactions_count:{message_id}", mapping={"🔥": "2", "🫥": "0"},
+        f"message:reactions_count:{message_id}",
+        mapping={"🔥": "2", "🫥": "0"},
     )
     await redis.sadd(f"message:users:{message_id}", user_id)
     await redis.set(f"message:user_reaction:{message_id}:{user_id}", "🔥")

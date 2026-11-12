@@ -30,7 +30,12 @@ async def test_history_returns_valid_cache_without_database_access(
     monkeypatch.setattr(message_api.ChatDao, "get_chat_with_users", database_lookup)
 
     result = await message_api.get_messages_history(
-        chat_id, 50, None, user_id, db_session, redis,
+        chat_id,
+        50,
+        None,
+        user_id,
+        db_session,
+        redis,
     )
 
     assert result == history
@@ -47,12 +52,19 @@ async def test_history_discards_bad_cache_and_reports_missing_or_nonmember_chat(
     cache_key = history_cache_key(chat_id, user_id, 50, None, 0)
     await redis.set(cache_key, "not-json")
     monkeypatch.setattr(
-        message_api.ChatDao, "get_chat_with_users", AsyncMock(return_value=None),
+        message_api.ChatDao,
+        "get_chat_with_users",
+        AsyncMock(return_value=None),
     )
 
     with pytest.raises(HTTPException) as exc:
         await message_api.get_messages_history(
-            chat_id, 50, None, user_id, db_session, redis,
+            chat_id,
+            50,
+            None,
+            user_id,
+            db_session,
+            redis,
         )
     assert exc.value.status_code == 404
     assert await redis.get(cache_key) is None
@@ -65,7 +77,12 @@ async def test_history_discards_bad_cache_and_reports_missing_or_nonmember_chat(
     )
     with pytest.raises(HTTPException) as exc:
         await message_api.get_messages_history(
-            chat_id, 50, None, user_id, db_session, redis,
+            chat_id,
+            50,
+            None,
+            user_id,
+            db_session,
+            redis,
         )
     assert exc.value.status_code == 403
 
@@ -79,17 +96,28 @@ async def test_history_loads_database_and_caches_member_history(
     redis = test_redis_client
     chat = SimpleNamespace(users=[SimpleNamespace(id=user_id)])
     monkeypatch.setattr(
-        message_api.ChatDao, "get_chat_with_users", AsyncMock(return_value=chat),
+        message_api.ChatDao,
+        "get_chat_with_users",
+        AsyncMock(return_value=chat),
     )
     monkeypatch.setattr(
-        message_api.MessageDao, "get_chat_history", AsyncMock(return_value=[]),
+        message_api.MessageDao,
+        "get_chat_history",
+        AsyncMock(return_value=[]),
     )
     monkeypatch.setattr(
-        message_api.MessageReactionDao, "get_user_reactions", AsyncMock(return_value=[]),
+        message_api.MessageReactionDao,
+        "get_user_reactions",
+        AsyncMock(return_value=[]),
     )
 
     result = await message_api.get_messages_history(
-        chat_id, 50, None, user_id, db_session, redis,
+        chat_id,
+        50,
+        None,
+        user_id,
+        db_session,
+        redis,
     )
 
     assert result.messages == []
@@ -115,7 +143,9 @@ async def test_missing_chat_nonmember_duplicate_and_invalid_attachment(
     redis = test_redis_client
     request = MessageRequest(text="hello", attachments=[])
     monkeypatch.setattr(
-        message_api.ChatDao, "get_chat_with_users", AsyncMock(return_value=None),
+        message_api.ChatDao,
+        "get_chat_with_users",
+        AsyncMock(return_value=None),
     )
     with pytest.raises(HTTPException) as exc:
         await message_api.create_message(chat_id, request, db_session, user_id, redis)
@@ -136,7 +166,8 @@ async def test_missing_chat_nonmember_duplicate_and_invalid_attachment(
         AsyncMock(return_value=SimpleNamespace(users=[SimpleNamespace(id=user_id)])),
     )
     duplicate = MessageRequest(
-        text="hello", attachments=[attachment(chat_id), attachment(chat_id)],
+        text="hello",
+        attachments=[attachment(chat_id), attachment(chat_id)],
     )
     with pytest.raises(HTTPException) as exc:
         await message_api.create_message(chat_id, duplicate, db_session, user_id, redis)
@@ -187,36 +218,54 @@ async def test_update_and_delete_message_cover_missing_and_success(
     session = db_session
     redis = test_redis_client
     monkeypatch.setattr(
-        message_api.MessageDao, "update_by_id", AsyncMock(return_value=None),
+        message_api.MessageDao,
+        "update_by_id",
+        AsyncMock(return_value=None),
     )
     with pytest.raises(HTTPException) as exc:
         await message_api.update_message(
-            message_id, MessageRequest(text="x"), session, user_id, redis,
+            message_id,
+            MessageRequest(text="x"),
+            session,
+            user_id,
+            redis,
         )
     assert exc.value.status_code == 404
 
     updated = SimpleNamespace(chat_id=chat_id)
     monkeypatch.setattr(
-        message_api.MessageDao, "update_by_id", AsyncMock(return_value=updated),
+        message_api.MessageDao,
+        "update_by_id",
+        AsyncMock(return_value=updated),
     )
     result = await message_api.update_message(
-        message_id, MessageRequest(text="x"), session, user_id, redis,
+        message_id,
+        MessageRequest(text="x"),
+        session,
+        user_id,
+        redis,
     )
     assert result is updated
     assert await redis.get(history_version_key(chat_id)) == "1"
 
     monkeypatch.setattr(
-        message_api.MessageDao, "get_chat_id_by_message", AsyncMock(return_value=chat_id),
+        message_api.MessageDao,
+        "get_chat_id_by_message",
+        AsyncMock(return_value=chat_id),
     )
     monkeypatch.setattr(
-        message_api.MessageDao, "delete_by_id", AsyncMock(return_value=False),
+        message_api.MessageDao,
+        "delete_by_id",
+        AsyncMock(return_value=False),
     )
     with pytest.raises(HTTPException) as exc:
         await message_api.delete_message(message_id, session, user_id, redis)
     assert exc.value.status_code == 404
 
     monkeypatch.setattr(
-        message_api.MessageDao, "delete_by_id", AsyncMock(return_value=True),
+        message_api.MessageDao,
+        "delete_by_id",
+        AsyncMock(return_value=True),
     )
     result = await message_api.delete_message(message_id, session, user_id, redis)
     assert result == {"deleted": True}
