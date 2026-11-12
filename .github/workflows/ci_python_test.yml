@@ -31,9 +31,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install --yes ffmpeg
-
       - name: Free disk space
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -42,6 +39,9 @@ jobs:
           dotnet: true
           haskell: true
           large-packages: true
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install --yes ffmpeg
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -57,6 +57,7 @@ jobs:
         run: >-
           python -m pytest tests/unit tests/integration
           --cov=api --cov=core --cov=config --cov=db --cov=schemas --cov=tasks --cov=main
+          --cov-fail-under=80
           --cov-report=term-missing --cov-report=xml:coverage.xml
 
       - name: Upload coverage report
