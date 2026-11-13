@@ -13,7 +13,12 @@ function getImageExtension(file) {
     "image/webp": "webp",
     "image/gif": "gif",
   };
-  return extensionByType[file.type] || file.name.split(".").pop()?.toLowerCase();
+  if (extensionByType[file.type]) return extensionByType[file.type];
+
+  const suffix = file.name.includes(".")
+    ? file.name.split(".").pop()?.toLowerCase()
+    : "";
+  return suffix && /^[a-z0-9]{1,12}$/.test(suffix) ? suffix : "bin";
 }
 
 function canvasToWebp(canvas) {

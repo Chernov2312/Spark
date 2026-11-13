@@ -1,4 +1,3 @@
-import datetime
 import os
 import uuid
 
@@ -33,8 +32,7 @@ class S3Storage:
         category: str,
     ) -> str:
         file_extension = file.content_type.split("/")[-1]
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        file_key = f"{category}/{target_id}/{timestamp}.{file_extension}"
+        file_key = self.create_file_key(file_extension, target_id, category)
 
         async with self.session.client("s3", **self.config) as s3:
             await s3.put_object(

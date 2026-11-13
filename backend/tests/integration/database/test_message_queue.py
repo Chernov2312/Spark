@@ -89,6 +89,7 @@ async def test_message_flush_commits_attachments_and_is_idempotent(
 
     queued_message = make_message(chat_id, user_id, attachment_id)
     queued_message.attachments[0].file_key = attachment_file_key
+    queued_message.attachments[0].text = "Text extracted from the uploaded document"
     redis = app.state.redis
 
     @asynccontextmanager
@@ -118,6 +119,7 @@ async def test_message_flush_commits_attachments_and_is_idempotent(
         )
     assert persisted_message is not None
     assert persisted_attachment.msg_id == queued_message.id
+    assert persisted_attachment.text == "Text extracted from the uploaded document"
     assert message_count == 1
 
     await enqueue_message(redis, queued_message)

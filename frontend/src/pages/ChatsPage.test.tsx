@@ -9,6 +9,7 @@ const { apiMocks, socketState } = vi.hoisted(() => ({
     listMessages: vi.fn(),
     transcribeAttachment: vi.fn(),
     uploadAttachment: vi.fn(),
+    getAttachmentDownloadUrl: vi.fn(),
     sendMessage: vi.fn(),
   },
   socketState: {
@@ -25,7 +26,10 @@ vi.mock("../api", () => ({
     sendMessage: apiMocks.sendMessage,
     transcribeAttachment: apiMocks.transcribeAttachment,
   },
-  attachments: { uploadAttachment: apiMocks.uploadAttachment },
+  attachments: {
+    uploadAttachment: apiMocks.uploadAttachment,
+    getAttachmentDownloadUrl: apiMocks.getAttachmentDownloadUrl,
+  },
   auth: {
     isAuthenticated: () => true,
     getCurrentUser: () => ({ id: "user-1", username: "tester" }),
@@ -83,6 +87,9 @@ describe("ChatsPage media controls", () => {
     apiMocks.listChats.mockResolvedValue([chat]);
     apiMocks.listMessages.mockResolvedValue([audioMessage]);
     apiMocks.transcribeAttachment.mockResolvedValue({ queued: true });
+    apiMocks.getAttachmentDownloadUrl.mockResolvedValue(
+      "https://storage.test/download/audio.ogg",
+    );
     apiMocks.uploadAttachment.mockImplementation(async (file) => ({
       id: `uploaded-${file.name}`,
       file_key: `https://storage.test/${file.name}`,
@@ -130,6 +137,17 @@ describe("ChatsPage media controls", () => {
     fireEvent.click(document.querySelector(".composer-attachments__remove")!);
     await waitFor(() => {
       expect(screen.queryByRole("img", { name: "photo.png" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("downloads audio through the authenticated attachment endpoint", async () => {
+    renderChat();
+    await screen.findByText(chat.title, { selector: ".chat-view__title" });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Скачать audio.ogg" }));
+
+    await waitFor(() => {
+      expect(apiMocks.getAttachmentDownloadUrl).toHaveBeenCalledWith("attachment-1");
     });
   });
 

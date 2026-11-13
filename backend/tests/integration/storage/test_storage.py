@@ -22,11 +22,20 @@ async def test_s3_upload_returns_working_presigned_url(minio_s3_storage):
         headers=Headers({"content-type": "text/plain"}),
     )
     storage = S3Storage()
+    target_id = uuid4()
     file_key = await storage.upload_file(
         upload,
-        target_id=uuid4(),
+        target_id=target_id,
         category="user_message",
     )
+    upload.file.seek(0)
+    duplicate_file_key = await storage.upload_file(
+        upload,
+        target_id=target_id,
+        category="user_message",
+    )
+
+    assert duplicate_file_key != file_key
 
     url = await storage.get_temporary_url(file_key)
 

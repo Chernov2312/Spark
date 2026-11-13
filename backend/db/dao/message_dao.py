@@ -178,7 +178,14 @@ class MessageDao(BaseDao[Message]):
                             Attachment.msg_id == message.id,
                         ),
                     )
-                    .values(msg_id=message.id)
+                    .values(
+                        msg_id=message.id,
+                        **(
+                            {"text": attachment.text}
+                            if attachment.text is not None
+                            else {}
+                        ),
+                    )
                 )
                 result = await session.execute(statement)
                 if result.rowcount != 1:

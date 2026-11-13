@@ -160,6 +160,7 @@ const AudioPlayer = React.memo(function AudioPlayer({ src, fileName, preview = f
 const AttachmentItem = React.memo(function AttachmentItem({
   attachment,
   onTranscribe,
+  onDownload,
   isTranscribing,
 }) {
   const {
@@ -216,17 +217,14 @@ const AttachmentItem = React.memo(function AttachmentItem({
           )}
         </div>
       )}
-      {!isAudio && (
-        <a
-          className="msg__attachment-link"
-          href={file_key}
-          target="_blank"
-          rel="noreferrer"
-          download={fileName}
-        >
-          {fileName}
-        </a>
-      )}
+      <button
+        type="button"
+        className="msg__attachment-link"
+        onClick={() => onDownload(attachment)}
+        aria-label={`Скачать ${fileName}`}
+      >
+        {isAudio ? "Скачать аудио" : fileName}
+      </button>
     </div>
   );
 });
@@ -339,6 +337,7 @@ const MessageItem = React.memo(function MessageItem({
   onReaction,
   onContextMenu,
   onTranscribe,
+  onDownload,
   transcribingAttachments,
   onOpenMedia,
 }) {
@@ -386,6 +385,7 @@ const MessageItem = React.memo(function MessageItem({
                 key={attachment.id || attachment.file_key}
                 attachment={attachment}
                 onTranscribe={onTranscribe}
+                onDownload={onDownload}
                 isTranscribing={transcribingAttachments.has(attachment.id)}
               />
             ))
@@ -1433,6 +1433,7 @@ export default function ChatsPage() {
                     onReaction={handleReaction}
                     onContextMenu={handleContextMenuMessage}
                     onTranscribe={(attachment) => handleTranscribe(m, attachment)}
+                    onDownload={downloadMedia}
                     transcribingAttachments={transcribingAttachments}
                     onOpenMedia={openMediaViewer}
                   />
