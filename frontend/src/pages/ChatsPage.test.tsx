@@ -11,7 +11,11 @@ const { apiMocks, socketState } = vi.hoisted(() => ({
     uploadAttachment: vi.fn(),
     sendMessage: vi.fn(),
   },
-  socketState: { options: null },
+  socketState: {
+    options: null as null | {
+      onEvent: (event: string, data: Record<string, unknown>) => void;
+    },
+  },
 }));
 
 vi.mock("../api", () => ({
@@ -30,7 +34,7 @@ vi.mock("../api", () => ({
     socketState.options = options;
     return { close: vi.fn(), send: vi.fn() };
   }),
-  translateApiError: (_error, fallback) => fallback,
+  translateApiError: (_error: unknown, fallback: string) => fallback,
 }));
 
 const chat = {
@@ -119,7 +123,7 @@ describe("ChatsPage media controls", () => {
       ".chat-view__composer input[type='file']",
     );
     expect(input).not.toBeNull();
-    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.change(input!, { target: { files: [file] } });
 
     const preview = await screen.findByRole("img", { name: "photo.png" });
     expect(preview).toHaveAttribute("src", "blob:chat-image-preview");
@@ -130,7 +134,7 @@ describe("ChatsPage media controls", () => {
     fireEvent.click(compressionOption);
     expect(compressionOption).not.toBeChecked();
 
-    fireEvent.click(document.querySelector(".composer-attachments__remove"));
+    fireEvent.click(document.querySelector(".composer-attachments__remove")!);
     await waitFor(() => {
       expect(screen.queryByRole("img", { name: "photo.png" })).not.toBeInTheDocument();
     });
@@ -155,7 +159,7 @@ describe("ChatsPage media controls", () => {
     });
     expect(await screen.findByText("Распознавание…")).toBeInTheDocument();
 
-    socketState.options.onEvent("attachment:text", {
+    socketState.options?.onEvent("attachment:text", {
       chat_id: chat.id,
       message_id: audioMessage.id,
       attachment_id: audioMessage.attachments[0].id,
@@ -217,7 +221,7 @@ describe("ChatsPage media controls", () => {
       new File(["second"], "second.jpg", { type: "image/jpeg" }),
     ];
     fireEvent.change(
-      document.querySelector(".chat-view__composer input[type='file']"),
+      document.querySelector(".chat-view__composer input[type='file']")!,
       { target: { files } },
     );
     fireEvent.click(
@@ -225,7 +229,7 @@ describe("ChatsPage media controls", () => {
         name: "Сжимать изображения перед отправкой",
       }),
     );
-    fireEvent.click(document.querySelector(".composer-btn--send"));
+    fireEvent.click(document.querySelector(".composer-btn--send")!);
 
     await waitFor(() => {
       expect(apiMocks.sendMessage).toHaveBeenCalledTimes(1);
@@ -259,8 +263,8 @@ describe("ChatsPage media controls", () => {
 
       mimeType = "audio/webm;codecs=opus";
       state = "inactive";
-      ondataavailable = null;
-      onstop = null;
+      ondataavailable: ((event: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
 
       start() {
         this.state = "recording";
