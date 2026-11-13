@@ -87,8 +87,8 @@ class S3Storage:
         return "/".join(url.split("?")[0].split("/")[-3:])
 
     def create_file_key(self, file_extension, target_id, category):
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        return f"{category}/{target_id}/{timestamp}.{file_extension}"
+        unique_name = uuid.uuid4().hex
+        return f"{category}/{target_id}/{unique_name}.{file_extension}"
 
     async def delete_file_by_key(self, file_key: str) -> bool:
         try:

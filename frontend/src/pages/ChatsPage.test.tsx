@@ -127,13 +127,6 @@ describe("ChatsPage media controls", () => {
 
     const preview = await screen.findByRole("img", { name: "photo.png" });
     expect(preview).toHaveAttribute("src", "blob:chat-image-preview");
-    const compressionOption = screen.getByRole("checkbox", {
-      name: "Сжимать изображения перед отправкой",
-    });
-    expect(compressionOption).toBeChecked();
-    fireEvent.click(compressionOption);
-    expect(compressionOption).not.toBeChecked();
-
     fireEvent.click(document.querySelector(".composer-attachments__remove")!);
     await waitFor(() => {
       expect(screen.queryByRole("img", { name: "photo.png" })).not.toBeInTheDocument();
@@ -213,7 +206,7 @@ describe("ChatsPage media controls", () => {
     });
   });
 
-  it("sends selected photos together and passes the original quality choice", async () => {
+  it("sends selected photos together and always compresses them", async () => {
     renderChat();
     await screen.findByText(chat.title, { selector: ".chat-view__title" });
     const files = [
@@ -224,21 +217,16 @@ describe("ChatsPage media controls", () => {
       document.querySelector(".chat-view__composer input[type='file']")!,
       { target: { files } },
     );
-    fireEvent.click(
-      screen.getByRole("checkbox", {
-        name: "Сжимать изображения перед отправкой",
-      }),
-    );
     fireEvent.click(document.querySelector(".composer-btn--send")!);
 
     await waitFor(() => {
       expect(apiMocks.sendMessage).toHaveBeenCalledTimes(1);
     });
     expect(apiMocks.uploadAttachment).toHaveBeenNthCalledWith(1, files[0], chat.id, {
-      compressImages: false,
+      compressImages: true,
     });
     expect(apiMocks.uploadAttachment).toHaveBeenNthCalledWith(2, files[1], chat.id, {
-      compressImages: false,
+      compressImages: true,
     });
     expect(apiMocks.sendMessage.mock.calls[0][1].attachments).toHaveLength(2);
   });
@@ -257,7 +245,7 @@ describe("ChatsPage media controls", () => {
     expect(screen.getByLabelText("Длительность аудио")).toHaveTextContent("0:00 / 0:00");
   });
 
-  it("records a voice note, lets the user preview it, and attaches it", async () => {
+  it("records and sends a voice note without requiring a caption", async () => {
     class FakeMediaRecorder {
       static isTypeSupported = () => true;
 
@@ -297,10 +285,15 @@ describe("ChatsPage media controls", () => {
       await screen.findByText("Предпрослушивание голосового сообщения"),
     ).toBeInTheDocument();
     expect(track.stop).toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Прикрепить к сообщению" }));
-    expect(document.querySelector(".composer-attachments")).toHaveTextContent(
-      /voice-.*\.webm/,
+    fireEvent.click(document.querySelector(".composer-btn--send")!);
+
+    await waitFor(() => expect(apiMocks.sendMessage).toHaveBeenCalledTimes(1));
+    expect(apiMocks.sendMessage.mock.calls[0][1].text).toBeNull();
+    expect(apiMocks.sendMessage.mock.calls[0][1].attachments).toHaveLength(1);
+    expect(apiMocks.sendMessage.mock.calls[0][1].attachments[0].mime_type).toMatch(
+      /^audio\/webm/,
     );
+    expect(document.querySelector(".msg .audio-player audio")).not.toBeNull();
   });
 });
 

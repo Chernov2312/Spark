@@ -437,7 +437,6 @@ export default function ChatsPage() {
   const [text, setText] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [selectedPreviewUrls, setSelectedPreviewUrls] = useState([]);
-  const [compressImages, setCompressImages] = useState(true);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordedAudio, setRecordedAudio] = useState(null);
@@ -581,6 +580,17 @@ export default function ChatsPage() {
     // Сбрасываем состояние композера при переходе между чатами
     setText("");
     setSelectedFiles([]);
+    setRecordedAudio(null);
+    setGalleryIndex(null);
+    setRecording(false);
+    recordingChunksRef.current = [];
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    recordingTimerRef.current = null;
+    if (mediaRecorderRef.current?.state !== "inactive") {
+      mediaRecorderRef.current?.stop();
+    }
+    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recordingStreamRef.current = null;
     setShowFormat(false);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
@@ -841,7 +851,14 @@ export default function ChatsPage() {
     async (e) => {
       if (e) e.preventDefault();
       if (sendingRef.current) return;
-      if ((!text.trim() && selectedFiles.length === 0) || !chatId) return;
+      const filesToSend = recordedAudio
+        ? [...selectedFiles, recordedAudio]
+        : selectedFiles;
+      if ((!text.trim() && filesToSend.length === 0) || !chatId) return;
+      if (filesToSend.length > 10) {
+        setMessagesError("В одном сообщении можно отправить не больше 10 вложений.");
+        return;
+      }
 
       sendingRef.current = true;
       setSending(true);
@@ -850,14 +867,14 @@ export default function ChatsPage() {
       try {
         // 1) Загружаем файлы — каждый ответ в едином формате AttachmentResponse
         const uploaded = await Promise.all(
-          selectedFiles.map(async (file) => {
+          filesToSend.map(async (file) => {
             const isText =
               file.type.startsWith("text/") ||
               /\.(txt|md|csv|json|xml|log)$/i.test(file.name);
             const fileText = isText ? await file.text() : null;
             return {
               ...(await attachmentsApi.uploadAttachment(file, chatId, {
-                compressImages,
+                compressImages: true,
               })),
               text: fileText,
             };
@@ -908,17 +925,7 @@ export default function ChatsPage() {
 
         setText("");
         setSelectedFiles([]);
-    setRecordedAudio(null);
-    setGalleryIndex(null);
-    setRecording(false);
-    recordingChunksRef.current = [];
-    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-    recordingTimerRef.current = null;
-    if (mediaRecorderRef.current?.state !== "inactive") {
-      mediaRecorderRef.current?.stop();
-    }
-    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
-    recordingStreamRef.current = null;
+        setRecordedAudio(null);
         setShowFormat(false);
         if (textareaRef.current) textareaRef.current.style.height = "auto";
       } catch (err) {
@@ -933,7 +940,7 @@ export default function ChatsPage() {
         setSending(false);
       }
     },
-    [chatId, compressImages, selectedFiles, text],
+    [chatId, recordedAudio, selectedFiles, text],
   );
 
   const handleTranscribe = useCallback(
@@ -1510,7 +1517,8 @@ export default function ChatsPage() {
                   type="submit"
                   className="composer-btn composer-btn--send"
                   disabled={
-                    sending || (!text.trim() && selectedFiles.length === 0)
+                    sending ||
+                    (!text.trim() && selectedFiles.length === 0 && !recordedAudio)
                   }
                   title="Отправить"
                 >
@@ -1541,20 +1549,6 @@ export default function ChatsPage() {
 
               {selectedFiles.length > 0 && (
                 <>
-                  {selectedFiles.some((file) => file.type.startsWith("image/")) && (
-                    <div className="image-quality-control">
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={compressImages}
-                          disabled={sending}
-                          onChange={(event) => setCompressImages(event.target.checked)}
-                        />
-                        Сжимать изображения перед отправкой
-                      </label>
-                      <span>Отключите, чтобы отправить оригиналы.</span>
-                    </div>
-                  )}
                   {selectedFiles.filter((file) => file.type.startsWith("image/")).length > 1 && (
                     <p className="composer-attachments__album-hint">
                       Альбом: фотографии отправятся одним сообщением.

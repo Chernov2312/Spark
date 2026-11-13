@@ -13,6 +13,7 @@ from api.v1 import media as media_api
 from api.v1 import reactions as reactions_api
 from api.v1 import user as user_api
 from api.v1.websockets import chat_typing
+from core.storage import S3Storage
 from schemas.attachment import AttachmentRequest, AvatarUrlRequest
 from schemas.chats import ChatAddUserRequest, NewChatRequest, PatchChatRequest
 from schemas.reactions import ReactionsRequest
@@ -30,6 +31,18 @@ def mock_s3(monkeypatch, *, temporary_url="https://signed.test/file", delete=Tru
     monkeypatch.setattr(user_api, "S3Storage", MagicMock(return_value=storage))
     monkeypatch.setattr(chats_api, "S3Storage", MagicMock(return_value=storage))
     return storage
+
+
+def test_temporary_file_keys_are_unique_for_repeated_uploads():
+    storage = S3Storage.__new__(S3Storage)
+    target_id = uuid.uuid4()
+
+    first_key = storage.create_file_key("webp", target_id, "user_message")
+    second_key = storage.create_file_key("webp", target_id, "user_message")
+
+    assert first_key != second_key
+    assert first_key.startswith(f"user_message/{target_id}/")
+    assert first_key.endswith(".webp")
 
 
 @pytest.mark.parametrize(
