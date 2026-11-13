@@ -1,10 +1,11 @@
+import asyncio
 import uuid
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from tasks import audio_convert, message_reactions, scheduler
+from tasks import audio_convert, config_celery, message_reactions, scheduler
 
 from core import send_email
 from db.dao.attachment_dao import AttachmentDao
@@ -257,11 +258,32 @@ def test_scheduler_chains_message_and_reaction_sync(monkeypatch):
 
 def test_audio_conversion_task_dispatches_async_work(monkeypatch):
     send = MagicMock()
-    monkeypatch.setattr(audio_convert, "send_text", send)
-    monkeypatch.setattr(audio_convert.asyncio, "run", MagicMock())
+
+    async def send_async(*args):
+        send(*args)
+
+    monkeypatch.setattr(audio_convert, "send_text", send_async)
+
+    async def run_without_engine_disposal(coroutine):
+        return await coroutine
+
+    monkeypatch.setattr(audio_convert, "run_async_task", run_without_engine_disposal)
 
     audio_convert.convert_audio_task("user", "chat", "message", "attachment", "key")
 
     send.assert_called_once_with("user", "chat", "message", "attachment", "key")
-    audio_convert.asyncio.run.assert_called_once()
-    audio_convert.asyncio.run.call_args.args[0].close()
+
+
+def test_async_celery_task_runner_disposes_engine(monkeypatch):
+    dispose = AsyncMock()
+    monkeypatch.setattr(
+        config_celery,
+        "engine",
+        SimpleNamespace(dispose=dispose),
+    )
+
+    async def task():
+        return "done"
+
+    assert asyncio.run(config_celery.run_async_task(task())) == "done"
+    dispose.assert_awaited_once_with()

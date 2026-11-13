@@ -4,7 +4,7 @@ import os
 import tempfile
 import uuid
 
-from tasks.config_celery import celery_app, get_redis
+from tasks.config_celery import celery_app, get_redis, run_async_task
 
 from core.converter_audio import AudioConverter
 from core.storage import S3Storage
@@ -57,4 +57,6 @@ async def send_text(user_id, chat_id, msg_id, attachment_id, file_key):
 
 @celery_app.task
 def convert_audio_task(user_id, chat_id, msg_id, attachment_id, file_key):
-    asyncio.run(send_text(user_id, chat_id, msg_id, attachment_id, file_key))
+    asyncio.run(
+        run_async_task(send_text(user_id, chat_id, msg_id, attachment_id, file_key)),
+    )

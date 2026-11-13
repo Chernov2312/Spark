@@ -2,7 +2,7 @@ import asyncio
 import uuid
 from typing import TypedDict
 
-from tasks.config_celery import celery_app, get_redis
+from tasks.config_celery import celery_app, get_redis, run_async_task
 
 from db.dao.message_dao import MessageDao
 from db.dao.message_reactions_dao import MessageReactionDao
@@ -98,4 +98,4 @@ async def sync_reactions_task_core():
 
 @celery_app.task(ignore_result=True)
 def add_reactions_in_db():
-    asyncio.run(sync_reactions_task_core())
+    asyncio.run(run_async_task(sync_reactions_task_core()))
