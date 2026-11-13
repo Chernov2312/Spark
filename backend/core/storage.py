@@ -65,16 +65,20 @@ class S3Storage:
         file_key: str,
         client_method: str = "get_object",
         expires_in: int = 3600,
+        response_content_disposition: str | None = None,
     ) -> str | None:
         if file_key is None:
             return None
         async with self.session.client("s3", **self.config) as s3:
+            params = {
+                "Bucket": self.bucket_name,
+                "Key": file_key,
+            }
+            if response_content_disposition:
+                params["ResponseContentDisposition"] = response_content_disposition
             url = await s3.generate_presigned_url(
                 ClientMethod=client_method,
-                Params={
-                    "Bucket": self.bucket_name,
-                    "Key": file_key,
-                },
+                Params=params,
                 ExpiresIn=expires_in,
             )
             return url

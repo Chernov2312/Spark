@@ -270,24 +270,76 @@ async def create_message(
         f"chat:{chat_id}",
         json.dumps({"event": "message:new", "data": valid.model_dump(mode="json")}),
     )
-    for attachment in queued_attachments:
-        is_audio = attachment.mime_type.startswith(
-            "audio/",
-        ) or attachment.file_name.lower().endswith(
-            (".wav", ".mp3", ".ogg", ".opus", ".m4a", ".aac", ".flac", ".webm"),
-        )
-        if is_audio:
-            celery_app.send_task(
-                "tasks.audio_convert.convert_audio_task",
-                args=[
-                    str(user_id),
-                    str(chat_id),
-                    str(queued_message.id),
-                    str(attachment.id),
-                    attachment.file_key,
-                ],
-            )
     return valid
+
+
+@message_router.post(
+    "/chats/{chat_id}/messages/{message_id}/attachments/{attachment_id}/transcribe",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def transcribe_audio_attachment(
+    chat_id: uuid.UUID,
+    message_id: uuid.UUID,
+    attachment_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user_id: uuid.UUID = Depends(get_id_current_user),
+) -> dict[str, bool]:
+    chat = await ChatDao.get_chat_with_users(session=session, chat_id=chat_id)
+    if chat is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chat not found",
+        )
+    if not any(member.id == user_id for member in chat.users):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not a member of this chat",
+        )
+
+    attachment = await AttachmentDao.get_by_id(session, attachment_id)
+    if (
+        attachment is None
+        or attachment.chat_id != chat_id
+        or attachment.is_avatar
+        or attachment.msg_id not in (None, message_id)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio attachment not found",
+        )
+    is_audio = attachment.mime_type.startswith("audio/") or (
+        attachment.file_name.lower().endswith(
+            (
+                ".wav",
+                ".mp3",
+                ".ogg",
+                ".opus",
+                ".m4a",
+                ".aac",
+                ".flac",
+                ".webm",
+            ),
+        )
+    )
+    if not is_audio:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Attachment is not an audio file",
+        )
+    if attachment.text is not None:
+        return {"queued": False}
+
+    celery_app.send_task(
+        "tasks.audio_convert.convert_audio_task",
+        args=[
+            str(user_id),
+            str(chat_id),
+            str(message_id),
+            str(attachment.id),
+            attachment.file_key,
+        ],
+    )
+    return {"queued": True}
 
 
 @message_router.put("/messages/{message_id}")

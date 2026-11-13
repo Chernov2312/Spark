@@ -1,4 +1,6 @@
+import re
 import uuid
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +9,7 @@ from config import RouteTags, StorageCategory, StorageClientMethod
 from core.security import get_id_current_user
 from core.storage import S3Storage
 from db.dao.attachment_dao import AttachmentDao
+from db.dao.chat_dao import ChatDao
 from db.database import get_session
 from schemas.attachment import (
     AttachmentRequest,
@@ -17,6 +20,42 @@ from schemas.attachment import (
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 attachment_router = APIRouter(prefix="/api/v1/attachments", tags=[RouteTags.ATTACHMENT])
+
+
+@attachment_router.get("/{attachment_id}/download")
+async def download_attachment(
+    attachment_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user_id: uuid.UUID = Depends(get_id_current_user),
+) -> dict[str, str]:
+    attachment = await AttachmentDao.get_by_id(session, attachment_id)
+    if attachment is None or not attachment.file_key:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Attachment not found",
+        )
+
+    allowed = attachment.user_id == user_id
+    if attachment.chat_id is not None:
+        chat = await ChatDao.get_chat_with_users(session, attachment.chat_id)
+        allowed = chat is not None and any(member.id == user_id for member in chat.users)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Attachment not found",
+        )
+
+    filename = attachment.file_name or "attachment"
+    fallback = re.sub(r"[^A-Za-z0-9._-]", "_", filename) or "attachment"
+    disposition = (
+        f'attachment; filename="{fallback}"; '
+        f"filename*=UTF-8''{quote(filename, safe='')}"
+    )
+    download_url = await S3Storage().get_temporary_url(
+        attachment.file_key,
+        response_content_disposition=disposition,
+    )
+    return {"url": download_url}
 
 
 @attachment_router.post("/temporary-url")

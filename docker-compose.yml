@@ -36,7 +36,7 @@ services:
     ports:
       - "8001:8000"
     volumes:
-      - ./whisper-cache:/root/.cache/whisper
+      - ./whisper-cache:/home/appuser/.cache/whisper
       - ./backend:/app
 
   frontend:
@@ -48,6 +48,7 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+    command: ["sh", "-c", "npm install --include=dev --prefer-offline --no-audit --no-fund && npm run dev -- --host 0.0.0.0 --port 5173"]
     environment:
       CHOKIDAR_USEPOLLING: true
       VITE_API_URL: ${APP_BASE_URL}
@@ -88,7 +89,7 @@ services:
       - .env
     volumes:
       - ./backend:/app
-      - ./whisper-cache:/root/.cache/whisper
+      - ./whisper-cache:/home/appuser/.cache/whisper
     command: celery -A tasks.config_celery.celery_app worker --loglevel=info --concurrency=1
   celery-beat:
     build: ./backend
@@ -99,7 +100,8 @@ services:
       - .env
     volumes:
       - ./backend:/app
-    command: celery -A tasks.config_celery.celery_app beat --loglevel=info
+      - ./whisper-cache:/home/appuser/.cache/whisper
+    command: celery -A tasks.config_celery.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     depends_on:
       postgres:
         condition: service_healthy

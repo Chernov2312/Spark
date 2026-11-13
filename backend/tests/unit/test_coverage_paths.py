@@ -129,6 +129,81 @@ async def test_create_attachment_supports_user_and_chat_ownership(
     storage.get_temporary_url.assert_awaited_once()
 
 
+async def test_download_attachment_signs_filename_for_chat_member(
+    monkeypatch,
+    db_session,
+):
+    storage = mock_s3(monkeypatch)
+    user_id = uuid.uuid4()
+    chat_id = uuid.uuid4()
+    attachment = SimpleNamespace(
+        id=uuid.uuid4(),
+        file_key="user_message/photo.jpg",
+        file_name="летний отпуск.jpg",
+        user_id=None,
+        chat_id=chat_id,
+    )
+    monkeypatch.setattr(
+        media_api.AttachmentDao,
+        "get_by_id",
+        AsyncMock(return_value=attachment),
+    )
+    monkeypatch.setattr(
+        media_api.ChatDao,
+        "get_chat_with_users",
+        AsyncMock(return_value=SimpleNamespace(users=[SimpleNamespace(id=user_id)])),
+    )
+
+    response = await media_api.download_attachment(
+        attachment.id,
+        session=db_session,
+        user_id=user_id,
+    )
+
+    assert response["url"] == "https://signed.test/file"
+    storage.get_temporary_url.assert_awaited_once()
+    call = storage.get_temporary_url.await_args
+    assert call.args == (attachment.file_key,)
+    disposition = call.kwargs["response_content_disposition"]
+    fallback = 'attachment; filename="' + "_" * 13 + '.jpg";'
+    assert disposition.startswith(fallback)
+    assert "filename*=UTF-8''%D0%BB%D0%B5%D1%82%D0%BD%D0%B8%D0%B9%20" in disposition
+    assert "%D0%BE%D1%82%D0%BF%D1%83%D1%81%D0%BA.jpg" in disposition
+
+
+async def test_download_attachment_hides_chat_file_from_non_member(
+    monkeypatch,
+    db_session,
+):
+    mock_s3(monkeypatch)
+    attachment = SimpleNamespace(
+        id=uuid.uuid4(),
+        file_key="user_message/photo.jpg",
+        file_name="photo.jpg",
+        user_id=None,
+        chat_id=uuid.uuid4(),
+    )
+    monkeypatch.setattr(
+        media_api.AttachmentDao,
+        "get_by_id",
+        AsyncMock(return_value=attachment),
+    )
+    monkeypatch.setattr(
+        media_api.ChatDao,
+        "get_chat_with_users",
+        AsyncMock(return_value=SimpleNamespace(users=[])),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await media_api.download_attachment(
+            attachment.id,
+            session=db_session,
+            user_id=uuid.uuid4(),
+        )
+
+    assert exc.value.status_code == 404
+
+
 async def test_auth_register_rejects_existing_username(monkeypatch, db_session):
     monkeypatch.setattr(
         auth_api.UserDao,

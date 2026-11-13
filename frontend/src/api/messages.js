@@ -14,6 +14,13 @@ export async function sendMessage(chatId, body) {
   return data;
 }
 
+export async function transcribeAttachment(chatId, messageId, attachmentId) {
+  const { data } = await api.post(
+    `/chats/${chatId}/messages/${messageId}/attachments/${attachmentId}/transcribe`,
+  );
+  return data;
+}
+
 // PUT /messages/{id}
 export async function updateMessage(messageId, text) {
   const { data } = await api.put(`/messages/${messageId}`, { text });

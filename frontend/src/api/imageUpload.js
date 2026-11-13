@@ -79,9 +79,9 @@ function getApiErrorMessage(error) {
 export async function uploadToTemporaryUrl(
   api,
   file,
-  { type, targetId, maxSizeBytes },
+  { type, targetId, maxSizeBytes, compress = true },
 ) {
-  const uploadFile = await compressImage(file);
+  const uploadFile = compress ? await compressImage(file) : file;
   if (maxSizeBytes && uploadFile.size > maxSizeBytes) {
     throw new Error(
       `Файл слишком большой (максимум ${Math.floor(maxSizeBytes / 1024 / 1024)} МБ после сжатия)`,
