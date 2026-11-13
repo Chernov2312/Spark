@@ -6,7 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import AIPrompts, RouteTags
 from core.ai_service import AIService
+from core.dependencies import get_redis
+from core.message_queue import history_cache_key, history_version_key
 from core.security import get_id_current_user
+from db.dao.chat_dao import ChatDao
 from db.dao.message_dao import Message, MessageDao
 from db.database import get_session
 from schemas.ai_message import (
@@ -16,6 +19,7 @@ from schemas.ai_message import (
     RewriteResponse,
     SummarizeResponce,
 )
+from schemas.message import MessageHistory, MessageResponse
 
 
 async def get_ai_service() -> AIService:
@@ -54,16 +58,80 @@ def _format_chat_context(messages: list[Message]) -> str:
     return "\n".join(lines)
 
 
+async def _get_recent_messages(
+    *,
+    session: AsyncSession,
+    redis,
+    chat_id: uuid.UUID,
+    user_id: uuid.UUID,
+    limit: int,
+) -> list[Message] | list[MessageResponse]:
+    version = int(await redis.get(history_version_key(chat_id)) or 0)
+    cache_limits = sorted({limit, 10, 20, 30, 50, 100}, reverse=True)
+
+    for cache_limit in cache_limits:
+        cache_key = history_cache_key(
+            chat_id,
+            user_id,
+            cache_limit,
+            before=None,
+            version=version,
+        )
+        cached_history = await redis.get(cache_key)
+        if not cached_history:
+            continue
+        try:
+            history = MessageHistory.model_validate_json(cached_history)
+        except ValueError:
+            await redis.delete(cache_key)
+            continue
+
+        messages = history.messages
+        if len(messages) >= limit:
+            return messages[:limit]
+        if len(messages) < cache_limit:
+            # A page shorter than its requested limit contains the full history.
+            return messages
+
+    return await MessageDao.get_chat_history(
+        session=session,
+        chat_id=chat_id,
+        user_id=user_id,
+        limit=limit,
+    )
+
+
+async def _ensure_chat_member(
+    session: AsyncSession,
+    chat_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> None:
+    chat = await ChatDao.get_chat_with_users(session=session, chat_id=chat_id)
+    if chat is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chat not found",
+        )
+    if not any(member.id == user_id for member in chat.users):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not a member of this chat",
+        )
+
+
 @ai_router.post("/chats/{chat_id}/summarize")
 async def get_chat_summary(
     chat_id: uuid.UUID,
     limit: int = Query(default=30, ge=1, le=100),
     user_id: uuid.UUID = Depends(get_id_current_user),
     session: AsyncSession = Depends(get_session),
+    redis=Depends(get_redis),
     ai_service: AIService = Depends(get_ai_service),
 ) -> SummarizeResponce:
-    messages: list[Message] = await MessageDao.get_chat_history(
+    await _ensure_chat_member(session, chat_id, user_id)
+    messages = await _get_recent_messages(
         session=session,
+        redis=redis,
         chat_id=chat_id,
         user_id=user_id,
         limit=limit,
@@ -91,6 +159,7 @@ async def ask_chat_assistant(
     request: ChatAssistantRequest,
     user_id: uuid.UUID = Depends(get_id_current_user),
     session: AsyncSession = Depends(get_session),
+    redis=Depends(get_redis),
     ai_service: AIService = Depends(get_ai_service),
 ) -> ChatAssistantResponse:
     question = request.question.strip()
@@ -100,8 +169,10 @@ async def ask_chat_assistant(
             detail="Question cannot be empty",
         )
 
-    messages: list[Message] = await MessageDao.get_chat_history(
+    await _ensure_chat_member(session, chat_id, user_id)
+    messages = await _get_recent_messages(
         session=session,
+        redis=redis,
         chat_id=chat_id,
         user_id=user_id,
         limit=request.limit,
