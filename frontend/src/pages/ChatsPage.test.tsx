@@ -140,6 +140,16 @@ describe("ChatsPage media controls", () => {
     });
   });
 
+  it("opens the AI assistant from the active chat", async () => {
+    renderChat();
+    await screen.findByText(chat.title, { selector: ".chat-view__title" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Открыть ИИ-помощника" }));
+
+    expect(screen.getByRole("complementary", { name: "Помощник по чату" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Сделать сводку" })).toBeInTheDocument();
+  });
+
   it("downloads audio through the authenticated attachment endpoint", async () => {
     renderChat();
     await screen.findByText(chat.title, { selector: ".chat-view__title" });

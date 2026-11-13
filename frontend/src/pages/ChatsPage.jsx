@@ -16,6 +16,7 @@ import {
   translateApiError,
 } from "../api";
 import FormatToolbar from "../components/FormatToolbar";
+import AIChatPanel from "../components/AIChatPanel";
 
 /* ============================================================
    Утилиты времени
@@ -429,6 +430,7 @@ export default function ChatsPage() {
   const [messages, setMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState(null);
+  const [aiPanelOpen, setAIPanelOpen] = useState(false);
   const [transcribingAttachments, setTranscribingAttachments] = useState(
     () => new Set(),
   );
@@ -580,6 +582,7 @@ export default function ChatsPage() {
     // Сбрасываем состояние композера при переходе между чатами
     setText("");
     setSelectedFiles([]);
+    setAIPanelOpen(false);
     setRecordedAudio(null);
     setGalleryIndex(null);
     setRecording(false);
@@ -1392,6 +1395,15 @@ export default function ChatsPage() {
                     : activeChat.description || "был(а) недавно"}
                 </div>
               </div>
+              <button
+                type="button"
+                className="ai-panel__toggle"
+                onClick={() => setAIPanelOpen((open) => !open)}
+                aria-expanded={aiPanelOpen}
+                aria-label={aiPanelOpen ? "Закрыть ИИ-помощника" : "Открыть ИИ-помощника"}
+              >
+                ✨ ИИ
+              </button>
               <label
                 className="chat-avatar-upload"
                 title="Добавить аватарки группы"
@@ -1588,6 +1600,13 @@ export default function ChatsPage() {
                 </>
               )}
             </div>
+            {aiPanelOpen && (
+              <AIChatPanel
+                key={chatId}
+                chatId={chatId}
+                onClose={() => setAIPanelOpen(false)}
+              />
+            )}
           </>
         )}
       </section>
