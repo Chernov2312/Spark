@@ -48,21 +48,96 @@ function msgTime(iso) {
 
 function renderMarkdown(text) {
   if (!text) return "";
-  let html = String(text)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+  const escapeHtml = (value) =>
+    String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  const inline = (value) => {
+    let html = escapeHtml(value);
+    html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+    html = html.replace(
+      /\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+|#[^\s)]*)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
+    );
+    return html
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/__(.+?)__/g, "<strong>$1</strong>")
+      .replace(/~~(.+?)~~/g, "<del>$1</del>")
+      .replace(/(^|[\s(])\*([^*\n]+?)\*(?=[\s).,!?]|$)/g, "$1<em>$2</em>")
+      .replace(/(^|[\s(])_([^_\n]+?)_(?=[\s).,!?]|$)/g, "$1<em>$2</em>");
+  };
 
-  html = html
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/~~(.+?)~~/g, "<del>$1</del>")
-    .replace(/`([^`]+?)`/g, "<code>$1</code>")
-    .replace(/(^|\s)\*([^*\n]+?)\*(?=\s|$)/g, "$1<em>$2</em>")
-    .replace(/\n/g, "<br/>");
+  const lines = String(text).replace(/\r\n?/g, "\n").split("\n");
+  const blocks = [];
+  let paragraph = [];
+  let list = null;
+  let code = null;
+  const flushParagraph = () => {
+    if (paragraph.length) blocks.push(`<p>${inline(paragraph.join(" "))}</p>`);
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (!list) return;
+    blocks.push(`<${list.type}>${list.items.map((item) => `<li>${inline(item)}</li>`).join("")}</${list.type}>`);
+    list = null;
+  };
 
-  return html;
+  for (const line of lines) {
+    const fence = line.match(/^\s*```([\w-]*)\s*$/);
+    if (fence) {
+      flushParagraph();
+      flushList();
+      if (code === null) code = [];
+      else {
+        blocks.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+        code = null;
+      }
+      continue;
+    }
+    if (code !== null) {
+      code.push(line);
+      continue;
+    }
+    if (!line.trim()) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const heading = line.match(/^\s*(#{1,6})\s+(.+?)\s*#*\s*$/);
+    const item = line.match(/^\s*(?:[-+*])\s+(.+)$/) || line.match(/^\s*\d+[.)]\s+(.+)$/);
+    const quote = line.match(/^\s*>\s?(.*)$/);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      const level = heading[1].length;
+      blocks.push(`<h${level}>${inline(heading[2])}</h${level}>`);
+    } else if (item) {
+      flushParagraph();
+      const type = /^\s*\d+[.)]\s+/.test(line) ? "ol" : "ul";
+      if (list && list.type !== type) flushList();
+      if (!list) list = { type, items: [] };
+      list.items.push(item[1]);
+    } else if (quote) {
+      flushParagraph();
+      flushList();
+      blocks.push(`<blockquote>${inline(quote[1])}</blockquote>`);
+    } else if (/^\s*(---+|___+|\*\*\*+)\s*$/.test(line)) {
+      flushParagraph();
+      flushList();
+      blocks.push("<hr>");
+    } else {
+      flushList();
+      paragraph.push(line.trim());
+    }
+  }
+  flushParagraph();
+  flushList();
+  if (code !== null) blocks.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+  return blocks.join("");
 }
 
 /* ============================================================
@@ -81,25 +156,14 @@ function getChatAvatarUrls(chat) {
 
 function ChatAvatar({ chat, compact = false }) {
   const urls = getChatAvatarUrls(chat);
-  const visibleUrls = urls.slice(0, 4);
+  const latestUrl = urls.at(-1);
 
   return (
     <div
-      className={`chat-item__avatar${compact ? " chat-item__avatar--sm" : ""}${visibleUrls.length > 1 ? ` chat-item__avatar--multiple chat-item__avatar--count-${visibleUrls.length}` : ""}`}
+      className={`chat-item__avatar${compact ? " chat-item__avatar--sm" : ""}`}
       aria-label={`Аватары группы ${chat.title}`}
     >
-      {visibleUrls.length ? (
-        visibleUrls.map((url, index) => (
-          <span className="chat-item__avatar-cell" key={`${url}-${index}`}>
-            <img src={url} alt="" />
-            {index === 3 && urls.length > 4 && (
-              <span className="chat-item__avatar-overflow">
-                +{urls.length - 3}
-              </span>
-            )}
-          </span>
-        ))
-      ) : (
+      {latestUrl ? <img src={latestUrl} alt="" /> : (
         (chat.title?.[0] || "?").toUpperCase()
       )}
     </div>
@@ -164,6 +228,7 @@ const AttachmentItem = React.memo(function AttachmentItem({
   onDownload,
   isTranscribing,
 }) {
+  const [markdownOpen, setMarkdownOpen] = useState(false);
   const {
     id,
     file_key,
@@ -178,6 +243,7 @@ const AttachmentItem = React.memo(function AttachmentItem({
   const isText =
     (typeof mime_type === "string" && mime_type.startsWith("text/")) ||
     /\.(txt|md|csv|json|xml|log)$/i.test(file_name || "");
+  const isMarkdown = /\.md$/i.test(file_name || "") || mime_type === "text/markdown";
   const fileName = file_name || "Вложение";
 
   if (!file_key) return null;
@@ -187,9 +253,9 @@ const AttachmentItem = React.memo(function AttachmentItem({
       {isAudio && (
         <AudioPlayer src={file_key} fileName={fileName} />
       )}
-      {(isText ||
+      {(isText && !isMarkdown ||
         isAudio ||
-        (attachmentText !== null && attachmentText !== undefined)) && (
+        (!isMarkdown && attachmentText !== null && attachmentText !== undefined)) && (
         <div className="msg__attachment-text">
           <div className="msg__attachment-text-title">
             {isAudio ? "Распознанный текст" : fileName}
@@ -215,6 +281,30 @@ const AttachmentItem = React.memo(function AttachmentItem({
                 </button>
               )}
             </div>
+          )}
+        </div>
+      )}
+      {isMarkdown && (
+        <div className="markdown-attachment">
+          <button
+            type="button"
+            className="markdown-attachment__toggle"
+            onClick={() => setMarkdownOpen((open) => !open)}
+            aria-expanded={markdownOpen}
+          >
+            {markdownOpen ? "Скрыть Markdown" : "Просмотреть Markdown"}
+          </button>
+          {markdownOpen && (
+            attachmentText ? (
+              <div
+                className="markdown-attachment__content markdown-body"
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(attachmentText) }}
+              />
+            ) : (
+              <div className="markdown-attachment__content markdown-attachment__empty">
+                Предпросмотр недоступен. Скачайте файл, чтобы открыть его содержимое.
+              </div>
+            )
           )}
         </div>
       )}
@@ -367,7 +457,7 @@ const MessageItem = React.memo(function MessageItem({
       )}
       <div className="msg__bubble">
         {m.text && (
-          <span
+          <div
             className="msg__text"
             dangerouslySetInnerHTML={{ __html: html }}
           />
@@ -430,6 +520,7 @@ export default function ChatsPage() {
   const [messages, setMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState(null);
+  const [chatDetailsOpen, setChatDetailsOpen] = useState(true);
   const [aiPanelOpen, setAIPanelOpen] = useState(false);
   const [transcribingAttachments, setTranscribingAttachments] = useState(
     () => new Set(),
@@ -1243,6 +1334,10 @@ export default function ChatsPage() {
     [chats, chatId],
   );
 
+  useEffect(() => {
+    setChatDetailsOpen(true);
+  }, [chatId]);
+
   const galleryAttachments = useMemo(
     () =>
       messages.flatMap((message) => message.attachments || []).filter(isVisualMedia),
@@ -1425,6 +1520,59 @@ export default function ChatsPage() {
                 {chatAvatarError}
               </p>
             )}
+
+            <section className="chat-details" aria-label="Информация о чате">
+              <div className="chat-details__heading">
+                <div>
+                  <h2>О чате</h2>
+                  <p>{activeChat.description || "Описание пока не добавлено."}</p>
+                </div>
+                <button
+                  type="button"
+                  className="chat-details__toggle"
+                  onClick={() => setChatDetailsOpen((open) => !open)}
+                  aria-expanded={chatDetailsOpen}
+                >
+                  {chatDetailsOpen ? "Свернуть" : "Подробнее"}
+                </button>
+              </div>
+              {chatDetailsOpen && (
+                <>
+                  <div className="chat-details__meta">
+                    <span>{messages.length} сообщений загружено</span>
+                    {activeChat.created_at && (
+                      <span>
+                        Создан {new Date(activeChat.created_at).toLocaleDateString("ru-RU")}
+                      </span>
+                    )}
+                  </div>
+                  <div className="chat-photo-feed" aria-label="Лента изображений">
+                    <h3>Изображения и видео</h3>
+                    {galleryAttachments.length ? (
+                      <div className="chat-photo-feed__items">
+                        {[...galleryAttachments].reverse().map((attachment) => (
+                          <button
+                            key={attachment.id || attachment.file_key}
+                            type="button"
+                            className="chat-photo-feed__item"
+                            onClick={() => openMediaViewer(attachment)}
+                            aria-label={`Открыть ${attachment.file_name || "изображение"}`}
+                          >
+                            {attachment.mime_type?.startsWith("video/") ? (
+                              <video src={attachment.file_key} muted preload="metadata" />
+                            ) : (
+                              <img src={attachment.file_key} alt={attachment.file_name || ""} loading="lazy" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="chat-photo-feed__empty">В этом чате пока нет изображений.</p>
+                    )}
+                  </div>
+                </>
+              )}
+            </section>
 
             <div className="chat-view__messages">
               {messagesLoading && (
