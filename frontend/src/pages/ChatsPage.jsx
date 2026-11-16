@@ -17,6 +17,7 @@ import {
 } from "../api";
 import FormatToolbar from "../components/FormatToolbar";
 import AIChatPanel from "../components/AIChatPanel";
+import CallPanel from "../components/CallPanel";
 import SocialSidebar from "../components/SocialSidebar";
 
 /* ============================================================
@@ -528,6 +529,7 @@ export default function ChatsPage() {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState(null);
   const [chatDetailsOpen, setChatDetailsOpen] = useState(true);
+  const [callPanelOpen, setCallPanelOpen] = useState(false);
   const [activeChatTab, setActiveChatTab] = useState("messages");
   const [aiPanelOpen, setAIPanelOpen] = useState(false);
   const [transcribingAttachments, setTranscribingAttachments] = useState(
@@ -1597,6 +1599,15 @@ export default function ChatsPage() {
               >
                 ✨ ИИ
               </button>
+              <button
+                type="button"
+                className="call-start-button"
+                onClick={() => setCallPanelOpen(true)}
+                aria-label="Начать звонок"
+                title="Аудио- и видеозвонок"
+              >
+                ☎ <span>Позвонить</span>
+              </button>
               <label
                 className="chat-avatar-upload"
                 title="Добавить аватарки группы"
@@ -2109,6 +2120,12 @@ export default function ChatsPage() {
           </form>
         </div>
       )}
+      <CallPanel
+        chatId={chatId}
+        chatName={activeChat?.title}
+        open={callPanelOpen}
+        onClose={() => setCallPanelOpen(false)}
+      />
     </main>
   );
 }

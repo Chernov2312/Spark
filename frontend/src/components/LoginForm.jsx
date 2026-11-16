@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { auth, translateApiError } from "../api";
 
 export default function LoginForm({ onSuccess }) {
@@ -64,6 +65,10 @@ export default function LoginForm({ onSuccess }) {
             autoComplete="current-password"
           />
         </label>
+
+        <div className="login-recovery-link">
+          <Link to="/forgot-password">Забыли пароль?</Link>
+        </div>
 
         {error && <p className="register-card__error">{error}</p>}
 

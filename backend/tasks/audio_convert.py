@@ -1,6 +1,6 @@
 import asyncio
 import logging
-import os
+from pathlib import Path
 import tempfile
 import uuid
 
@@ -8,21 +8,33 @@ from core.converter_audio import AudioConverter
 from core.storage import S3Storage
 from db.dao.attachment_dao import AttachmentDao
 from db.database import async_session_maker
+from infrastructure.redis.client import get_redis
+from infrastructure.redis.redis_dao import RedisDao
 from schemas.websockets import AttachmentText, WsEvent
-from tasks.config_celery import celery_app, get_redis, run_async_task
+from tasks.config_celery import celery_app, run_async_task
 
 logger = logging.getLogger(__name__)
 
 
-async def send_text(user_id, chat_id, msg_id, attachment_id, file_key):
+def _create_temporary_audio_path() -> str:
+    with tempfile.NamedTemporaryFile(suffix=".audio", delete=False) as audio_file:
+        return audio_file.name
+
+
+async def send_text(
+    user_id: str,
+    chat_id: str,
+    msg_id: str,
+    attachment_id: str,
+    file_key: str,
+) -> None:
     text = ""
     error = False
-    with tempfile.NamedTemporaryFile(suffix=".audio", delete=False) as audio_file:
-        destination_path = audio_file.name
+    destination_path = await asyncio.to_thread(_create_temporary_audio_path)
     async with get_redis() as redis:
         try:
             await S3Storage().load_file(file_key, destination_path)
-            text = AudioConverter.get_text_from_audio(path=destination_path) or ""
+            text = await AudioConverter.get_text_from_audio(path=destination_path) or ""
         except Exception:
             logger.exception(
                 "Audio transcription failed for attachment %s",
@@ -48,14 +60,26 @@ async def send_text(user_id, chat_id, msg_id, attachment_id, file_key):
                     error=error,
                 ),
             )
-            await redis.publish(f"chat:{chat_id}", event.model_dump_json())
+            await RedisDao.publish_chat_event(
+                redis,
+                uuid.UUID(chat_id),
+                event.model_dump_json(),
+            )
         finally:
-            if os.path.exists(destination_path):
-                os.remove(destination_path)
+            await asyncio.to_thread(
+                Path(destination_path).unlink,
+                missing_ok=True,
+            )
 
 
 @celery_app.task
-def convert_audio_task(user_id, chat_id, msg_id, attachment_id, file_key):
+def convert_audio_task(
+    user_id: str,
+    chat_id: str,
+    msg_id: str,
+    attachment_id: str,
+    file_key: str,
+) -> None:
     asyncio.run(
         run_async_task(send_text(user_id, chat_id, msg_id, attachment_id, file_key)),
     )

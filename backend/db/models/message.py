@@ -27,7 +27,7 @@ class Message(Base):
     edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     text: Mapped[str] = mapped_column(String(1000), nullable=True)
     attachments: Mapped[list["Attachment"]] = relationship("Attachment")
-    reactions_count: Mapped[dict] = mapped_column(
+    reactions_count: Mapped[dict[str, int]] = mapped_column(
         JSONB,
         server_default="{}",
         nullable=False,

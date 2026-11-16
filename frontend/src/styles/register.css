@@ -143,6 +143,34 @@
   margin: 0 0 32px;
 }
 
+.login-recovery-link,
+.password-reset-back {
+  margin: -8px 0 18px;
+  text-align: right;
+  font-size: 13px;
+}
+
+.login-recovery-link a,
+.password-reset-back a {
+  color: var(--spark);
+  text-decoration: none;
+}
+
+.login-recovery-link a:hover,
+.password-reset-back a:hover {
+  text-decoration: underline;
+}
+
+.password-reset-result {
+  color: var(--text-muted);
+  line-height: 1.6;
+  text-align: center;
+}
+
+.password-reset-result .submit-btn {
+  margin-top: 12px;
+}
+
 /* ---------- Поля ---------- */
 .field {
   display: block;

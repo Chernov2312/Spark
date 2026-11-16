@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     VERIFICATION_TOKEN_EXPIRE_DAYS: int = 1
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
 
     REDIS_HOST: str = "redis"
     REDIS_PASSWORD: str
@@ -31,7 +32,7 @@ class Settings(BaseSettings):
     APP_BASE_URL: str = "http://localhost:5174/"
 
     @property
-    def db_url(self):
+    def db_url(self) -> str:
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}"
             f":{self.POSTGRES_PASSWORD}"

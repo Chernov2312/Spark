@@ -4,10 +4,8 @@ from uuid import uuid4
 import aioboto3
 from botocore.client import Config
 from httpx2 import ASGITransport, AsyncClient
-from main import app
 import pytest
 import pytest_asyncio
-import redis.asyncio as aioredis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
@@ -23,6 +21,8 @@ from db.models.chat import Chat
 from db.models.message import Message
 from db.models.message_reaction import MessageReaction
 from db.models.user import User
+from infrastructure.redis.client import create_redis_client
+from main import app
 
 __all__ = (
     "Chat",
@@ -126,10 +126,7 @@ async def test_redis_client(redis_container):
         f"redis://{redis_container.get_container_host_ip()}:"
         f"{redis_container.get_exposed_port(6379)}"
     )
-    app.state.redis = aioredis.Redis.from_url(
-        redis_url,
-        decode_responses=True,
-    )
+    app.state.redis = create_redis_client(redis_url)
     await app.state.redis.flushdb()
     yield app.state.redis
     await app.state.redis.aclose()
@@ -178,7 +175,7 @@ async def id_second_user(db_session):
     yield user.id
 
 
-@pytest_asyncio.fixture(autouse=True)
+@pytest_asyncio.fixture
 async def mock_email_task():
     with patch("api.v1.auth.send_mail_task.delay") as mock:
         yield mock

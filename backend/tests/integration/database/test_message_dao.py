@@ -162,3 +162,77 @@ async def test_attach_queued_attachments_rejects_missing_attachment(
 
     with pytest.raises(ValueError, match="no longer exists or is in use"):
         await MessageDao.attach_queued_attachments(db_session, [queued_message])
+
+
+async def test_message_lookup_and_pin_methods(db_session, db_user, db_userchat):
+    chat, _ = db_userchat
+    original = await MessageDao.create_with_attachments(
+        db_session,
+        {"chat_id": chat.id, "user_id": db_user.id, "text": "original"},
+        [],
+    )
+    reply = await MessageDao.create_with_attachments(
+        db_session,
+        {
+            "chat_id": chat.id,
+            "user_id": db_user.id,
+            "text": "reply",
+            "reply_to_id": original.id,
+        },
+        [],
+    )
+
+    loaded = await MessageDao.get_with_attachments(db_session, original.id)
+    reply_target = await MessageDao.get_reply_target(
+        db_session,
+        chat.id,
+        original.id,
+    )
+    assert loaded.id == original.id
+    assert loaded.attachments == []
+    assert reply_target.text == "original"
+    assert (
+        await MessageDao.get_reply_target(
+            db_session,
+            uuid.uuid4(),
+            original.id,
+        )
+        is None
+    )
+    assert await MessageDao.get_message_texts(
+        db_session,
+        {original.id, reply.id},
+    ) == {original.id: "original", reply.id: "reply"}
+    assert await MessageDao.get_message_texts(db_session, set()) == {}
+
+    assert (
+        await MessageDao.toggle_pin(
+            db_session,
+            chat.id,
+            original.id,
+            db_user.id,
+        )
+        is True
+    )
+    assert await MessageDao.get_pinned_message_ids(db_session, chat.id) == {
+        original.id,
+    }
+    assert (
+        await MessageDao.toggle_pin(
+            db_session,
+            chat.id,
+            original.id,
+            db_user.id,
+        )
+        is False
+    )
+    assert await MessageDao.get_pinned_message_ids(db_session, chat.id) == set()
+    assert (
+        await MessageDao.toggle_pin(
+            db_session,
+            chat.id,
+            uuid.uuid4(),
+            db_user.id,
+        )
+        is None
+    )

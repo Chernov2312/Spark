@@ -29,16 +29,19 @@ def get_password_hash(password: str) -> str:
 async def authenticate_user(
     data: UserLogin,
     session: AsyncSession,
-) -> User:
+) -> User | None:
     user = await UserDao.get_by_tag(session=session, tag=data.username)
     if user is None:
-        return False
+        return None
     if not verify_password(data.password, user.password):
-        return False
+        return None
     return user
 
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
+def create_access_token(
+    data: dict[str, str | int | datetime],
+    expires_delta: timedelta | None = None,
+) -> str:
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta

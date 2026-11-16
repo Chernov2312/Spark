@@ -1,8 +1,7 @@
 from datetime import datetime
 import uuid
 
-import redis.asyncio as aioredis
-
+from infrastructure.redis.client import execute_redis_pipeline, Redis
 from schemas.message import MessageInternalDTO
 
 MESSAGE_QUEUE_PREFIX = "messages:queue:"
@@ -31,7 +30,7 @@ def history_cache_key(
 
 
 async def enqueue_message(
-    redis: aioredis.Redis,
+    redis: Redis,
     message: MessageInternalDTO,
 ) -> None:
     async with redis.pipeline(transaction=True) as pipeline:
@@ -45,11 +44,11 @@ async def enqueue_message(
             ex=86_400,
         )
         pipeline.incr(history_version_key(message.chat_id))
-        await pipeline.execute()
+        await execute_redis_pipeline(pipeline, operation="enqueue_message")
 
 
 async def invalidate_chat_history(
-    redis: aioredis.Redis,
+    redis: Redis,
     chat_id: uuid.UUID | str,
 ) -> None:
     await redis.incr(history_version_key(chat_id))

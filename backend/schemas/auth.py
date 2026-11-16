@@ -1,4 +1,5 @@
 import re
+from typing import Self
 import uuid
 
 from pydantic import BaseModel, EmailStr, Field, model_validator
@@ -15,7 +16,7 @@ class UserRegister(BaseModel):
     password: str = Field(..., min_length=8, max_length=250)
 
     @model_validator(mode="after")
-    def check_password(self):
+    def check_password(self) -> Self:
         if not password_valid.match(self.password):
             raise ValueError("Password must contain Upper, Lower word and digits")
         return self
@@ -41,3 +42,20 @@ class UserResponse(BaseModel):
     email: EmailStr = Field(..., max_length=100)
     access_token: str = Field(..., max_length=250)
     token_type: str = "bearer"
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(..., min_length=1, max_length=4096)
+    password: str = Field(..., min_length=8, max_length=250)
+
+    @model_validator(mode="after")
+    def check_password(self) -> Self:
+        if not password_valid.match(self.password):
+            raise ValueError(
+                "Password must contain upper and lowercase letters and digits"
+            )
+        return self

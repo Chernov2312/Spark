@@ -2,7 +2,6 @@ import asyncio
 from contextlib import asynccontextmanager
 import uuid
 
-import redis.asyncio as aioredis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -10,13 +9,14 @@ from tasks import config_celery
 from tasks import message as message_tasks
 from tasks import message_reactions as reaction_tasks
 
-from core.message_queue import enqueue_message, message_queue_key
 from db.dao.chat_dao import ChatDao
 from db.dao.message_dao import MessageDao
 from db.dao.message_reactions_dao import MessageReactionDao
 from db.dao.user_dao import UserDao
 from db.database import Base
 from db.models import MessageReaction
+from infrastructure.redis.client import create_redis_client
+from infrastructure.redis.message_queue import enqueue_message, message_queue_key
 from schemas.message import MessageInternalDTO
 
 
@@ -30,7 +30,7 @@ def redis_url_for(container):
 def task_redis_context(redis_url):
     @asynccontextmanager
     async def redis_context():
-        client = aioredis.Redis.from_url(redis_url, decode_responses=True)
+        client = create_redis_client(redis_url)
         try:
             yield client
         finally:
@@ -82,7 +82,7 @@ def test_celery_message_and_reaction_tasks_with_testcontainers(
     async def prepare_message_task():
         async with task_engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
-        redis = aioredis.Redis.from_url(redis_url, decode_responses=True)
+        redis = create_redis_client(redis_url)
         await redis.flushdb()
         user_id, chat_id = await create_user_and_chat(session_maker)
         message = MessageInternalDTO(
@@ -103,7 +103,7 @@ def test_celery_message_and_reaction_tasks_with_testcontainers(
     message_tasks.add_messages_in_db.run()
 
     async def verify_message_and_prepare_reaction():
-        redis = aioredis.Redis.from_url(redis_url, decode_responses=True)
+        redis = create_redis_client(redis_url)
         async with session_maker() as session:
             persisted = await MessageDao.get_by_id(session, queued_message.id)
             assert persisted is not None
@@ -137,7 +137,7 @@ def test_celery_message_and_reaction_tasks_with_testcontainers(
     reaction_tasks.add_reactions_in_db.run()
 
     async def verify_reaction_task():
-        redis = aioredis.Redis.from_url(redis_url, decode_responses=True)
+        redis = create_redis_client(redis_url)
         async with session_maker() as session:
             persisted_message = await MessageDao.get_by_id(session, queued_message.id)
             persisted_reaction = await session.scalar(

@@ -27,6 +27,7 @@ ban-relative-imports = "all"
 
 [tool.ruff.lint.isort]
 known-first-party = [
+  "main",
   "backend",
   "api",
   "config",
@@ -36,6 +37,7 @@ known-first-party = [
   "models",
   "schemas",
   "tests",
+  "infrastructure",
 ]
 force-sort-within-sections = true
 order-by-type = false

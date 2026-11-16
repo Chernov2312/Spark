@@ -17,6 +17,7 @@ from schemas.attachment import (
     AvatarUrlRequest,
     AvatarUrlResponse,
 )
+from schemas.responses import AttachmentDownloadResponse
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 attachment_router = APIRouter(prefix="/api/v1/attachments", tags=[RouteTags.ATTACHMENT])
@@ -27,7 +28,7 @@ async def download_attachment(
     attachment_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     user_id: uuid.UUID = Depends(get_id_current_user),
-) -> dict[str, str]:
+) -> AttachmentDownloadResponse:
     attachment = await AttachmentDao.get_by_id(session, attachment_id)
     if attachment is None or not attachment.file_key:
         raise HTTPException(
@@ -55,7 +56,7 @@ async def download_attachment(
         attachment.file_key,
         response_content_disposition=disposition,
     )
-    return {"url": download_url}
+    return AttachmentDownloadResponse(url=download_url)
 
 
 @attachment_router.post("/temporary-url")

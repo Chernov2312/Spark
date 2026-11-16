@@ -1,15 +1,15 @@
 from datetime import datetime, timezone
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 import uuid
 
 from fastapi import status
 from httpx2 import AsyncClient
-from main import app
 
 from api.v1.ai import get_ai_service
-from core.message_queue import history_cache_key, history_version_key
+from core.ai_service import AIService
 from db.dao.message_dao import MessageDao
+from infrastructure.redis.message_queue import history_cache_key, history_version_key
+from main import app
 from schemas.message import MessageHistory, MessageResponse
 
 
@@ -19,7 +19,12 @@ async def test_chat_assistant_answers_with_recent_chat_context(
     summarize_chat,
     monkeypatch,
 ):
-    service = SimpleNamespace(generate_text=AsyncMock(return_value="Обсудили план."))
+    service = AIService()
+    monkeypatch.setattr(
+        service,
+        "generate_text",
+        AsyncMock(return_value="Обсудили план."),
+    )
     monkeypatch.setitem(app.dependency_overrides, get_ai_service, lambda: service)
     question = "О чём договорились?"
 
@@ -43,7 +48,12 @@ async def test_chat_summary_uses_limited_recent_context(
     summarize_chat,
     monkeypatch,
 ):
-    service = SimpleNamespace(generate_text=AsyncMock(return_value="Сводка чата."))
+    service = AIService()
+    monkeypatch.setattr(
+        service,
+        "generate_text",
+        AsyncMock(return_value="Сводка чата."),
+    )
     monkeypatch.setitem(app.dependency_overrides, get_ai_service, lambda: service)
 
     response = await api_client.post(
@@ -82,7 +92,12 @@ async def test_chat_assistant_skips_database_history_when_redis_has_enough(
         history_cache_key(summarize_chat, id_first_user, 50, None, version),
         MessageHistory(messages=cached_messages).model_dump_json(),
     )
-    service = SimpleNamespace(generate_text=AsyncMock(return_value="Ответ из кэша."))
+    service = AIService()
+    monkeypatch.setattr(
+        service,
+        "generate_text",
+        AsyncMock(return_value="Ответ из кэша."),
+    )
     monkeypatch.setitem(app.dependency_overrides, get_ai_service, lambda: service)
     history_query = AsyncMock(
         side_effect=AssertionError("history should come from Redis"),

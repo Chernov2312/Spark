@@ -6,5 +6,5 @@ from tasks.message_reactions import add_reactions_in_db
 
 
 @celery_app.task
-def master_sync_scheduler():
+def master_sync_scheduler() -> None:
     chain(add_messages_in_db.si() | add_reactions_in_db.si()).apply_async()

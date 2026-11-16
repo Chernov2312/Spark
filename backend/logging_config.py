@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 def configure_logging() -> None:
-    """Write application and database diagnostics to separate log files."""
+    """Write application, database, and Redis diagnostics to separate files."""
     log_dir = Path(os.getenv("LOG_DIR", str(Path(__file__).resolve().parent / "logs")))
     log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -38,6 +38,33 @@ def configure_logging() -> None:
         for handler in sqlalchemy_logger.handlers
     ):
         sqlalchemy_logger.addHandler(database_handler)
+
+    redis_handler = RotatingFileHandler(
+        log_dir / "redis.log",
+        maxBytes=10 * 1024 * 1024,
+        backupCount=5,
+        encoding="utf-8",
+    )
+    redis_handler.setFormatter(formatter)
+    redis_logger = logging.getLogger("infrastructure.redis")
+    redis_logger.setLevel(os.getenv("REDIS_LOG_LEVEL", "DEBUG").upper())
+    redis_logger.propagate = False
+    if not any(
+        isinstance(handler, RotatingFileHandler)
+        and getattr(handler, "baseFilename", "").endswith("redis.log")
+        for handler in redis_logger.handlers
+    ):
+        redis_logger.addHandler(redis_handler)
+
+    redis_client_logger = logging.getLogger("redis")
+    redis_client_logger.setLevel(os.getenv("REDIS_CLIENT_LOG_LEVEL", "WARNING").upper())
+    redis_client_logger.propagate = False
+    if not any(
+        isinstance(handler, RotatingFileHandler)
+        and getattr(handler, "baseFilename", "").endswith("redis.log")
+        for handler in redis_client_logger.handlers
+    ):
+        redis_client_logger.addHandler(redis_handler)
 
     for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
         server_logger = logging.getLogger(logger_name)
