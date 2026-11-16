@@ -38,6 +38,25 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./logs/database:/var/log/postgresql
+    command:
+      - postgres
+      - -c
+      - logging_collector=on
+      - -c
+      - log_destination=stderr
+      - -c
+      - log_directory=/var/log/postgresql
+      - -c
+      - log_filename=database.log
+      - -c
+      - log_rotation_age=1d
+      - -c
+      - log_rotation_size=50MB
+      - -c
+      - log_connections=on
+      - -c
+      - log_disconnections=on
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       timeout: 5s
@@ -50,7 +69,7 @@ services:
       POSTGRES_HOST: postgres
     env_file:
       - .env
-    command: bash ./entrypoint.sh
+    command: ["sh", "-c", "bash ./entrypoint.sh >> /logs/backend.log 2>&1"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -69,6 +88,7 @@ services:
     volumes:
       - ./whisper-cache:/home/appuser/.cache/whisper
       - ./backend:/app
+      - ./logs:/logs
 
   frontend:
     build: ./frontend
@@ -79,7 +99,8 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    command: ["sh", "-c", "npm install --include=dev --prefer-offline --no-audit --no-fund && npm run dev -- --host 0.0.0.0 --port 5173"]
+      - ./logs:/logs
+    command: ["sh", "-c", "npm install --include=dev --prefer-offline --no-audit --no-fund && npm run dev -- --host 0.0.0.0 --port 5173 >> /logs/frontend.log 2>&1"]
     environment:
       CHOKIDAR_USEPOLLING: true
       VITE_API_URL: ${API_BASE_URL:-http://localhost:8001}
@@ -121,7 +142,8 @@ services:
     volumes:
       - ./backend:/app
       - ./whisper-cache:/home/appuser/.cache/whisper
-    command: celery -A tasks.config_celery.celery_app worker --loglevel=info --concurrency=1
+      - ./logs:/logs
+    command: celery -A tasks.config_celery.celery_app worker --loglevel=info --logfile=/logs/backend.log --concurrency=1
   celery-beat:
     build: ./backend
     profiles: ["dev", "prod"]
@@ -132,7 +154,8 @@ services:
     volumes:
       - ./backend:/app
       - ./whisper-cache:/home/appuser/.cache/whisper
-    command: celery -A tasks.config_celery.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+      - ./logs:/logs
+    command: celery -A tasks.config_celery.celery_app beat --loglevel=info --logfile=/logs/backend.log --schedule=/tmp/celerybeat-schedule
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 
 import redis.asyncio as aioredis
 from fastapi import FastAPI
@@ -15,16 +16,22 @@ from api.v1.social import social_router
 from api.v1.user import user_router
 from api.v1.websockets.chat_typing import ws_router
 from config import settings
+from logging_config import configure_logging
+
+configure_logging()
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("Starting Spark backend")
     app.state.redis = aioredis.Redis.from_url(
         settings.redis_url,
         decode_responses=True,
     )
     yield
     await app.state.redis.aclose()
+    logger.info("Stopped Spark backend")
 
 
 def create_app() -> FastAPI:
