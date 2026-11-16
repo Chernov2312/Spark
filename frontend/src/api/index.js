@@ -1,9 +1,11 @@
 export { api, setToken, getToken, clearToken } from "./client";
 export * as auth from "./auth";
 export * as users from "./users";
+export * as social from "./social";
 export * as chats from "./chats";
 export * as messages from "./messages";
 export * as attachments from "./attachments";
+export * as ai from "./ai";
 export { createChatSocket } from "./ws";
 export { translateApiError } from "./translations";
 export { AUTH_EVENT } from "./auth";

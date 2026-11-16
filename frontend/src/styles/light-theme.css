@@ -1,0 +1,119 @@
+/* Small adjustments for surfaces that use decorative, dark-only gradients. */
+:root[data-theme="light"] .home {
+  background:
+    radial-gradient(ellipse at 76% 20%, rgba(107, 88, 232, 0.1), transparent 34rem),
+    var(--bg);
+}
+
+:root[data-theme="light"] .home::before {
+  border-color: rgba(107, 88, 232, 0.11);
+  box-shadow: 0 0 0 4rem rgba(107, 88, 232, 0.025), 0 0 0 8rem rgba(107, 88, 232, 0.018);
+}
+
+:root[data-theme="light"] .home__eyebrow,
+:root[data-theme="light"] .home__title-accent,
+:root[data-theme="light"] .home__message-name,
+:root[data-theme="light"] .feature__icon {
+  color: var(--spark-text);
+}
+
+:root[data-theme="light"] .vk-profile__identity,
+:root[data-theme="light"] .vk-profile__name {
+  color: var(--text);
+}
+
+:root[data-theme="light"] .vk-profile__name,
+:root[data-theme="light"] .vk-profile__status {
+  text-shadow: none;
+}
+
+:root[data-theme="light"] .vk-profile__status {
+  color: var(--text-muted);
+}
+
+:root[data-theme="light"] .home__btn:not(.home__btn--primary) {
+  background: rgba(255, 255, 255, 0.82);
+}
+
+:root[data-theme="light"] .home__btn:hover:not(.home__btn--primary) {
+  border-color: rgba(107, 88, 232, 0.35);
+  background: #fff;
+}
+
+:root[data-theme="light"] .home__preview {
+  border-color: rgba(107, 88, 232, 0.14);
+  background: linear-gradient(150deg, #fff, #f9f9ff);
+  box-shadow: 0 28px 70px rgba(37, 43, 76, 0.12), 0 0 55px rgba(107, 88, 232, 0.07);
+}
+
+:root[data-theme="light"] .home__preview-top,
+:root[data-theme="light"] .home__preview-footer {
+  border-color: var(--border);
+}
+
+:root[data-theme="light"] .home__preview-message--outgoing {
+  border-color: rgba(107, 88, 232, 0.16);
+  background: rgba(107, 88, 232, 0.09);
+}
+
+:root[data-theme="light"] .home__avatar {
+  border-color: #fff;
+}
+
+:root[data-theme="light"] .feature {
+  background: rgba(255, 255, 255, 0.78);
+}
+
+:root[data-theme="light"] .site-footer__bottom {
+  background: #f8f9fd;
+}
+
+:root[data-theme="light"] .verification-card {
+  border-color: var(--border);
+  background: linear-gradient(145deg, #fff, #fcfcff 52%), var(--bg-elevated);
+  box-shadow: var(--shadow-card), 0 0 70px rgba(107, 88, 232, 0.06);
+}
+
+:root[data-theme="light"] .verification-brand__mark {
+  border-color: transparent;
+}
+
+:root[data-theme="light"] .verification-status-icon {
+  color: var(--spark-text);
+  background: rgba(107, 88, 232, 0.09);
+  box-shadow: none;
+}
+
+:root[data-theme="light"] .verification-eyebrow,
+:root[data-theme="light"] .verification-footer-mark {
+  color: var(--spark-text);
+}
+
+:root[data-theme="light"] .verification-progress {
+  background: var(--bg-hover);
+}
+
+:root[data-theme="light"] .verification-card__footer {
+  border-color: var(--border);
+  background: #f8f9fd;
+}
+
+:root[data-theme="light"] .register-card,
+:root[data-theme="light"] .vk-profile,
+:root[data-theme="light"] .modal {
+  box-shadow: var(--shadow-card);
+}
+
+:root[data-theme="light"] .modal {
+  box-shadow: var(--shadow-modal);
+}
+
+:root[data-theme="light"] .ai-panel {
+  box-shadow: -16px 0 40px rgba(29, 34, 59, 0.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body {
+    transition: none;
+  }
+}

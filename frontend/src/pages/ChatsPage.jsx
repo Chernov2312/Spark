@@ -16,22 +16,12 @@ import {
   translateApiError,
 } from "../api";
 import FormatToolbar from "../components/FormatToolbar";
+import AIChatPanel from "../components/AIChatPanel";
+import SocialSidebar from "../components/SocialSidebar";
 
 /* ============================================================
    Утилиты времени
    ============================================================ */
-
-function timeAgo(iso) {
-  if (!iso) return "";
-  const d = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (d < 60) return "только что";
-  if (d < 3600) return `${Math.floor(d / 60)} мин`;
-  if (d < 86400) return `${Math.floor(d / 3600)} ч`;
-  return new Date(iso).toLocaleDateString("ru-RU", {
-    day: "numeric",
-    month: "short",
-  });
-}
 
 function msgTime(iso) {
   if (!iso) return "";
@@ -47,21 +37,96 @@ function msgTime(iso) {
 
 function renderMarkdown(text) {
   if (!text) return "";
-  let html = String(text)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+  const escapeHtml = (value) =>
+    String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  const inline = (value) => {
+    let html = escapeHtml(value);
+    html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+    html = html.replace(
+      /\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+|#[^\s)]*)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
+    );
+    return html
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/__(.+?)__/g, "<strong>$1</strong>")
+      .replace(/~~(.+?)~~/g, "<del>$1</del>")
+      .replace(/(^|[\s(])\*([^*\n]+?)\*(?=[\s).,!?]|$)/g, "$1<em>$2</em>")
+      .replace(/(^|[\s(])_([^_\n]+?)_(?=[\s).,!?]|$)/g, "$1<em>$2</em>");
+  };
 
-  html = html
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/~~(.+?)~~/g, "<del>$1</del>")
-    .replace(/`([^`]+?)`/g, "<code>$1</code>")
-    .replace(/(^|\s)\*([^*\n]+?)\*(?=\s|$)/g, "$1<em>$2</em>")
-    .replace(/\n/g, "<br/>");
+  const lines = String(text).replace(/\r\n?/g, "\n").split("\n");
+  const blocks = [];
+  let paragraph = [];
+  let list = null;
+  let code = null;
+  const flushParagraph = () => {
+    if (paragraph.length) blocks.push(`<p>${inline(paragraph.join(" "))}</p>`);
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (!list) return;
+    blocks.push(`<${list.type}>${list.items.map((item) => `<li>${inline(item)}</li>`).join("")}</${list.type}>`);
+    list = null;
+  };
 
-  return html;
+  for (const line of lines) {
+    const fence = line.match(/^\s*```([\w-]*)\s*$/);
+    if (fence) {
+      flushParagraph();
+      flushList();
+      if (code === null) code = [];
+      else {
+        blocks.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+        code = null;
+      }
+      continue;
+    }
+    if (code !== null) {
+      code.push(line);
+      continue;
+    }
+    if (!line.trim()) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const heading = line.match(/^\s*(#{1,6})\s+(.+?)\s*#*\s*$/);
+    const item = line.match(/^\s*(?:[-+*])\s+(.+)$/) || line.match(/^\s*\d+[.)]\s+(.+)$/);
+    const quote = line.match(/^\s*>\s?(.*)$/);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      const level = heading[1].length;
+      blocks.push(`<h${level}>${inline(heading[2])}</h${level}>`);
+    } else if (item) {
+      flushParagraph();
+      const type = /^\s*\d+[.)]\s+/.test(line) ? "ol" : "ul";
+      if (list && list.type !== type) flushList();
+      if (!list) list = { type, items: [] };
+      list.items.push(item[1]);
+    } else if (quote) {
+      flushParagraph();
+      flushList();
+      blocks.push(`<blockquote>${inline(quote[1])}</blockquote>`);
+    } else if (/^\s*(---+|___+|\*\*\*+)\s*$/.test(line)) {
+      flushParagraph();
+      flushList();
+      blocks.push("<hr>");
+    } else {
+      flushList();
+      paragraph.push(line.trim());
+    }
+  }
+  flushParagraph();
+  flushList();
+  if (code !== null) blocks.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+  return blocks.join("");
 }
 
 /* ============================================================
@@ -80,25 +145,14 @@ function getChatAvatarUrls(chat) {
 
 function ChatAvatar({ chat, compact = false }) {
   const urls = getChatAvatarUrls(chat);
-  const visibleUrls = urls.slice(0, 4);
+  const latestUrl = urls.at(-1);
 
   return (
     <div
-      className={`chat-item__avatar${compact ? " chat-item__avatar--sm" : ""}${visibleUrls.length > 1 ? ` chat-item__avatar--multiple chat-item__avatar--count-${visibleUrls.length}` : ""}`}
+      className={`chat-item__avatar${compact ? " chat-item__avatar--sm" : ""}`}
       aria-label={`Аватары группы ${chat.title}`}
     >
-      {visibleUrls.length ? (
-        visibleUrls.map((url, index) => (
-          <span className="chat-item__avatar-cell" key={`${url}-${index}`}>
-            <img src={url} alt="" />
-            {index === 3 && urls.length > 4 && (
-              <span className="chat-item__avatar-overflow">
-                +{urls.length - 3}
-              </span>
-            )}
-          </span>
-        ))
-      ) : (
+      {latestUrl ? <img src={latestUrl} alt="" /> : (
         (chat.title?.[0] || "?").toUpperCase()
       )}
     </div>
@@ -109,7 +163,61 @@ function ChatAvatar({ chat, compact = false }) {
    Компонент одного вложения (единый формат)
    ============================================================ */
 
-const AttachmentItem = React.memo(function AttachmentItem({ attachment }) {
+function formatMediaTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.floor(seconds % 60);
+  return `${minutes}:${String(remainder).padStart(2, "0")}`;
+}
+
+const AudioPlayer = React.memo(function AudioPlayer({ src, fileName, preview = false }) {
+  const audioRef = useRef(null);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [rateIndex, setRateIndex] = useState(0);
+  const playbackRates = [1, 1.25, 1.5, 2];
+
+  const changePlaybackRate = () => {
+    const nextIndex = (rateIndex + 1) % playbackRates.length;
+    setRateIndex(nextIndex);
+    if (audioRef.current) audioRef.current.playbackRate = playbackRates[nextIndex];
+  };
+
+  return (
+    <div className={`audio-player${preview ? " audio-player--preview" : ""}`}>
+      <audio
+        ref={audioRef}
+        controls
+        preload="metadata"
+        src={src}
+        aria-label={fileName || "Аудиосообщение"}
+        onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+        onDurationChange={(event) => setDuration(event.currentTarget.duration)}
+        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        onEnded={() => setCurrentTime(duration)}
+      />
+      <span className="audio-player__time" aria-label="Длительность аудио">
+        {formatMediaTime(currentTime)} / {formatMediaTime(duration)}
+      </span>
+      <button
+        type="button"
+        className="audio-player__speed"
+        onClick={changePlaybackRate}
+        aria-label={`Скорость воспроизведения ${playbackRates[rateIndex]}x`}
+      >
+        {playbackRates[rateIndex]}×
+      </button>
+    </div>
+  );
+});
+
+const AttachmentItem = React.memo(function AttachmentItem({
+  attachment,
+  onTranscribe,
+  onDownload,
+  isTranscribing,
+}) {
+  const [markdownOpen, setMarkdownOpen] = useState(false);
   const {
     id,
     file_key,
@@ -118,37 +226,25 @@ const AttachmentItem = React.memo(function AttachmentItem({ attachment }) {
     text: attachmentText,
     transcription_error: transcriptionError,
   } = attachment;
-  const isImage = typeof mime_type === "string" && mime_type.startsWith("image/");
   const isAudio =
     (typeof mime_type === "string" && mime_type.startsWith("audio/")) ||
     /\.(wav|mp3|ogg|opus|m4a|aac|flac|webm)$/i.test(file_name || "");
   const isText =
     (typeof mime_type === "string" && mime_type.startsWith("text/")) ||
     /\.(txt|md|csv|json|xml|log)$/i.test(file_name || "");
+  const isMarkdown = /\.md$/i.test(file_name || "") || mime_type === "text/markdown";
   const fileName = file_name || "Вложение";
 
   if (!file_key) return null;
 
   return (
-    <div className={`msg__attachment${isImage ? " msg__attachment--image" : ""}`} key={id}>
-      {isImage && (
-        <a href={file_key} target="_blank" rel="noreferrer">
-          <img
-            className="msg__attachment-image"
-            src={file_key}
-            alt={fileName}
-            loading="lazy"
-          />
-        </a>
-      )}
+    <div className="msg__attachment" key={id}>
       {isAudio && (
-        <audio className="msg__attachment-audio" controls preload="none" src={file_key}>
-          Ваш браузер не поддерживает аудио.
-        </audio>
+        <AudioPlayer src={file_key} fileName={fileName} />
       )}
-      {(isText ||
+      {(isText && !isMarkdown ||
         isAudio ||
-        (attachmentText !== null && attachmentText !== undefined)) && (
+        (!isMarkdown && attachmentText !== null && attachmentText !== undefined)) && (
         <div className="msg__attachment-text">
           <div className="msg__attachment-text-title">
             {isAudio ? "Распознанный текст" : fileName}
@@ -163,25 +259,153 @@ const AttachmentItem = React.memo(function AttachmentItem({ attachment }) {
             </div>
           ) : (
             <div className="msg__attachment-text-content msg__attachment-text-content--pending">
-              Текст появится после загрузки файла.
+              {isTranscribing ? "Распознавание…" : "Распознать речь в текст"}
+              {!isTranscribing && (
+                <button
+                  type="button"
+                  className="msg__transcribe-button"
+                  onClick={() => onTranscribe(attachment)}
+                >
+                  Распознать
+                </button>
+              )}
             </div>
           )}
         </div>
       )}
-      {!isImage && !isAudio && (
-        <a
-          className="msg__attachment-link"
-          href={file_key}
-          target="_blank"
-          rel="noreferrer"
-          download={fileName}
-        >
-          {fileName}
-        </a>
+      {isMarkdown && (
+        <div className="markdown-attachment">
+          <button
+            type="button"
+            className="markdown-attachment__toggle"
+            onClick={() => setMarkdownOpen((open) => !open)}
+            aria-expanded={markdownOpen}
+          >
+            {markdownOpen ? "Скрыть Markdown" : "Просмотреть Markdown"}
+          </button>
+          {markdownOpen && (
+            attachmentText ? (
+              <div
+                className="markdown-attachment__content markdown-body"
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(attachmentText) }}
+              />
+            ) : (
+              <div className="markdown-attachment__content markdown-attachment__empty">
+                Предпросмотр недоступен. Скачайте файл, чтобы открыть его содержимое.
+              </div>
+            )
+          )}
+        </div>
       )}
+      <button
+        type="button"
+        className="msg__attachment-link"
+        onClick={() => onDownload(attachment)}
+        aria-label={`Скачать ${fileName}`}
+      >
+        {isAudio ? "Скачать аудио" : fileName}
+      </button>
     </div>
   );
 });
+
+function isVisualMedia(attachment) {
+  return (
+    attachment?.mime_type?.startsWith("image/") ||
+    attachment?.mime_type?.startsWith("video/")
+  );
+}
+
+function MediaGrid({ attachments, onOpenMedia }) {
+  return (
+    <div className={`msg__media-grid msg__media-grid--${Math.min(attachments.length, 4)}`}>
+      {attachments.map((attachment) => {
+        const isVideo = attachment.mime_type?.startsWith("video/");
+        return (
+          <button
+            key={attachment.id || attachment.file_key}
+            type="button"
+            className="msg__media-tile"
+            onClick={() => onOpenMedia(attachment)}
+            aria-label={`Открыть ${attachment.file_name || "вложение"}`}
+          >
+            {isVideo ? (
+              <video src={attachment.file_key} muted preload="metadata" />
+            ) : (
+              <img
+                src={attachment.file_key}
+                alt={attachment.file_name || "Изображение"}
+                loading="lazy"
+              />
+            )}
+            {isVideo && <span className="msg__media-play" aria-hidden="true">▶</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function MediaViewer({ attachments, index, onClose, onChange, onDownload }) {
+  const attachment = attachments[index];
+  const isVideo = attachment?.mime_type?.startsWith("video/");
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+      if (event.key === "ArrowLeft") onChange(-1);
+      if (event.key === "ArrowRight") onChange(1);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onChange, onClose]);
+
+  if (!attachment) return null;
+
+  return (
+    <div
+      className="media-viewer-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section className="media-viewer" role="dialog" aria-modal="true" aria-label="Просмотр вложения">
+        <header className="media-viewer__header">
+          <span className="media-viewer__name">{attachment.file_name}</span>
+          <span className="media-viewer__count">{index + 1} / {attachments.length}</span>
+          <button
+            type="button"
+            className="media-viewer__download"
+            onClick={() => onDownload(attachment)}
+          >
+            Скачать оригинал
+          </button>
+          <button type="button" className="media-viewer__close" onClick={onClose} aria-label="Закрыть просмотр">
+            ×
+          </button>
+        </header>
+        <div className="media-viewer__stage">
+          {attachments.length > 1 && (
+            <button type="button" className="media-viewer__nav" onClick={() => onChange(-1)} aria-label="Предыдущее вложение">
+              ‹
+            </button>
+          )}
+          {isVideo ? (
+            <video key={attachment.file_key} src={attachment.file_key} controls autoPlay />
+          ) : (
+            <img src={attachment.file_key} alt={attachment.file_name || "Изображение"} />
+          )}
+          {attachments.length > 1 && (
+            <button type="button" className="media-viewer__nav" onClick={() => onChange(1)} aria-label="Следующее вложение">
+              ›
+            </button>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
 
 /* ============================================================
    Компонент одного сообщения
@@ -192,14 +416,32 @@ const MessageItem = React.memo(function MessageItem({
   isMe,
   onReaction,
   onContextMenu,
+  onTranscribe,
+  onDownload,
+  transcribingAttachments,
+  onOpenMedia,
+  onReply,
+  onEdit,
+  onDelete,
+  onPin,
+  onJumpTo,
+  readBy,
 }) {
   const html = useMemo(() => renderMarkdown(m.text), [m.text]);
   const attachments = Array.isArray(m.attachments) ? m.attachments : [];
+  const attachmentGroups = attachments.reduce((groups, attachment) => {
+    const media = isVisualMedia(attachment);
+    const lastGroup = groups[groups.length - 1];
+    if (lastGroup?.media === media) lastGroup.items.push(attachment);
+    else groups.push({ media, items: [attachment] });
+    return groups;
+  }, []);
   const reactions = m.reactions_count || {};
   const hasReactions = Object.keys(reactions).length > 0;
 
   return (
     <div
+      id={`message-${m.id}`}
       className={`msg ${isMe ? "msg--me" : ""}`}
       onContextMenu={(e) => onContextMenu(e, m.id)}
       title="Правый клик — добавить реакцию"
@@ -210,18 +452,46 @@ const MessageItem = React.memo(function MessageItem({
         </div>
       )}
       <div className="msg__bubble">
+        {m.reply_to_id && (
+          <button type="button" className="msg__reply-quote" onClick={() => onJumpTo(m.reply_to_id)}>
+            {m.reply_to_text || "Исходное сообщение"}
+          </button>
+        )}
         {m.text && (
-          <span
+          <div
             className="msg__text"
             dangerouslySetInnerHTML={{ __html: html }}
           />
         )}
 
-        {attachments.map((a) => (
-          <AttachmentItem key={a.id || a.file_key} attachment={a} />
-        ))}
+        {attachmentGroups.map((group, groupIndex) =>
+          group.media ? (
+            <MediaGrid
+              key={`media-${groupIndex}`}
+              attachments={group.items}
+              onOpenMedia={onOpenMedia}
+            />
+          ) : (
+            group.items.map((attachment) => (
+              <AttachmentItem
+                key={attachment.id || attachment.file_key}
+                attachment={attachment}
+                onTranscribe={onTranscribe}
+                onDownload={onDownload}
+                isTranscribing={transcribingAttachments.has(attachment.id)}
+              />
+            ))
+          ),
+        )}
 
-        <span className="msg__time">{msgTime(m.created_at)}</span>
+        <span className="msg__time">{msgTime(m.created_at)}{m.edited_at ? " · изменено" : ""}{readBy ? " · прочитано" : ""}</span>
+      </div>
+
+      <div className="msg__actions">
+        <button type="button" onClick={() => onReply(m)} aria-label="Ответить">↩</button>
+        {isMe && <button type="button" onClick={() => onEdit(m)} aria-label="Редактировать">Изменить</button>}
+        {isMe && <button type="button" onClick={() => onDelete(m.id)} aria-label="Удалить">Удалить</button>}
+        <button type="button" onClick={() => onPin(m)} aria-label={m.is_pinned ? "Открепить" : "Закрепить"}>{m.is_pinned ? "Открепить" : "Закрепить"}</button>
       </div>
 
       {hasReactions && (
@@ -254,16 +524,37 @@ export default function ChatsPage() {
   const [chats, setChats] = useState([]);
   const [chatsLoading, setChatsLoading] = useState(true);
   const [chatsError, setChatsError] = useState(null);
-
   const [messages, setMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState(null);
+  const [chatDetailsOpen, setChatDetailsOpen] = useState(true);
+  const [activeChatTab, setActiveChatTab] = useState("messages");
+  const [aiPanelOpen, setAIPanelOpen] = useState(false);
+  const [transcribingAttachments, setTranscribingAttachments] = useState(
+    () => new Set(),
+  );
 
-  const [search, setSearch] = useState("");
   const [text, setText] = useState("");
+  const [replyTo, setReplyTo] = useState(null);
+  const [searchText, setSearchText] = useState("");
+  const [attachmentFilter, setAttachmentFilter] = useState("");
+  const [authorFilter, setAuthorFilter] = useState("");
+  const [sinceFilter, setSinceFilter] = useState("");
+  const [untilFilter, setUntilFilter] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [chatPrefs, setChatPrefs] = useState({ color: "", background: "", muted: false, sound: true, shareReads: true, sharePresence: true });
+  const [chatMembers, setChatMembers] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]);
+  const [selectedPreviewUrls, setSelectedPreviewUrls] = useState([]);
+  const [recording, setRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [recordedAudio, setRecordedAudio] = useState(null);
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState(null);
+  const [recordingError, setRecordingError] = useState(null);
   const [sending, setSending] = useState(false);
   const [typingUsers, setTypingUsers] = useState(new Set());
+  const [onlineUsers, setOnlineUsers] = useState(new Set());
   const [createOpen, setCreateOpen] = useState(false);
   const [newChat, setNewChat] = useState({
     title: "",
@@ -282,6 +573,7 @@ export default function ChatsPage() {
 
   const [showFormat, setShowFormat] = useState(false);
   const [reactionPicker, setReactionPicker] = useState(null);
+  const [galleryIndex, setGalleryIndex] = useState(null);
 
   const bottomRef = useRef(null);
   const socketRef = useRef(null);
@@ -291,6 +583,62 @@ export default function ChatsPage() {
   const textareaRef = useRef(null);
   const sendingRef = useRef(false);
   const blurTimeoutRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const recordingStreamRef = useRef(null);
+  const recordingChunksRef = useRef([]);
+  const recordingTimerRef = useRef(null);
+
+  useEffect(() => {
+    const previews = selectedFiles.map((file) =>
+      file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+    );
+    setSelectedPreviewUrls(previews);
+    return () => previews.forEach((url) => url && URL.revokeObjectURL(url));
+  }, [selectedFiles]);
+
+  useEffect(() => {
+    if (!recordedAudio) {
+      setRecordedAudioUrl(null);
+      return undefined;
+    }
+    const url = URL.createObjectURL(recordedAudio);
+    setRecordedAudioUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [recordedAudio]);
+
+  useEffect(() => {
+    const timerRef = recordingTimerRef;
+    const streamRef = recordingStreamRef;
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!chatId) return;
+    try {
+      setChatPrefs({ color: "", background: "", muted: false, sound: true, shareReads: true, sharePresence: true, ...JSON.parse(localStorage.getItem(`chat-prefs:${chatId}`) || "{}") });
+    } catch { setChatPrefs({ color: "", background: "", muted: false, sound: true, shareReads: true, sharePresence: true }); }
+  }, [chatId]);
+
+  useEffect(() => {
+    if (chatId) localStorage.setItem(`chat-draft:${chatId}`, text);
+  }, [chatId, text]);
+
+  useEffect(() => {
+    if (chatId) localStorage.setItem(`chat-prefs:${chatId}`, JSON.stringify(chatPrefs));
+  }, [chatId, chatPrefs]);
+
+  useEffect(() => {
+    if (!chatId || !messages.length || !chatPrefs.shareReads) return;
+    chatsApi.markChatRead?.(chatId, messages.at(-1)?.id)?.catch(() => {});
+  }, [chatId, messages, chatPrefs.shareReads]);
+
+  useEffect(() => {
+    if (!chatId) return;
+    Promise.resolve(chatsApi.getChatMembers?.(chatId)).then((rows) => setChatMembers(rows || [])).catch(() => setChatMembers([]));
+  }, [chatId]);
 
   // Тикер для обновления относительного времени ("только что" -> "1 мин")
   const [, tick] = useReducer((x) => x + 1, 0);
@@ -366,8 +714,21 @@ export default function ChatsPage() {
   /* ---------- 2. Загрузка сообщений + сброс композера при смене чата ---------- */
   useEffect(() => {
     // Сбрасываем состояние композера при переходе между чатами
-    setText("");
+    setText(chatId ? localStorage.getItem(`chat-draft:${chatId}`) || "" : "");
+    setReplyTo(null);
     setSelectedFiles([]);
+    setAIPanelOpen(false);
+    setRecordedAudio(null);
+    setGalleryIndex(null);
+    setRecording(false);
+    recordingChunksRef.current = [];
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    recordingTimerRef.current = null;
+    if (mediaRecorderRef.current?.state !== "inactive") {
+      mediaRecorderRef.current?.stop();
+    }
+    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recordingStreamRef.current = null;
     setShowFormat(false);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
@@ -416,11 +777,21 @@ export default function ChatsPage() {
 
     try {
       sock = createChatSocket(chatId, {
+        sharePresence: chatPrefs.sharePresence,
         onOpen: () => {
           socketOpenRef.current = true;
+          const key = `unsent-messages:${chatId}`;
+          const pending = JSON.parse(localStorage.getItem(key) || "[]");
+          Promise.all(pending.map((item) => messagesApi.sendMessage(chatId, { text: item.text }).then(() => null).catch(() => item)))
+            .then((results) => {
+              const failed = results.filter(Boolean);
+              if (failed.length) localStorage.setItem(key, JSON.stringify(failed));
+              else localStorage.removeItem(key);
+            });
           console.info("[WS] Подключён к чату", chatId);
         },
         onEvent: (event, data) => {
+          const mentionsMe = Boolean(me?.tag) && String(data.text || "").toLowerCase().includes(`@${me.tag.toLowerCase()}`);
           if (event === "message:new" && data.chat_id === chatId) {
             setMessages((prev) => {
               const exists = prev.some((m) => m.id === data.id);
@@ -440,9 +811,48 @@ export default function ChatsPage() {
                   : c,
               ),
             );
+            if (!chatPrefs.muted && data.user_id !== me?.id && chatPrefs.sound && typeof AudioContext !== "undefined") {
+              try {
+                const audio = new AudioContext();
+                const tone = audio.createOscillator();
+                const gain = audio.createGain();
+                tone.connect(gain); gain.connect(audio.destination);
+                gain.gain.value = 0.035; tone.frequency.value = 660;
+                tone.start(); tone.stop(audio.currentTime + 0.1);
+                tone.onended = () => audio.close();
+              } catch {}
+            }
+            if (!chatPrefs.muted && data.user_id !== me?.id && !mentionsMe && typeof Notification !== "undefined" && Notification.permission === "granted") {
+              new Notification("Новое сообщение", { body: data.text || "Вложение", tag: `chat-${chatId}` });
+            }
+          }
+
+          if (mentionsMe && !chatPrefs.muted && typeof Notification !== "undefined" && Notification.permission === "granted") {
+            new Notification("Вас упомянули", { body: data.text, tag: `mention-${chatId}` });
+          }
+          if (event === "message:updated" && data.chat_id === chatId) {
+            setMessages((prev) => prev.map((item) => item.id === data.id ? { ...item, ...data } : item));
+          }
+          if (event === "message:deleted" && data.chat_id === chatId) {
+            setMessages((prev) => prev.filter((item) => item.id !== data.message_id));
+          }
+          if (event === "user:presence" && data.chat_id === chatId) {
+            setOnlineUsers((previous) => {
+              const next = new Set(previous);
+              if (data.online) next.add(data.user_id); else next.delete(data.user_id);
+              return next;
+            });
+          }
+          if (event === "user:read" && data.chat_id === chatId) {
+            setChatMembers((previous) => previous.map((member) => member.id === data.user_id ? { ...member, last_read_message_id: data.last_read_message_id } : member));
           }
 
           if (event === "attachment:text" && data.chat_id === chatId) {
+            setTranscribingAttachments((previous) => {
+              const next = new Set(previous);
+              next.delete(data.attachment_id);
+              return next;
+            });
             setMessages((prev) =>
               prev.map((message) =>
                 message.id !== data.message_id
@@ -508,30 +918,147 @@ export default function ChatsPage() {
       console.error("[WS Component Error]", e);
     }
 
+    const typingTimeouts = typingUsersTimeoutsRef.current;
     return () => {
       sock?.close();
       if (socketRef.current === sock) socketRef.current = null;
       socketOpenRef.current = false;
 
-      typingUsersTimeoutsRef.current.forEach((t) => clearTimeout(t));
-      typingUsersTimeoutsRef.current.clear();
+      typingTimeouts.forEach((t) => clearTimeout(t));
+      typingTimeouts.clear();
       setTypingUsers(new Set());
     };
     // me?.id намеренно не в зависимостях: сокет пересоздаётся только при смене чата
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId]);
+  }, [chatId, chatPrefs.sharePresence]);
 
   /* ---------- 4. Скролл вниз ---------- */
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const startVoiceRecording = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      setRecordingError("Запись аудио не поддерживается этим браузером.");
+      return;
+    }
+    try {
+      setRecordingError(null);
+      setRecordingSeconds(0);
+      recordingChunksRef.current = [];
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      recordingStreamRef.current = stream;
+      const mimeType =
+        typeof MediaRecorder.isTypeSupported === "function"
+          ? ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm"].find(
+              (type) => MediaRecorder.isTypeSupported(type),
+            )
+          : null;
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) recordingChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        recordingStreamRef.current = null;
+        if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+        const chunks = recordingChunksRef.current;
+        recordingChunksRef.current = [];
+        setRecording(false);
+        if (!chunks.length) return;
+        const contentType = recorder.mimeType || "audio/webm";
+        const extension = contentType.includes("ogg") ? "ogg" : "webm";
+        setRecordedAudio(
+          new File(chunks, `voice-${Date.now()}.${extension}`, {
+            type: contentType,
+          }),
+        );
+      };
+      recorder.start();
+      setRecording(true);
+      recordingTimerRef.current = setInterval(
+        () => setRecordingSeconds((seconds) => seconds + 1),
+        1000,
+      );
+    } catch (error) {
+      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recordingStreamRef.current = null;
+      setRecording(false);
+      setRecordingError(
+        error.name === "NotAllowedError"
+          ? "Разрешите доступ к микрофону, чтобы записать голосовое сообщение."
+          : "Не удалось начать запись аудио.",
+      );
+    }
+  }, []);
+
+  const stopVoiceRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+  };
+
+  const cancelVoiceRecording = () => {
+    recordingChunksRef.current = [];
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    recordingTimerRef.current = null;
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+    else {
+      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recordingStreamRef.current = null;
+      setRecording(false);
+    }
+    setRecordedAudio(null);
+    setRecordingSeconds(0);
+  };
+
+  const attachRecordedAudio = () => {
+    if (!recordedAudio) return;
+    if (selectedFiles.length >= 10) {
+      setMessagesError("В одном сообщении можно отправить не больше 10 вложений.");
+      return;
+    }
+    setMessagesError(null);
+    setSelectedFiles((previous) => [...previous, recordedAudio]);
+    setRecordedAudio(null);
+    setRecordingSeconds(0);
+  };
+
   /* ---------- 5. Отправка сообщения ---------- */
   const handleSend = useCallback(
     async (e) => {
       if (e) e.preventDefault();
       if (sendingRef.current) return;
-      if ((!text.trim() && selectedFiles.length === 0) || !chatId) return;
+      const filesToSend = recordedAudio
+        ? [...selectedFiles, recordedAudio]
+        : selectedFiles;
+      if ((!text.trim() && filesToSend.length === 0) || !chatId) return;
+      if (filesToSend.length > 10) {
+        setMessagesError("В одном сообщении можно отправить не больше 10 вложений.");
+        return;
+      }
+
+      if (scheduledAt && new Date(scheduledAt).getTime() > Date.now()) {
+        if (filesToSend.length) {
+          setMessagesError("Отложенная отправка пока поддерживает только текст.");
+          return;
+        }
+        const queue = JSON.parse(localStorage.getItem("scheduled-messages") || "[]");
+        queue.push({ chatId, text: text.trim(), reply_to_id: replyTo?.id || null, at: new Date(scheduledAt).toISOString() });
+        localStorage.setItem("scheduled-messages", JSON.stringify(queue));
+        setText(""); setReplyTo(null); setScheduledAt("");
+        return;
+      }
 
       sendingRef.current = true;
       setSending(true);
@@ -540,13 +1067,15 @@ export default function ChatsPage() {
       try {
         // 1) Загружаем файлы — каждый ответ в едином формате AttachmentResponse
         const uploaded = await Promise.all(
-          selectedFiles.map(async (file) => {
+          filesToSend.map(async (file) => {
             const isText =
               file.type.startsWith("text/") ||
               /\.(txt|md|csv|json|xml|log)$/i.test(file.name);
             const fileText = isText ? await file.text() : null;
             return {
-              ...(await attachmentsApi.uploadAttachment(file, chatId)),
+              ...(await attachmentsApi.uploadAttachment(file, chatId, {
+                compressImages: true,
+              })),
               text: fileText,
             };
           }),
@@ -569,6 +1098,7 @@ export default function ChatsPage() {
         const created = await messagesApi.sendMessage(chatId, {
           text: messageText,
           attachments: attachmentRequests,
+          reply_to_id: replyTo?.id || null,
         });
 
         // 4) Мержим в список по id (защита от дубля с WS)
@@ -595,10 +1125,16 @@ export default function ChatsPage() {
         );
 
         setText("");
+        setReplyTo(null);
         setSelectedFiles([]);
+        setRecordedAudio(null);
         setShowFormat(false);
         if (textareaRef.current) textareaRef.current.style.height = "auto";
       } catch (err) {
+        const pendingKey = `unsent-messages:${chatId}`;
+        const pending = JSON.parse(localStorage.getItem(pendingKey) || "[]");
+        pending.push({ text: text.trim() });
+        localStorage.setItem(pendingKey, JSON.stringify(pending));
         setMessagesError(
           translateApiError(
             err,
@@ -610,7 +1146,60 @@ export default function ChatsPage() {
         setSending(false);
       }
     },
-    [chatId, selectedFiles, text],
+    [chatId, recordedAudio, selectedFiles, text, replyTo, scheduledAt],
+  );
+
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      const queue = JSON.parse(localStorage.getItem("scheduled-messages") || "[]");
+      const due = queue.filter((item) => Date.parse(item.at) <= Date.now());
+      if (!due.length) return;
+      const remaining = queue.filter((item) => Date.parse(item.at) > Date.now());
+      for (const item of due) {
+        try { await messagesApi.sendMessage(item.chatId, { text: item.text, reply_to_id: item.reply_to_id }); }
+        catch { remaining.push(item); }
+      }
+      localStorage.setItem("scheduled-messages", JSON.stringify(remaining));
+    }, 10000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleTranscribe = useCallback(
+    async (message, attachment) => {
+      if (
+        !chatId ||
+        !attachment.id ||
+        transcribingAttachments.has(attachment.id)
+      )
+        return;
+      setTranscribingAttachments((previous) =>
+        new Set(previous).add(attachment.id),
+      );
+      try {
+        const result = await messagesApi.transcribeAttachment(
+          chatId,
+          message.id,
+          attachment.id,
+        );
+        if (!result.queued) {
+          setTranscribingAttachments((previous) => {
+            const next = new Set(previous);
+            next.delete(attachment.id);
+            return next;
+          });
+        }
+      } catch (error) {
+        setMessagesError(
+          translateApiError(error, "Не удалось запустить распознавание аудио"),
+        );
+        setTranscribingAttachments((previous) => {
+          const next = new Set(previous);
+          next.delete(attachment.id);
+          return next;
+        });
+      }
+    },
+    [chatId, transcribingAttachments],
   );
 
   /* ---------- 6. Ввод текста + typing (с дебаунсом) ---------- */
@@ -847,22 +1436,66 @@ export default function ChatsPage() {
   /* ---------- 11. Выбор файлов ---------- */
   const handleFileSelection = (e) => {
     const files = Array.from(e.target.files || []);
-    if (files.length) setSelectedFiles((prev) => [...prev, ...files]);
+    if (files.length) {
+      if (selectedFiles.length + files.length > 10) {
+        setMessagesError("В одном сообщении можно отправить не больше 10 вложений.");
+      } else {
+        setMessagesError(null);
+        setSelectedFiles((previous) => [...previous, ...files]);
+      }
+    }
     e.target.value = "";
   };
 
   /* ---------- 12. Производные ---------- */
-  const filtered = useMemo(
-    () =>
-      chats.filter((c) =>
-        (c.title || "").toLowerCase().includes(search.toLowerCase()),
-      ),
-    [chats, search],
-  );
-
   const activeChat = useMemo(
     () => chats.find((c) => c.id === chatId),
     [chats, chatId],
+  );
+  const mentionQuery = text.match(/(?:^|\s)@([^\s]*)$/)?.[1];
+  const mentionSuggestions = mentionQuery === undefined ? [] : chatMembers.filter((member) => member.id !== me?.id && (member.tag || member.username).toLowerCase().startsWith(mentionQuery.toLowerCase())).slice(0, 5);
+
+  useEffect(() => {
+    setChatDetailsOpen(true);
+  }, [chatId]);
+
+  const galleryAttachments = useMemo(
+    () =>
+      messages.flatMap((message) => message.attachments || []).filter(isVisualMedia),
+    [messages],
+  );
+  const openMediaViewer = useCallback(
+    (attachment) => {
+      const index = galleryAttachments.findIndex(
+        (item) => item.id === attachment.id || item.file_key === attachment.file_key,
+      );
+      if (index >= 0) setGalleryIndex(index);
+    },
+    [galleryAttachments],
+  );
+  const closeMediaViewer = useCallback(() => setGalleryIndex(null), []);
+  const downloadMedia = useCallback(
+    async (attachment) => {
+      try {
+        const url = await attachmentsApi.getAttachmentDownloadUrl(attachment.id);
+        window.location.assign(url);
+      } catch (error) {
+        setMessagesError(
+          translateApiError(error, "Не удалось скачать вложение"),
+        );
+      }
+    },
+    [],
+  );
+  const moveMediaViewer = useCallback(
+    (offset) => {
+      setGalleryIndex((index) =>
+        index === null || !galleryAttachments.length
+          ? null
+          : (index + offset + galleryAttachments.length) % galleryAttachments.length,
+      );
+    },
+    [galleryAttachments.length],
   );
 
   const handleContextMenuMessage = useCallback(
@@ -870,84 +1503,61 @@ export default function ChatsPage() {
     [openReactionPicker],
   );
 
+  const replyToMessage = useCallback((message) => setReplyTo(message), []);
+  const editMessage = useCallback(async (message) => {
+    const nextText = window.prompt("Изменить сообщение", message.text || "");
+    if (nextText === null || nextText.trim() === "") return;
+    try {
+      const updated = await messagesApi.updateMessage(message.id, nextText.trim());
+      setMessages((previous) => previous.map((item) => item.id === updated.id ? { ...item, ...updated } : item));
+    } catch (error) { setMessagesError(translateApiError(error, "Не удалось изменить сообщение")); }
+  }, []);
+  const removeMessage = useCallback(async (messageId) => {
+    if (!window.confirm("Удалить это сообщение?")) return;
+    try { await messagesApi.deleteMessage(messageId); setMessages((previous) => previous.filter((item) => item.id !== messageId)); }
+    catch (error) { setMessagesError(translateApiError(error, "Не удалось удалить сообщение")); }
+  }, []);
+  const pinMessage = useCallback(async (message) => {
+    try {
+      const pinned = await messagesApi.togglePin(chatId, message.id);
+      setMessages((previous) => previous.map((item) => item.id === message.id ? { ...item, is_pinned: pinned } : item));
+    } catch (error) { setMessagesError(translateApiError(error, "Не удалось закрепить сообщение")); }
+  }, [chatId]);
+  const jumpToMessage = useCallback((id) => document.getElementById(`message-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), []);
+  const runMessageSearch = useCallback(async (event) => {
+    event?.preventDefault();
+    if (!chatId) return;
+    if (!searchText && !attachmentFilter && !authorFilter && !sinceFilter && !untilFilter) { setSearching(false); messagesApi.listMessages(chatId).then((list) => setMessages([...list].reverse())); return; }
+    try {
+      const found = await messagesApi.searchMessages(chatId, { text: searchText || undefined, attachment_type: attachmentFilter || undefined, author_id: authorFilter || undefined, since: sinceFilter || undefined, until: untilFilter || undefined });
+      setMessages([...found].reverse()); setSearching(true);
+    } catch (error) { setMessagesError(translateApiError(error, "Не удалось найти сообщения")); }
+  }, [chatId, searchText, attachmentFilter, authorFilter, sinceFilter, untilFilter]);
+
   /* ============================================================
      Рендер
      ============================================================ */
   return (
     <main className="chats-page">
       {/* ---------- Левая колонка ---------- */}
-      <aside
-        className={`chats-sidebar ${chatId ? "chats-sidebar--hidden-mobile" : ""}`}
-      >
-        <div className="chats-sidebar__header">
-          <input
-            className="chats-search"
-            type="text"
-            placeholder="Поиск"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <button
-            className="chats-new"
-            type="button"
-            title="Создать группу"
-            onClick={() => {
-              setCreateChatError(null);
-              setUsernameQuery("");
-              setUserSearchResults([]);
-              setSelectedUsers([]);
-              setSelectedAvatarFiles([]);
-              setCreateOpen(true);
-            }}
-          >
-            +
-          </button>
-        </div>
-
-        {chatsLoading && <p className="chats-empty">Загрузка чатов…</p>}
-        {chatsError && (
-          <p className="chats-empty" style={{ color: "var(--danger)" }}>
-            {chatsError}
-          </p>
-        )}
-
-        {!chatsLoading && !chatsError && (
-          <ul className="chats-list">
-            {filtered.map((c) => (
-              <li
-                key={c.id}
-                className={`chat-item ${chatId === c.id ? "chat-item--active" : ""}`}
-                onClick={() => navigate(`/chats/${c.id}`)}
-              >
-                <ChatAvatar chat={c} />
-                <div className="chat-item__body">
-                  <div className="chat-item__top">
-                    <span className="chat-item__title">{c.title}</span>
-                    {c.last_message?.created_at && (
-                      <span className="chat-item__time">
-                        {timeAgo(c.last_message.created_at)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="chat-item__bottom">
-                    <span className="chat-item__preview">
-                      {c.last_message?.text || "Нет сообщений"}
-                    </span>
-                  </div>
-                </div>
-              </li>
-            ))}
-            {filtered.length === 0 && (
-              <li className="chats-empty">
-                {search ? "Ничего не найдено" : "Пока нет чатов"}
-              </li>
-            )}
-          </ul>
-        )}
-      </aside>
+      <SocialSidebar
+        chats={chats}
+        chatsLoading={chatsLoading}
+        chatsError={chatsError}
+        chatId={chatId}
+        navigate={navigate}
+        onCreateChat={() => {
+          setCreateChatError(null);
+          setUsernameQuery("");
+          setUserSearchResults([]);
+          setSelectedUsers([]);
+          setSelectedAvatarFiles([]);
+          setCreateOpen(true);
+        }}
+      />
 
       {/* ---------- Правая колонка ---------- */}
-      <section className={`chat-view ${!chatId ? "chat-view--empty" : ""}`}>
+      <section className={`chat-view ${!chatId ? "chat-view--empty" : ""}`} style={{ "--chat-accent": chatPrefs.color || undefined, background: chatPrefs.background || undefined }}>
         {!chatId ? (
           <div className="chat-view__placeholder">
             <div className="chat-view__placeholder-icon">💬</div>
@@ -975,9 +1585,18 @@ export default function ChatsPage() {
                 <div className="chat-view__status">
                   {typingUsers.size > 0
                     ? `${typingUsers.size} печатает…`
-                    : activeChat.description || "был(а) недавно"}
+                    : onlineUsers.size > 0 ? `${onlineUsers.size} online` : activeChat.description || "был(а) недавно"}
                 </div>
               </div>
+              <button
+                type="button"
+                className="ai-panel__toggle"
+                onClick={() => setAIPanelOpen((open) => !open)}
+                aria-expanded={aiPanelOpen}
+                aria-label={aiPanelOpen ? "Закрыть ИИ-помощника" : "Открыть ИИ-помощника"}
+              >
+                ✨ ИИ
+              </button>
               <label
                 className="chat-avatar-upload"
                 title="Добавить аватарки группы"
@@ -1000,7 +1619,99 @@ export default function ChatsPage() {
               </p>
             )}
 
-            <div className="chat-view__messages">
+            <nav className="chat-view__tabs" role="tablist" aria-label="Разделы чата">
+              <button type="button" role="tab" aria-selected={activeChatTab === "messages"} onClick={() => setActiveChatTab("messages")}>
+                Переписка
+              </button>
+              <button type="button" role="tab" aria-selected={activeChatTab === "profile"} onClick={() => setActiveChatTab("profile")}>
+                Профиль чата
+              </button>
+            </nav>
+
+            {activeChatTab === "profile" && <section className="chat-details" aria-label="Информация о чате">
+              <div className="chat-details__heading">
+                <div>
+                  <h2>О чате</h2>
+                  <p>{activeChat.description || "Описание пока не добавлено."}</p>
+                </div>
+                <button
+                  type="button"
+                  className="chat-details__toggle"
+                  onClick={() => setChatDetailsOpen((open) => !open)}
+                  aria-expanded={chatDetailsOpen}
+                >
+                  {chatDetailsOpen ? "Свернуть" : "Подробнее"}
+                </button>
+              </div>
+              {chatDetailsOpen && (
+                <>
+                  <div className="chat-preferences">
+                    <label>Цвет чата <input type="color" value={chatPrefs.color || "#64748b"} onChange={(e) => setChatPrefs((p) => ({ ...p, color: e.target.value }))} /></label>
+                    <label>Фон <input type="color" value={chatPrefs.background || "#ffffff"} onChange={(e) => setChatPrefs((p) => ({ ...p, background: e.target.value }))} /></label>
+                    <label><input type="checkbox" checked={chatPrefs.muted} onChange={(e) => setChatPrefs((p) => ({ ...p, muted: e.target.checked }))} /> Без уведомлений</label>
+                    <label><input type="checkbox" checked={chatPrefs.sound} onChange={(e) => setChatPrefs((p) => ({ ...p, sound: e.target.checked }))} /> Звук</label>
+                    <label><input type="checkbox" checked={chatPrefs.shareReads} onChange={(e) => setChatPrefs((p) => ({ ...p, shareReads: e.target.checked }))} /> Показывать прочтение</label>
+                    <label><input type="checkbox" checked={chatPrefs.sharePresence} onChange={(e) => setChatPrefs((p) => ({ ...p, sharePresence: e.target.checked }))} /> Показывать статус в сети</label>
+                    <button type="button" onClick={() => { if (typeof Notification !== "undefined") Notification.requestPermission(); }}>Включить уведомления</button>
+                  </div>
+                  <section className="chat-members" aria-label="Участники чата">
+                    <h3>Участники</h3>
+                    {chatMembers.map((member) => <div key={member.id} className="chat-member">
+                      <span>@{member.tag || member.username} · {member.role}</span>
+                      {activeChat.owner_id === me?.id && member.id !== me?.id && <select aria-label={`Роль ${member.username}`} value={member.role} onChange={async (event) => {
+                        try { await chatsApi.updateMemberRole(chatId, member.id, event.target.value); setChatMembers((current) => current.map((item) => item.id === member.id ? { ...item, role: event.target.value } : item)); }
+                        catch (error) { setMessagesError(translateApiError(error, "Не удалось изменить роль")); }
+                      }}><option value="member">Участник</option><option value="moderator">Модератор</option></select>}
+                    </div>)}
+                  </section>
+                  <div className="chat-details__meta">
+                    <span>{messages.length} сообщений загружено</span>
+                    {activeChat.created_at && (
+                      <span>
+                        Создан {new Date(activeChat.created_at).toLocaleDateString("ru-RU")}
+                      </span>
+                    )}
+                  </div>
+                  <div className="chat-photo-feed" aria-label="Лента изображений">
+                    <h3>Изображения и видео</h3>
+                    {galleryAttachments.length ? (
+                      <div className="chat-photo-feed__items">
+                        {[...galleryAttachments].reverse().map((attachment) => (
+                          <button
+                            key={attachment.id || attachment.file_key}
+                            type="button"
+                            className="chat-photo-feed__item"
+                            onClick={() => openMediaViewer(attachment)}
+                            aria-label={`Открыть ${attachment.file_name || "изображение"}`}
+                          >
+                            {attachment.mime_type?.startsWith("video/") ? (
+                              <video src={attachment.file_key} muted preload="metadata" />
+                            ) : (
+                              <img src={attachment.file_key} alt={attachment.file_name || ""} loading="lazy" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="chat-photo-feed__empty">В этом чате пока нет изображений.</p>
+                    )}
+                  </div>
+                </>
+              )}
+            </section>}
+
+            {activeChatTab === "messages" && <><div className="chat-view__messages">
+              <form className="message-search" onSubmit={runMessageSearch}>
+                <input aria-label="Поиск по сообщениям" placeholder="Поиск по переписке" value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+                <select aria-label="Тип вложения" value={attachmentFilter} onChange={(e) => setAttachmentFilter(e.target.value)}>
+                  <option value="">Любой тип</option><option value="image">Фото</option><option value="video">Видео</option><option value="audio">Аудио</option><option value="file">Файлы</option>
+                </select>
+                <select aria-label="Автор сообщения" value={authorFilter} onChange={(e) => setAuthorFilter(e.target.value)}><option value="">Все авторы</option>{chatMembers.map((member) => <option key={member.id} value={member.id}>{member.username}</option>)}</select>
+                <label>С <input type="datetime-local" value={sinceFilter} onChange={(e) => setSinceFilter(e.target.value)} /></label>
+                <label>По <input type="datetime-local" value={untilFilter} onChange={(e) => setUntilFilter(e.target.value)} /></label>
+                <button type="submit">Найти</button>
+                {searching && <button type="button" onClick={() => { setSearchText(""); setAttachmentFilter(""); setAuthorFilter(""); setSinceFilter(""); setUntilFilter(""); setSearching(false); messagesApi.listMessages(chatId).then((list) => setMessages([...list].reverse())); }}>Сбросить</button>}
+              </form>
               {messagesLoading && (
                 <p className="chats-empty">Загрузка сообщений…</p>
               )}
@@ -1018,6 +1729,16 @@ export default function ChatsPage() {
                     isMe={m.user_id === me?.id}
                     onReaction={handleReaction}
                     onContextMenu={handleContextMenuMessage}
+                    onTranscribe={(attachment) => handleTranscribe(m, attachment)}
+                    onDownload={downloadMedia}
+                    transcribingAttachments={transcribingAttachments}
+                    onOpenMedia={openMediaViewer}
+                    onReply={replyToMessage}
+                    onEdit={editMessage}
+                    onDelete={removeMessage}
+                    onPin={pinMessage}
+                    onJumpTo={jumpToMessage}
+                    readBy={m.user_id === me?.id && chatMembers.some((member) => member.id !== me?.id && member.last_read_message_id === m.id)}
                   />
                 ))}
               <div ref={bottomRef} />
@@ -1026,8 +1747,53 @@ export default function ChatsPage() {
             {/* ---------- Composer ---------- */}
             <div className="chat-view__composer-wrapper">
               <FormatToolbar onFormat={applyFormat} visible={showFormat} />
+              {mentionSuggestions.length > 0 && <div className="mention-suggestions" role="listbox" aria-label="Упоминания">
+                {mentionSuggestions.map((member) => <button key={member.id} type="button" role="option" onClick={() => {
+                  const tag = member.tag || member.username;
+                  setText((current) => current.replace(/(?:^|\s)@[^\s]*$/, (match) => `${match.startsWith(" ") ? " " : ""}@${tag} `));
+                  textareaRef.current?.focus();
+                }}>@{member.tag || member.username}</button>)}
+              </div>}
 
               <form className="chat-view__composer" onSubmit={handleSend}>
+                {replyTo && <div className="reply-preview"><span>Ответ: {replyTo.text || "вложение"}</span><button type="button" onClick={() => setReplyTo(null)} aria-label="Отменить ответ">×</button></div>}
+                {recording ? (
+                  <>
+                    <span className="voice-recording__timer" aria-live="polite">
+                      <span className="voice-recording__dot" />
+                      Запись {formatMediaTime(recordingSeconds)}
+                    </span>
+                    <button
+                      type="button"
+                      className="composer-btn voice-recording__stop"
+                      onClick={stopVoiceRecording}
+                      title="Завершить запись и прослушать"
+                      aria-label="Завершить запись"
+                    >
+                      ■
+                    </button>
+                    <button
+                      type="button"
+                      className="composer-btn"
+                      onClick={cancelVoiceRecording}
+                      title="Отменить запись"
+                      aria-label="Отменить запись"
+                    >
+                      ×
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="composer-btn"
+                    onClick={startVoiceRecording}
+                    disabled={sending || Boolean(recordedAudio)}
+                    title="Записать голосовое сообщение"
+                    aria-label="Записать голосовое сообщение"
+                  >
+                    🎙
+                  </button>
+                )}
                 <label className="composer-btn" title="Прикрепить">
                   📎
                   <input
@@ -1063,21 +1829,57 @@ export default function ChatsPage() {
                   type="submit"
                   className="composer-btn composer-btn--send"
                   disabled={
-                    sending || (!text.trim() && selectedFiles.length === 0)
+                    sending ||
+                    (!text.trim() && selectedFiles.length === 0 && !recordedAudio)
                   }
                   title="Отправить"
                 >
                   ➤
                 </button>
               </form>
+              <label className="schedule-send">Отправить позже <input type="datetime-local" value={scheduledAt} min={new Date(Date.now() + 60000).toISOString().slice(0, 16)} onChange={(e) => setScheduledAt(e.target.value)} /></label>
+
+              {recordingError && (
+                <p className="voice-recording__error" role="alert">
+                  {recordingError}
+                </p>
+              )}
+
+              {recordedAudio && recordedAudioUrl && (
+                <div className="voice-preview">
+                  <div className="voice-preview__heading">Предпрослушивание голосового сообщения</div>
+                  <AudioPlayer src={recordedAudioUrl} fileName={recordedAudio.name} preview />
+                  <div className="voice-preview__actions">
+                    <button type="button" onClick={attachRecordedAudio} disabled={sending}>
+                      Прикрепить к сообщению
+                    </button>
+                    <button type="button" onClick={cancelVoiceRecording} disabled={sending}>
+                      Удалить запись
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {selectedFiles.length > 0 && (
-                <ul className="composer-attachments">
+                <>
+                  {selectedFiles.filter((file) => file.type.startsWith("image/")).length > 1 && (
+                    <p className="composer-attachments__album-hint">
+                      Альбом: фотографии отправятся одним сообщением.
+                    </p>
+                  )}
+                  <ul className="composer-attachments">
                   {selectedFiles.map((file, index) => (
                     <li
                       className="composer-attachments__item"
                       key={`${file.name}-${file.lastModified}-${index}`}
                     >
+                      {selectedPreviewUrls[index] ? (
+                        <img
+                          className="composer-attachments__preview"
+                          src={selectedPreviewUrls[index]}
+                          alt={file.name}
+                        />
+                      ) : null}
                       <span>{file.name}</span>
                       <button
                         type="button"
@@ -1094,12 +1896,30 @@ export default function ChatsPage() {
                       </button>
                     </li>
                   ))}
-                </ul>
+                  </ul>
+                </>
               )}
-            </div>
+            </div></>}
+            {aiPanelOpen && (
+              <AIChatPanel
+                key={chatId}
+                chatId={chatId}
+                onClose={() => setAIPanelOpen(false)}
+              />
+            )}
           </>
         )}
       </section>
+
+      {galleryIndex !== null && (
+        <MediaViewer
+          attachments={galleryAttachments}
+          index={galleryIndex}
+          onClose={closeMediaViewer}
+          onChange={moveMediaViewer}
+          onDownload={downloadMedia}
+        />
+      )}
 
       {/* ---------- Пикер реакций ---------- */}
       {reactionPicker && (
@@ -1193,7 +2013,7 @@ export default function ChatsPage() {
               <ul className="chat-user-search-results">
                 {userSearchResults.map((user) => (
                   <li key={user.id}>
-                    <span>@{user.username}</span>
+                    <span>{user.username} <small>@{user.tag}</small></span>
                     <button
                       type="button"
                       className="vk-btn"
@@ -1213,10 +2033,10 @@ export default function ChatsPage() {
               <ul className="chat-selected-users">
                 {selectedUsers.map((user) => (
                   <li key={user.id}>
-                    <span>@{user.username}</span>
+                    <span>{user.username} <small>@{user.tag}</small></span>
                     <button
                       type="button"
-                      aria-label={`Убрать @${user.username}`}
+                      aria-label={`Убрать @${user.tag}`}
                       onClick={() =>
                         setSelectedUsers((current) =>
                           current.filter((selected) => selected.id !== user.id),

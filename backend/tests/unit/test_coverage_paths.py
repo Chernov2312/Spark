@@ -1,11 +1,11 @@
-import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
+import uuid
 
-import pytest
 from fastapi import HTTPException, Response, WebSocketDisconnect
 from jwt import InvalidTokenError
+import pytest
 
 from api.v1 import auth as auth_api
 from api.v1 import chats as chats_api
@@ -13,6 +13,7 @@ from api.v1 import media as media_api
 from api.v1 import reactions as reactions_api
 from api.v1 import user as user_api
 from api.v1.websockets import chat_typing
+from core.storage import S3Storage
 from schemas.attachment import AttachmentRequest, AvatarUrlRequest
 from schemas.chats import ChatAddUserRequest, NewChatRequest, PatchChatRequest
 from schemas.reactions import ReactionsRequest
@@ -30,6 +31,18 @@ def mock_s3(monkeypatch, *, temporary_url="https://signed.test/file", delete=Tru
     monkeypatch.setattr(user_api, "S3Storage", MagicMock(return_value=storage))
     monkeypatch.setattr(chats_api, "S3Storage", MagicMock(return_value=storage))
     return storage
+
+
+def test_temporary_file_keys_are_unique_for_repeated_uploads():
+    storage = S3Storage.__new__(S3Storage)
+    target_id = uuid.uuid4()
+
+    first_key = storage.create_file_key("webp", target_id, "user_message")
+    second_key = storage.create_file_key("webp", target_id, "user_message")
+
+    assert first_key != second_key
+    assert first_key.startswith(f"user_message/{target_id}/")
+    assert first_key.endswith(".webp")
 
 
 @pytest.mark.parametrize(
@@ -129,6 +142,81 @@ async def test_create_attachment_supports_user_and_chat_ownership(
     storage.get_temporary_url.assert_awaited_once()
 
 
+async def test_download_attachment_signs_filename_for_chat_member(
+    monkeypatch,
+    db_session,
+):
+    storage = mock_s3(monkeypatch)
+    user_id = uuid.uuid4()
+    chat_id = uuid.uuid4()
+    attachment = SimpleNamespace(
+        id=uuid.uuid4(),
+        file_key="user_message/photo.jpg",
+        file_name="летний отпуск.jpg",
+        user_id=None,
+        chat_id=chat_id,
+    )
+    monkeypatch.setattr(
+        media_api.AttachmentDao,
+        "get_by_id",
+        AsyncMock(return_value=attachment),
+    )
+    monkeypatch.setattr(
+        media_api.ChatDao,
+        "get_chat_with_users",
+        AsyncMock(return_value=SimpleNamespace(users=[SimpleNamespace(id=user_id)])),
+    )
+
+    response = await media_api.download_attachment(
+        attachment.id,
+        session=db_session,
+        user_id=user_id,
+    )
+
+    assert response["url"] == "https://signed.test/file"
+    storage.get_temporary_url.assert_awaited_once()
+    call = storage.get_temporary_url.await_args
+    assert call.args == (attachment.file_key,)
+    disposition = call.kwargs["response_content_disposition"]
+    fallback = 'attachment; filename="' + "_" * 13 + '.jpg";'
+    assert disposition.startswith(fallback)
+    assert "filename*=UTF-8''%D0%BB%D0%B5%D1%82%D0%BD%D0%B8%D0%B9%20" in disposition
+    assert "%D0%BE%D1%82%D0%BF%D1%83%D1%81%D0%BA.jpg" in disposition
+
+
+async def test_download_attachment_hides_chat_file_from_non_member(
+    monkeypatch,
+    db_session,
+):
+    mock_s3(monkeypatch)
+    attachment = SimpleNamespace(
+        id=uuid.uuid4(),
+        file_key="user_message/photo.jpg",
+        file_name="photo.jpg",
+        user_id=None,
+        chat_id=uuid.uuid4(),
+    )
+    monkeypatch.setattr(
+        media_api.AttachmentDao,
+        "get_by_id",
+        AsyncMock(return_value=attachment),
+    )
+    monkeypatch.setattr(
+        media_api.ChatDao,
+        "get_chat_with_users",
+        AsyncMock(return_value=SimpleNamespace(users=[])),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await media_api.download_attachment(
+            attachment.id,
+            session=db_session,
+            user_id=uuid.uuid4(),
+        )
+
+    assert exc.value.status_code == 404
+
+
 async def test_auth_register_rejects_existing_username(monkeypatch, db_session):
     monkeypatch.setattr(
         auth_api.UserDao,
@@ -152,7 +240,12 @@ async def test_auth_register_hashes_password_and_sends_verification(
     db_session,
 ):
     user_id = uuid.uuid4()
-    new_user = SimpleNamespace(id=user_id, username="new", email="new@example.com")
+    new_user = SimpleNamespace(
+        id=user_id,
+        username="new",
+        tag="new",
+        email="new@example.com",
+    )
     add = AsyncMock(return_value=new_user)
     mail = MagicMock()
     monkeypatch.setattr(
@@ -178,7 +271,7 @@ async def test_auth_register_hashes_password_and_sends_verification(
         "new@example.com",
         "new",
         str(user_id),
-        auth_api.settings.APP_BASE_URL,
+        auth_api.settings.FRONTEND_BASE_URL,
     )
     assert response.id == user_id
 
@@ -188,7 +281,13 @@ async def test_verification_marks_user_verified_and_returns_access_token(
     db_session,
 ):
     user_id = uuid.uuid4()
-    current_user = SimpleNamespace(is_verified=False)
+    current_user = SimpleNamespace(
+        id=user_id,
+        username="user",
+        tag="user",
+        email="user@example.com",
+        is_verified=False,
+    )
     commit = AsyncMock(wraps=db_session.commit)
     monkeypatch.setattr(db_session, "commit", commit)
     monkeypatch.setattr(
@@ -262,6 +361,7 @@ async def test_user_get_me_signs_avatar_urls(monkeypatch, db_session):
     user = SimpleNamespace(
         id=user_id,
         username="user",
+        tag="user",
         email="user@example.com",
         created_at=created_at,
         avatars=[SimpleNamespace(file_key="avatar/key")],

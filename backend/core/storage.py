@@ -1,4 +1,3 @@
-import datetime
 import os
 import uuid
 
@@ -33,8 +32,7 @@ class S3Storage:
         category: str,
     ) -> str:
         file_extension = file.content_type.split("/")[-1]
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        file_key = f"{category}/{target_id}/{timestamp}.{file_extension}"
+        file_key = self.create_file_key(file_extension, target_id, category)
 
         async with self.session.client("s3", **self.config) as s3:
             await s3.put_object(
@@ -65,16 +63,20 @@ class S3Storage:
         file_key: str,
         client_method: str = "get_object",
         expires_in: int = 3600,
+        response_content_disposition: str | None = None,
     ) -> str | None:
         if file_key is None:
             return None
         async with self.session.client("s3", **self.config) as s3:
+            params = {
+                "Bucket": self.bucket_name,
+                "Key": file_key,
+            }
+            if response_content_disposition:
+                params["ResponseContentDisposition"] = response_content_disposition
             url = await s3.generate_presigned_url(
                 ClientMethod=client_method,
-                Params={
-                    "Bucket": self.bucket_name,
-                    "Key": file_key,
-                },
+                Params=params,
                 ExpiresIn=expires_in,
             )
             return url
@@ -83,8 +85,8 @@ class S3Storage:
         return "/".join(url.split("?")[0].split("/")[-3:])
 
     def create_file_key(self, file_extension, target_id, category):
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        return f"{category}/{target_id}/{timestamp}.{file_extension}"
+        unique_name = uuid.uuid4().hex
+        return f"{category}/{target_id}/{unique_name}.{file_extension}"
 
     async def delete_file_by_key(self, file_key: str) -> bool:
         try:

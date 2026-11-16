@@ -1,4 +1,47 @@
-[tool.black]
+[tool.ruff]
 line-length = 90
+target-version = "py313"
+extend-exclude = ["**/alembic/**"]
+force-exclude = true
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "W", "B", "COM", "I", "N", "Q", "TID252"]
+ignore = ["N805", "B008", "F821", "E701", "COM812"]
+exclude = [
+# Keep Flake8's existing exclusions for linting; formatting still checks
+# __init__.py files, as the old Black check did.
+  "**/__init__.py",
+  "**/migrations/**",
+  "**/manage.py",
+  "**/static/**",
+  "**/site-packages/**",
+]
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "double"
+multiline-quotes = "double"
+docstring-quotes = "double"
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.isort]
+known-first-party = [
+  "backend",
+  "api",
+  "config",
+  "core",
+  "db",
+  "dao",
+  "models",
+  "schemas",
+  "tests",
+]
+force-sort-within-sections = true
+order-by-type = false
+
+[tool.ruff.format]
+line-ending = "auto"
+quote-style = "double"
+indent-style = "space"
 skip-magic-trailing-comma = false
-extend-exclude = '/alembic/'

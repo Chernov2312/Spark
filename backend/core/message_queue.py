@@ -1,5 +1,5 @@
-import uuid
 from datetime import datetime
+import uuid
 
 import redis.asyncio as aioredis
 
@@ -27,7 +27,7 @@ def history_cache_key(
     version: int,
 ) -> str:
     before_key = before.isoformat() if before else "latest"
-    return f"{HISTORY_CACHE_PREFIX}{chat_id}:{user_id}:" f"{limit}:{before_key}:{version}"
+    return f"{HISTORY_CACHE_PREFIX}{chat_id}:{user_id}:{limit}:{before_key}:{version}"
 
 
 async def enqueue_message(

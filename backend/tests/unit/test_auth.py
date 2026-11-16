@@ -2,6 +2,8 @@ from fastapi import status
 from httpx2 import AsyncClient
 from unit.schemas import AuthResponse
 
+from schemas.auth import UserRegistrationResponse
+
 
 async def test_valid_register_user(api_client: AsyncClient, mock_email_task):
     test_user = {
@@ -11,7 +13,7 @@ async def test_valid_register_user(api_client: AsyncClient, mock_email_task):
     }
     res = await api_client.post("api/v1/auth/register", json=test_user)
     assert res.status_code == status.HTTP_201_CREATED
-    assert AuthResponse.model_validate(res.json())
+    assert UserRegistrationResponse.model_validate(res.json())
 
 
 async def test_invalid_username_register_user(api_client: AsyncClient):

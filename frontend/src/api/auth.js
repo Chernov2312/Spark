@@ -10,9 +10,10 @@ function emitAuthChange() {
 export const AUTH_EVENT = AUTH_CHANGE_EVENT;
 
 /* POST /auth/register */
-export async function registerUser({ username, email, password }) {
+export async function registerUser({ username, tag, email, password }) {
   const { data } = await api.post("/auth/register", {
     username,
+    tag,
     email,
     password,
   });
@@ -24,6 +25,7 @@ export async function registerUser({ username, email, password }) {
       JSON.stringify({
         id: data.id,
         username: data.username,
+        tag: data.tag,
         email: data.email,
       }),
     );
@@ -49,6 +51,7 @@ export async function loginUser({ username, password }) {
       JSON.stringify({
         id: data.id,
         username: data.username,
+        tag: data.tag,
         email: data.email,
       }),
     );
@@ -87,6 +90,7 @@ export async function verifyEmailToken(token) {
     JSON.stringify({
       id: data.id,
       username: data.username,
+      tag: data.tag,
       email: data.email,
     }),
   );

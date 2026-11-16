@@ -1,28 +1,61 @@
 import { useState } from "react";
 import { auth, translateApiError } from "../api";
 
+const TAG_TRANSLITERATION = {
+  а: "a", е: "e", ё: "e", о: "o", р: "p", с: "c", у: "y", х: "x",
+  к: "k", м: "m", т: "t", в: "b", н: "h", і: "i", б: "b", г: "g",
+  д: "d", ж: "zh", з: "z", й: "i", л: "l", ф: "f", ц: "c", ч: "ch",
+  ш: "sh", щ: "shch", ы: "y", э: "e", ю: "yu", я: "ya",
+  α: "a", β: "b", ε: "e", ι: "i", κ: "k", ο: "o", ρ: "p",
+  τ: "t", υ: "y", χ: "x",
+};
+
+function normalizeTag(value) {
+  return Array.from(value.normalize("NFKC").toLowerCase())
+    .map((character) => TAG_TRANSLITERATION[character] ?? character)
+    .join("")
+    .replace(/^@+/, "")
+    .replace(/[^a-z0-9_]/g, "")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 32);
+}
+
 export default function RegisterForm({ onSuccess, demo = false }) {
   const [form, setForm] = useState({
     username: "",
+    tag: "",
     email: "",
     password: "",
     passwordRepeat: "",
     consent: false,
   });
+  const [tagTouched, setTagTouched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
+  const [verificationSent, setVerificationSent] = useState(null);
 
   const update = (field) => (e) => {
     const value =
       e.target.type === "checkbox" ? e.target.checked : e.target.value;
-    setForm((p) => ({ ...p, [field]: value }));
+    if (field === "tag") setTagTouched(true);
+    setForm((p) => {
+      if (field === "username") {
+        return {
+          ...p,
+          username: value,
+          ...(!tagTouched ? { tag: normalizeTag(value) } : {}),
+        };
+      }
+      if (field === "tag") {
+        return { ...p, tag: normalizeTag(value) };
+      }
+      return { ...p, [field]: value };
+    });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
-    setSuccess(null);
 
     // Валидация на клиенте
     if (!form.username.trim()) {
@@ -31,6 +64,10 @@ export default function RegisterForm({ onSuccess, demo = false }) {
     }
     if (form.username.trim().length < 3) {
       setError("Имя пользователя — минимум 3 символа");
+      return;
+    }
+    if (tagTouched && form.tag.length < 3) {
+      setError("Тег должен содержать минимум 3 латинские буквы или цифры");
       return;
     }
     if (!form.email.trim()) {
@@ -76,6 +113,7 @@ export default function RegisterForm({ onSuccess, demo = false }) {
         data = {
           id: "demo-user",
           username: form.username.trim(),
+          tag: form.tag || normalizeTag(form.username) || "user",
           email: form.email.trim(),
           access_token: "demo-token",
           token_type: "bearer",
@@ -86,21 +124,21 @@ export default function RegisterForm({ onSuccess, demo = false }) {
           JSON.stringify({
             id: data.id,
             username: data.username,
+            tag: data.tag,
             email: data.email,
           }),
         );
       } else {
         data = await auth.registerUser({
           username: form.username.trim(),
+          tag: tagTouched ? form.tag : null,
           email: form.email.trim(),
           password: form.password,
         });
       }
 
-      if (!data.access_token) {
-        setSuccess(
-          "Аккаунт создан. Перейдите по ссылке из письма, чтобы подтвердить email и войти.",
-        );
+      if (data.verification_required) {
+        setVerificationSent({ email: data.email, tag: data.tag });
         return;
       }
 
@@ -111,6 +149,36 @@ export default function RegisterForm({ onSuccess, demo = false }) {
       setLoading(false);
     }
   };
+
+  if (verificationSent) {
+    return (
+      <div className="register-page">
+        <section className="register-card register-email-sent" role="status">
+          <div className="register-email-sent__icon" aria-hidden="true">
+            <svg viewBox="0 0 48 48" fill="none">
+              <rect x="6" y="10" width="36" height="28" rx="6" stroke="currentColor" strokeWidth="3" />
+              <path d="m9 15 15 12 15-12" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <span className="register-email-sent__eyebrow">ПОЧТА ОТПРАВЛЕНА</span>
+          <h1 className="register-card__title">Проверьте почту</h1>
+          <p className="register-card__subtitle">
+            Мы отправили ссылку для подтверждения на <strong>{verificationSent.email}</strong>.
+            Откройте письмо и перейдите по ссылке, чтобы активировать аккаунт.
+          </p>
+          <div className="register-email-sent__tag">
+            Ваш тег в Spark <strong>@{verificationSent.tag}</strong>
+          </div>
+          <p className="register-email-sent__hint">
+            Если письма нет, проверьте папку «Спам». Ссылка действует 24 часа.
+          </p>
+          <a className="register-email-sent__link" href="/">
+            Вернуться на главную
+          </a>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="register-page">
@@ -137,6 +205,27 @@ export default function RegisterForm({ onSuccess, demo = false }) {
             autoComplete="username"
             placeholder="chel"
           />
+        </label>
+
+        <label className="field">
+          <span className="field__label">Уникальный тег <b>*</b></span>
+          <div className="register-tag-input">
+            <span aria-hidden="true">@</span>
+            <input
+              type="text"
+              value={form.tag}
+              onChange={update("tag")}
+              required
+              minLength={3}
+              maxLength={32}
+              autoComplete="off"
+              placeholder="chel"
+              aria-describedby="register-tag-help"
+            />
+          </div>
+          <small id="register-tag-help">
+            По тегу вас найдут, даже если у других пользователей такое же имя. Если предложенный тег занят, система добавит цифры; свой вариант можно изменить.
+          </small>
         </label>
 
         <label className="field">
@@ -196,7 +285,6 @@ export default function RegisterForm({ onSuccess, demo = false }) {
         </label>
 
         {error && <p className="register-card__error">{error}</p>}
-        {success && <p role="status">{success}</p>}
 
         <div className="register-card__actions">
           <button type="submit" className="submit-btn" disabled={loading}>

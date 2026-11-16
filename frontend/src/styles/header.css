@@ -3,7 +3,7 @@
    ============================================================ */
 
 .site-header {
-  background: rgba(19, 19, 25, 0.85);
+  background: var(--header-bg);
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
@@ -167,4 +167,40 @@
 .header-user.active {
   color: var(--spark);
   font-weight: 600;
+}
+
+.theme-toggle {
+  display: inline-grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--bg-input);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.theme-toggle:hover {
+  border-color: var(--spark);
+  background: var(--spark-dim);
+  color: var(--spark-text);
+}
+
+.theme-toggle:focus-visible {
+  outline: 3px solid var(--spark-dim);
+  outline-offset: 2px;
+}
+
+.theme-toggle svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }

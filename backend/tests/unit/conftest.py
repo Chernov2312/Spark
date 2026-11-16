@@ -1,6 +1,9 @@
+import os
+from types import SimpleNamespace
+
+from main import app
 import pytest
 import pytest_asyncio
-from main import app
 from testcontainers.ollama import OllamaContainer
 
 from api.v1.ai import get_ai_service
@@ -100,6 +103,11 @@ class CpuOllamaContainer(OllamaContainer):
 
 @pytest.fixture(scope="session")
 def ollama_container():
+    external_url = os.getenv("OLLAMA_TEST_BASE_URL")
+    if external_url:
+        yield SimpleNamespace(get_endpoint=lambda: external_url.rstrip("/"))
+        return
+
     with CpuOllamaContainer(image="ollama/ollama:0.34.2") as container:
         container.pull_model(OLLAMA_MODEL)
         yield container

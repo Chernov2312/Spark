@@ -1,5 +1,5 @@
-import uuid
 from typing import List, Type
+import uuid
 
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession

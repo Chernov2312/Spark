@@ -14,6 +14,13 @@ export async function sendMessage(chatId, body) {
   return data;
 }
 
+export async function transcribeAttachment(chatId, messageId, attachmentId) {
+  const { data } = await api.post(
+    `/chats/${chatId}/messages/${messageId}/attachments/${attachmentId}/transcribe`,
+  );
+  return data;
+}
+
 // PUT /messages/{id}
 export async function updateMessage(messageId, text) {
   const { data } = await api.put(`/messages/${messageId}`, { text });
@@ -23,6 +30,16 @@ export async function updateMessage(messageId, text) {
 // DELETE /messages/{id}
 export async function deleteMessage(messageId) {
   await api.delete(`/messages/${messageId}`);
+}
+
+export async function searchMessages(chatId, filters = {}) {
+  const { data } = await api.get(`/chats/${chatId}/messages/search`, { params: filters });
+  return data.messages || [];
+}
+
+export async function togglePin(chatId, messageId) {
+  const { data } = await api.put(`/chats/${chatId}/messages/${messageId}/pin`);
+  return data.pinned;
 }
 
 // POST /messages/{id}/reactions

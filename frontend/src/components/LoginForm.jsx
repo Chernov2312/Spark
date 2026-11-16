@@ -40,7 +40,7 @@ export default function LoginForm({ onSuccess }) {
 
         <label className="field">
           <span className="field__label">
-            Имя пользователя <b>*</b>
+            Тег пользователя <b>*</b>
           </span>
           <input
             type="text"
@@ -48,7 +48,7 @@ export default function LoginForm({ onSuccess }) {
             onChange={update("username")}
             required
             autoComplete="username"
-            placeholder="chel"
+            placeholder="@chel"
           />
         </label>
 

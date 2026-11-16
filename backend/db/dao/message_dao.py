@@ -1,8 +1,8 @@
-import uuid
 from datetime import datetime
 from typing import TypedDict
+import uuid
 
-from sqlalchemy import and_, bindparam, delete, or_, select, update
+from sqlalchemy import and_, bindparam, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -63,6 +63,58 @@ class MessageDao(BaseDao[Message]):
         return res.scalars().all()
 
     @classmethod
+    async def search_chat_history(
+        cls,
+        session: AsyncSession,
+        chat_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        query_text: str | None = None,
+        author_id: uuid.UUID | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        attachment_type: str | None = None,
+        limit: int = 100,
+    ) -> list[Message]:
+        query = select(Message).where(
+            Message.chat_id == chat_id,
+            Message.chat.has(Chat.users.any(User.id == user_id)),
+        )
+        if query_text:
+            pattern = f"%{query_text.strip()}%"
+            query = query.where(
+                or_(
+                    Message.text.ilike(pattern),
+                    Message.attachments.any(Attachment.file_name.ilike(pattern)),
+                ),
+            )
+        if author_id:
+            query = query.where(Message.user_id == author_id)
+        if since:
+            query = query.where(Message.created_at >= since)
+        if until:
+            query = query.where(Message.created_at <= until)
+        if attachment_type:
+            patterns = {
+                "image": "image/%",
+                "video": "video/%",
+                "audio": "audio/%",
+                "file": "application/%",
+            }
+            mime_pattern = patterns.get(attachment_type)
+            if mime_pattern is None:
+                return []
+            query = query.where(
+                Message.attachments.any(Attachment.mime_type.like(mime_pattern)),
+            )
+        result = await session.execute(
+            query.order_by(Message.created_at.desc())
+            .limit(min(max(limit, 1), 200))
+            .options(selectinload(Message.attachments)),
+        )
+        return result.scalars().all()
+
+    @classmethod
     async def update_by_id(
         cls,
         session: AsyncSession,
@@ -76,7 +128,7 @@ class MessageDao(BaseDao[Message]):
                 Message.id == target_id,
                 Message.user_id == user_id,
             )
-            .values(text=text)
+            .values(text=text, edited_at=func.now())
             .returning(Message)
         )
 
@@ -144,6 +196,7 @@ class MessageDao(BaseDao[Message]):
                 "chat_id": message.chat_id,
                 "user_id": message.user_id,
                 "text": message.text,
+                "reply_to_id": message.reply_to_id,
                 "created_at": message.created_at,
             }
             for message in data_messages
@@ -178,7 +231,14 @@ class MessageDao(BaseDao[Message]):
                             Attachment.msg_id == message.id,
                         ),
                     )
-                    .values(msg_id=message.id)
+                    .values(
+                        msg_id=message.id,
+                        **(
+                            {"text": attachment.text}
+                            if attachment.text is not None
+                            else {}
+                        ),
+                    )
                 )
                 result = await session.execute(statement)
                 if result.rowcount != 1:

@@ -10,6 +10,7 @@ password_valid = re.compile(
 
 class UserRegister(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
+    tag: str | None = Field(default=None, max_length=32)
     email: EmailStr = Field(..., max_length=100)
     password: str = Field(..., min_length=8, max_length=250)
 
@@ -25,9 +26,18 @@ class UserLogin(BaseModel):
     password: str = Field(..., min_length=8, max_length=250)
 
 
+class UserRegistrationResponse(BaseModel):
+    id: uuid.UUID
+    username: str = Field(..., min_length=3, max_length=50)
+    tag: str = Field(..., min_length=3, max_length=32)
+    email: EmailStr
+    verification_required: bool = True
+
+
 class UserResponse(BaseModel):
     id: uuid.UUID = Field(...)
     username: str = Field(..., min_length=3, max_length=50)
+    tag: str = Field(..., min_length=3, max_length=32)
     email: EmailStr = Field(..., max_length=100)
     access_token: str = Field(..., max_length=250)
     token_type: str = "bearer"

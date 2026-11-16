@@ -42,6 +42,21 @@ export async function addUsersToChat(chatId, userIds) {
   return data;
 }
 
+export async function getChatMembers(chatId) {
+  const { data } = await api.get(`/chats/${chatId}/members`);
+  return data;
+}
+
+export async function updateMemberRole(chatId, memberId, role) {
+  const { data } = await api.put(`/chats/${chatId}/members/${memberId}/role`, { role });
+  return data;
+}
+
+export async function markChatRead(chatId, messageId) {
+  const { data } = await api.post(`/chats/${chatId}/read`, { message_id: messageId });
+  return data;
+}
+
 export async function searchUsersByUsername(username) {
   const { data } = await api.get("/users/search", {
     params: { username: username.trim(), limit: 20 },

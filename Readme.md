@@ -1,93 +1,93 @@
-# Spark
+﻿# Spark
 
-[![Linter](https://github.com/Chernov2312/Spark/actions/workflows/ci_linter_test.yml/badge.svg)](https://github.com/Chernov2312/Spark/actions/workflows/ci_linter_test.yml)
-[![Python Test](https://github.com/Chernov2312/Spark/actions/workflows/ci_python_test.yml/badge.svg)](https://github.com/Chernov2312/Spark/actions/workflows/ci_python_test.yml)
+Spark — веб-мессенджер с REST API и WebSocket-соединениями. Backend работает на FastAPI, PostgreSQL хранит данные, Redis передаёт события чатов и обслуживает очередь сообщений, Celery запускает фоновые задачи.
 
-Spark — мессенджер с REST API и WebSocket-соединениями. Серверная часть написана на FastAPI, использует PostgreSQL для постоянных данных и Redis для обмена сообщениями и фоновой синхронизации.
+## Возможности
 
-## Возможности бэкенда
-
-- Регистрация с подтверждением электронной почты, вход и JWT-аутентификация.
-- Профили пользователей и чаты с участниками.
-- Сообщения, вложения и реакции.
-- WebSocket-подключение к чату для обмена событиями и статусом набора текста.
-- Генерация краткого содержания переписки и переписывание текста с помощью Gemini.
-- Хранение файлов в S3-совместимом объектном хранилище Yandex Cloud.
-- Фоновые задачи Celery: отправка писем, распознавание аудио через Whisper и синхронизация сообщений и реакций.
+- Регистрация, подтверждение почты и вход по JWT.
+- Личные и групповые чаты, профили, аватары и статусы набора текста.
+- Сообщения с файлами, изображения в чате и реакции.
+- Поиск по пользователям и создание групповых чатов.
+- Форматирование сообщений, краткое содержание переписки и переписывание текста через Ollama с OpenAI-совместимым клиентом.
+- Распознавание голосовых вложений через Whisper по запросу пользователя.
+- Загрузка файлов в S3-совместимое хранилище Yandex Cloud.
 
 ## Требования
 
-- Docker Desktop с поддержкой Docker Compose.
-- Для использования внешних интеграций нужны учетные данные Yandex Cloud, Google Gemini и SMTP.
+- Docker Desktop с Docker Compose.
+- Ollama запускается в Docker и не требует внешнего API-ключа. Для реальной отправки почты и загрузки файлов укажите соответствующие значения в `.env`.
+- Backend image использует Python 3.13 и FFmpeg для подготовки аудио к Whisper.
 
-Контейнер бэкенда собран на Python 3.13 и устанавливает FFmpeg, необходимый для обработки аудио.
+## Запуск через Docker Compose
 
-## Запуск для разработки
+Все команды выполняются из корня проекта.
 
-Все команды выполняются из корня репозитория.
-
-1. Создайте локальный файл окружения из шаблона.
-
-   PowerShell:
+1. Создайте конфигурацию из шаблона:
 
    ```powershell
    Copy-Item .env.example .env
    ```
 
-   macOS/Linux:
+   На macOS/Linux:
 
    ```bash
    cp .env.example .env
    ```
 
-2. При необходимости задайте в `.env` значения для PostgreSQL, Redis, JWT и внешних интеграций. Для реальной отправки почты и работы с файлами и ИИ замените демонстрационные значения на действительные учетные данные.
-3. Запустите сервисы разработки:
+2. Для локальной разработки оставьте `API_BASE_URL=http://localhost:8001` и `FRONTEND_BASE_URL=http://localhost:5174` в `.env`. Первая настройка задаёт адрес API для браузера, вторая — адрес фронтенда в ссылках подтверждения почты. При необходимости измените `OLLAMA_MODEL` и `OLLAMA_BASE_URL`; по умолчанию используется `qwen3:0.6b` и адрес `http://ollama:11434`. Укажите реальные ключи Yandex Cloud и SMTP, если нужны эти интеграции. Тестовые заглушки из `.env.example` не подходят для отправки писем и работы с объектным хранилищем.
+
+3. Соберите и запустите приложение:
 
    ```bash
    docker compose --profile dev up --build
    ```
 
-Профиль `dev` запускает PostgreSQL, Redis, бэкенд, Celery worker и beat, а также фронтенд. При запуске бэкенд применяет миграции Alembic автоматически.
+   Compose запускает Ollama и загружает выбранную модель, затем запускает PostgreSQL, Redis, FastAPI, Celery worker и beat, а также frontend. Backend обращается к локальной модели через OpenAI-совместимый API и применяет миграции Alembic.
 
-После запуска:
+Откройте:
 
+- Frontend: <http://localhost:5174>
 - API: <http://localhost:8001>
 - Swagger UI: <http://localhost:8001/docs>
-- OpenAPI-схема: <http://localhost:8001/openapi.json>
-- Проверка состояния бэкенда: <http://localhost:8001/health>
-- Фронтенд: <http://localhost:5174>
-- PostgreSQL: `localhost:5432`
-- Redis: `localhost:6380` (внутри Docker-сети — `redis:6379`)
+- Health check: <http://localhost:8001/health>
+- PostgreSQL: `localhost:5433`
+- Redis: `localhost:6380`
+- Ollama API: <http://localhost:11434>
 
-Остановка сервисов без удаления данных:
+Чтобы остановить сервисы и сохранить данные, выполните `docker compose --profile dev down`. Для полной очистки также удалите Docker volumes `spark_postgres_data` и `spark_ollama_data`, а также локальную папку `redisdata`.
 
-```bash
-docker compose --profile dev down
-```
+## Whisper cache
+
+Папка `./whisper-cache` подключена к backend и Celery worker как `/home/appuser/.cache/whisper`. Whisper скачивает модель при первом запросе на распознавание; последующие запуски используют тот же файл модели. Папка исключена из Git.
 
 ## API и WebSocket
 
-Основные HTTP-маршруты находятся под `/api/v1`:
+Основные маршруты начинаются с `/api/v1`:
 
-| Раздел | Маршруты |
+| Раздел | Маршрут |
 | --- | --- |
-| Аутентификация | `/api/v1/auth` |
-| Пользователи | `/api/v1/users` |
-| Чаты | `/api/v1/chats` |
-| Сообщения | `/api/v1/chats/{chat_id}/messages`, `/api/v1/messages/{message_id}` |
-| Реакции | `/api/v1/messages/{message_id}/reactions` |
-| Вложения | `/api/v1/attachments/` |
-| ИИ | `/api/v1/ai/chats/{chat_id}/summarize`, `/api/v1/ai/messages/rewrite` |
+| Аутентификация | `/auth` |
+| Пользователи | `/users` |
+| Чаты | `/chats` |
+| Сообщения | `/chats/{chat_id}/messages`, `/messages/{message_id}` |
+| Реакции | `/messages/{message_id}/reactions` |
+| Вложения | `/attachments/` |
+| ИИ | `/ai/chats/{chat_id}/summarize`, `/ai/messages/rewrite` |
 
-Большинство маршрутов требуют JWT-токен. Подробные параметры и схемы запросов доступны в Swagger UI после запуска сервера.
+Распознавание вложения: `POST /chats/{chat_id}/messages/{message_id}/attachments/{attachment_id}/transcribe`. Оно запускается только после нажатия кнопки распознавания в чате. WebSocket подключается по адресу `ws://localhost:8001/{chat_id}/ws?token=<JWT>`.
 
-WebSocket для чата подключается по адресу `ws://localhost:8001/{chat_id}/ws?token=<JWT>`.
+## Разработка и проверки
 
-## Разработка и тесты бэкенда
+Backend-код находится в `backend/`, frontend — в `frontend/`. Frontend-команды запускаются из `frontend/`:
 
-Исходный код бэкенда расположен в `backend/`: HTTP/WebSocket-маршруты — в `api/v1/`, модели и доступ к данным — в `db/`, настройки и общая логика — в `config/` и `core/`, фоновые задачи — в `tasks/`.
+```bash
+npm run dev
+npm run build
+npm run lint
+npm test
+```
 
-Для запуска тестов в Docker используйте отдельное тестовое окружение:
+Backend тесты запускаются в отдельном Docker Compose окружении:
 
 ```bash
 docker compose --env-file .env.test -f docker-compose.test.yml up -d --build
@@ -95,84 +95,14 @@ docker compose --env-file .env.test -f docker-compose.test.yml exec backend-test
 docker compose --env-file .env.test -f docker-compose.test.yml down
 ```
 
-Тестовый Compose-файл поднимает изолированные PostgreSQL и Redis. Тестовые настройки находятся в `.env.test`.
+Проверка Python-кода через Ruff выполняется из корня репозитория:
 
-## Модель данных
-
-```mermaid
-erDiagram
-    users {
-        uuid id PK
-        string username UK
-        string email UK
-        string password
-        boolean is_verified
-        timestamp created_at
-        timestamp updated_at
-    }
-
-    chats {
-        uuid id PK
-        uuid owner_id FK
-        string title UK
-        string description
-        timestamp created_at
-        timestamp updated_at
-    }
-
-    user_chat {
-        uuid user_id PK, FK
-        uuid chat_id PK, FK
-    }
-
-    messages {
-        uuid id PK
-        uuid user_id FK
-        uuid chat_id FK
-        string text
-        jsonb reactions_count
-        timestamp created_at
-        timestamp updated_at
-    }
-
-    messagereactions {
-        uuid id PK
-        uuid user_id FK
-        uuid message_id FK
-        string emoji
-        timestamp created_at
-        timestamp updated_at
-    }
-
-    attachments {
-        uuid id PK
-        uuid user_id FK
-        uuid chat_id FK
-        uuid msg_id FK
-        string attachment_url
-        string file_name
-        integer file_size
-        string mime_type
-        boolean is_avatar
-        text text
-        timestamp created_at
-        timestamp updated_at
-    }
-
-    users ||--o{ chats : owns
-    users ||--o{ user_chat : joins
-    chats ||--o{ user_chat : includes
-    users ||--o{ messages : sends
-    chats ||--o{ messages : contains
-    users ||--o{ messagereactions : reacts
-    messages ||--o{ messagereactions : receives
-    users o|--o{ attachments : uploads
-    chats o|--o{ attachments : has
-    messages o|--o{ attachments : includes
+```bash
+pip install -r backend/requirements/dev.txt
+ruff check .
+ruff format --check .
 ```
 
-## Разработчики
+Чтобы автоматически отформатировать Python-файлы, выполните `ruff format .`.
 
-- **Булычев Владимир** — основатель идеи / Backend-разработчик
-- **Чернов Максим** — тимлид / DevOps / ведущий Backend-разработчик
-- **Малыгин Артём** — Frontend-разработчик
+Тестовое окружение поднимает отдельные PostgreSQL и Redis; для интеграционных тестов также требуется Docker для Testcontainers.

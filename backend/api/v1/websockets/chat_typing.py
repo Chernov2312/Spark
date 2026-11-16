@@ -1,9 +1,9 @@
 import asyncio
 import uuid
 
-import redis.asyncio as aioredis
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
+import redis.asyncio as aioredis
 
 from core.dependencies import local_manager, redis_pubsub_listener
 from core.security import get_id_current_user
@@ -17,6 +17,7 @@ async def on_message(
     websocket: WebSocket,
     chat_id: uuid.UUID,
     token: str = Query(),
+    share_presence: bool = Query(default=True),
 ):
     await websocket.accept()
     redis: aioredis.Redis = websocket.app.state.redis
@@ -27,6 +28,14 @@ async def on_message(
         return
     users_key = f"chat:{chat_id}:users"
     await redis.sadd(users_key, str(user_id))
+    if share_presence:
+        await redis.publish(
+            f"chat:{chat_id}",
+            WsEvent(
+                event="user:presence",
+                data={"chat_id": chat_id, "user_id": user_id, "online": True},
+            ).model_dump_json(),
+        )
     await local_manager.add(user_id, websocket)
     task = asyncio.create_task(
         redis_pubsub_listener(chat_id=chat_id, redis=redis, websocket=websocket),
@@ -42,4 +51,12 @@ async def on_message(
     except (WebSocketDisconnect, ValidationError):
         await local_manager.remove(user_id)
         await redis.srem(users_key, str(user_id))
+        if share_presence:
+            await redis.publish(
+                f"chat:{chat_id}",
+                WsEvent(
+                    event="user:presence",
+                    data={"chat_id": chat_id, "user_id": user_id, "online": False},
+                ).model_dump_json(),
+            )
         task.cancel()

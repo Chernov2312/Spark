@@ -1,11 +1,10 @@
 import asyncio
 
-from tasks.config_celery import celery_app, get_redis
-
 from core.message_queue import history_version_key
 from db.dao.message_dao import MessageDao
 from db.database import async_session_maker
 from schemas.message import MessageInternalDTO
+from tasks.config_celery import celery_app, get_redis, run_async_task
 
 
 async def sync_messages_task_core(chunk_size: int = 1000) -> None:
@@ -44,4 +43,4 @@ async def sync_messages_task_core(chunk_size: int = 1000) -> None:
 
 @celery_app.task(ignore_result=True)
 def add_messages_in_db():
-    asyncio.run(sync_messages_task_core())
+    asyncio.run(run_async_task(sync_messages_task_core()))

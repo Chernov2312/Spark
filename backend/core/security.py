@@ -1,10 +1,10 @@
-import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
+import uuid
 
-import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+import jwt
 from jwt import InvalidTokenError
 from pwdlib import PasswordHash
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +30,7 @@ async def authenticate_user(
     data: UserLogin,
     session: AsyncSession,
 ) -> User:
-    user = await UserDao.get_by_username_or_email(session=session, target=data.username)
+    user = await UserDao.get_by_tag(session=session, tag=data.username)
     if user is None:
         return False
     if not verify_password(data.password, user.password):
@@ -63,5 +63,5 @@ async def get_id_current_user(
         if sub_id is None:
             raise credentials_exception
     except (InvalidTokenError, KeyError, TypeError):
-        raise credentials_exception
+        raise credentials_exception from None
     return uuid.UUID(sub_id)

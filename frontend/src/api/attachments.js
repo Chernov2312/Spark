@@ -2,7 +2,7 @@ import { api } from "./client";
 import { uploadToTemporaryUrl } from "./imageUpload";
 
 /* Obtain a presigned URL, upload directly to storage, then register metadata. */
-export async function uploadAttachment(file, chatId) {
+export async function uploadAttachment(file, chatId, { compressImages = true } = {}) {
   const rawUser = localStorage.getItem("user");
   const user = rawUser ? JSON.parse(rawUser) : null;
   if (!user?.id) {
@@ -18,6 +18,7 @@ export async function uploadAttachment(file, chatId) {
     {
       type: "message",
       targetId: user.id,
+      compress: compressImages,
     },
   );
 
@@ -51,4 +52,9 @@ export async function uploadAttachment(file, chatId) {
       { cause: error },
     );
   }
+}
+
+export async function getAttachmentDownloadUrl(attachmentId) {
+  const { data } = await api.get(`/attachments/${attachmentId}/download`);
+  return data.url;
 }

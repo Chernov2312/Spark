@@ -13,7 +13,12 @@ function getImageExtension(file) {
     "image/webp": "webp",
     "image/gif": "gif",
   };
-  return extensionByType[file.type] || file.name.split(".").pop()?.toLowerCase();
+  if (extensionByType[file.type]) return extensionByType[file.type];
+
+  const suffix = file.name.includes(".")
+    ? file.name.split(".").pop()?.toLowerCase()
+    : "";
+  return suffix && /^[a-z0-9]{1,12}$/.test(suffix) ? suffix : "bin";
 }
 
 function canvasToWebp(canvas) {
@@ -79,9 +84,9 @@ function getApiErrorMessage(error) {
 export async function uploadToTemporaryUrl(
   api,
   file,
-  { type, targetId, maxSizeBytes },
+  { type, targetId, maxSizeBytes, compress = true },
 ) {
-  const uploadFile = await compressImage(file);
+  const uploadFile = compress ? await compressImage(file) : file;
   if (maxSizeBytes && uploadFile.size > maxSizeBytes) {
     throw new Error(
       `Файл слишком большой (максимум ${Math.floor(maxSizeBytes / 1024 / 1024)} МБ после сжатия)`,

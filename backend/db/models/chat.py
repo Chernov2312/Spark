@@ -36,4 +36,5 @@ class Chat(Base):
         primaryjoin=(
             "Chat.id == foreign(Attachment.chat_id) and Attachment.is_avatar == True"
         ),
+        order_by="Attachment.created_at",
     )

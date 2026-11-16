@@ -1,8 +1,8 @@
 import asyncio
 import uuid
 
-import redis.asyncio as aioredis
 from fastapi import Request, WebSocket
+import redis.asyncio as aioredis
 
 from schemas.websockets import WsEvent
 

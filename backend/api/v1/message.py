@@ -1,19 +1,20 @@
-import json
-import uuid
 from datetime import datetime, timezone
+import json
 from typing import List
+import uuid
 
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from tasks.config_celery import celery_app
 
 from config import RouteTags
 from core.dependencies import get_redis
 from core.message_queue import (
-    HISTORY_CACHE_TTL_SECONDS,
     enqueue_message,
     history_cache_key,
+    HISTORY_CACHE_TTL_SECONDS,
     history_version_key,
     invalidate_chat_history,
     message_queue_key,
@@ -26,6 +27,7 @@ from db.dao.message_dao import MessageDao
 from db.dao.message_reactions_dao import MessageReactionDao
 from db.database import get_session
 from db.models import Attachment, Message, MessageReaction
+from db.models.chat_state import MessagePin
 from schemas.message import (
     AttachmentResponse,
     MessageHistory,
@@ -62,6 +64,10 @@ async def _build_message_response(
     attachments: list[Attachment | object],
     reactions_count: dict[str, int] | None = None,
     user_reaction: str | None = None,
+    reply_to_id: uuid.UUID | None = None,
+    reply_to_text: str | None = None,
+    edited_at: datetime | None = None,
+    is_pinned: bool = False,
 ) -> MessageResponse:
     s3 = S3Storage()
     signed_attachments = []
@@ -85,6 +91,10 @@ async def _build_message_response(
         chat_id=chat_id,
         user_id=user_id,
         text=text,
+        reply_to_id=reply_to_id,
+        reply_to_text=reply_to_text,
+        edited_at=edited_at,
+        is_pinned=is_pinned,
         user_reaction=user_reaction,
         attachments=signed_attachments,
         reactions_count=reactions_count or {},
@@ -138,18 +148,33 @@ async def get_messages_history(
     reaction_by_message_id = {
         reaction.message_id: reaction.emoji for reaction in user_reactions
     }
+    pinned_result = await session.execute(
+        select(MessagePin.message_id).where(MessagePin.chat_id == chat_id),
+    )
+    pinned_ids = set(pinned_result.scalars().all())
+    reply_ids = {message.reply_to_id for message in db_messages if message.reply_to_id}
+    reply_texts = {}
+    if reply_ids:
+        reply_result = await session.execute(
+            select(Message.id, Message.text).where(Message.id.in_(reply_ids)),
+        )
+        reply_texts = dict(reply_result.all())
 
     merged: dict[uuid.UUID, MessageResponse] = {}
     for message in db_messages:
         merged[message.id] = await _build_message_response(
             message_id=message.id,
             chat_id=message.chat_id,
-            user_id=user_id,
+            user_id=message.user_id,
             text=message.text,
             created_at=message.created_at,
             attachments=message.attachments,
             reactions_count=message.reactions_count,
             user_reaction=reaction_by_message_id.get(message.id),
+            reply_to_id=message.reply_to_id,
+            reply_to_text=reply_texts.get(message.reply_to_id),
+            edited_at=message.edited_at,
+            is_pinned=message.id in pinned_ids,
         )
 
     pending_entries = await redis.xrange(
@@ -249,11 +274,27 @@ async def create_message(
         )
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
+    reply_to_text = None
+    if message.reply_to_id:
+        reply_result = await session.execute(
+            select(Message).where(
+                Message.id == message.reply_to_id,
+                Message.chat_id == chat_id,
+            ),
+        )
+        replied_message = reply_result.scalar_one_or_none()
+        if replied_message is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Reply target must belong to this chat",
+            )
+        reply_to_text = replied_message.text
     queued_message = MessageInternalDTO(
         id=uuid.uuid4(),
         chat_id=chat_id,
         user_id=user_id,
         text=message.text,
+        reply_to_id=message.reply_to_id,
         attachments=queued_attachments,
         created_at=now,
     )
@@ -264,30 +305,142 @@ async def create_message(
         text=queued_message.text,
         created_at=queued_message.created_at,
         attachments=queued_attachments,
+        reply_to_id=queued_message.reply_to_id,
+        reply_to_text=reply_to_text,
     )
     await enqueue_message(redis, queued_message)
     await redis.publish(
         f"chat:{chat_id}",
         json.dumps({"event": "message:new", "data": valid.model_dump(mode="json")}),
     )
-    for attachment in queued_attachments:
-        is_audio = attachment.mime_type.startswith(
-            "audio/",
-        ) or attachment.file_name.lower().endswith(
-            (".wav", ".mp3", ".ogg", ".opus", ".m4a", ".aac", ".flac", ".webm"),
-        )
-        if is_audio:
-            celery_app.send_task(
-                "tasks.audio_convert.convert_audio_task",
-                args=[
-                    str(user_id),
-                    str(chat_id),
-                    str(queued_message.id),
-                    str(attachment.id),
-                    attachment.file_key,
-                ],
-            )
     return valid
+
+
+@message_router.get("/chats/{chat_id}/messages/search")
+async def search_messages(
+    chat_id: uuid.UUID,
+    text: str | None = None,
+    author_id: uuid.UUID | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    attachment_type: str | None = Query(default=None),
+    limit: int = 100,
+    session: AsyncSession = Depends(get_session),
+    user_id: uuid.UUID = Depends(get_id_current_user),
+) -> MessageHistory:
+    chat = await ChatDao.get_chat_with_users(session=session, chat_id=chat_id)
+    if chat is None:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    if not any(member.id == user_id for member in chat.users):
+        raise HTTPException(status_code=403, detail="You are not a member of this chat")
+    rows = await MessageDao.search_chat_history(
+        session, chat_id, user_id, query_text=text, author_id=author_id,
+        since=since, until=until, attachment_type=attachment_type, limit=limit,
+    )
+    return MessageHistory(messages=[
+        await _build_message_response(
+            message_id=row.id, chat_id=row.chat_id, user_id=row.user_id,
+            text=row.text, created_at=row.created_at, attachments=row.attachments,
+            reply_to_id=row.reply_to_id, edited_at=row.edited_at,
+        ) for row in rows
+    ])
+
+
+@message_router.put("/chats/{chat_id}/messages/{message_id}/pin")
+async def toggle_message_pin(
+    chat_id: uuid.UUID,
+    message_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user_id: uuid.UUID = Depends(get_id_current_user),
+    redis: aioredis.Redis = Depends(get_redis),
+) -> dict[str, bool]:
+    chat = await ChatDao.get_chat_with_users(session=session, chat_id=chat_id)
+    if chat is None or not any(member.id == user_id for member in chat.users):
+        raise HTTPException(status_code=404, detail="Chat not found")
+    message = await session.get(Message, message_id)
+    if message is None or message.chat_id != chat_id:
+        raise HTTPException(status_code=404, detail="Message not found")
+    pin = await session.scalar(select(MessagePin).where(
+        MessagePin.chat_id == chat_id, MessagePin.message_id == message_id,
+    ))
+    if pin:
+        await session.delete(pin)
+        pinned = False
+    else:
+        session.add(MessagePin(chat_id=chat_id, message_id=message_id, pinned_by=user_id))
+        pinned = True
+    await session.flush()
+    await invalidate_chat_history(redis, chat_id)
+    return {"pinned": pinned}
+
+
+@message_router.post(
+    "/chats/{chat_id}/messages/{message_id}/attachments/{attachment_id}/transcribe",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def transcribe_audio_attachment(
+    chat_id: uuid.UUID,
+    message_id: uuid.UUID,
+    attachment_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user_id: uuid.UUID = Depends(get_id_current_user),
+) -> dict[str, bool]:
+    chat = await ChatDao.get_chat_with_users(session=session, chat_id=chat_id)
+    if chat is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chat not found",
+        )
+    if not any(member.id == user_id for member in chat.users):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not a member of this chat",
+        )
+
+    attachment = await AttachmentDao.get_by_id(session, attachment_id)
+    if (
+        attachment is None
+        or attachment.chat_id != chat_id
+        or attachment.is_avatar
+        or attachment.msg_id not in (None, message_id)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio attachment not found",
+        )
+    is_audio = attachment.mime_type.startswith("audio/") or (
+        attachment.file_name.lower().endswith(
+            (
+                ".wav",
+                ".mp3",
+                ".ogg",
+                ".opus",
+                ".m4a",
+                ".aac",
+                ".flac",
+                ".webm",
+            ),
+        )
+    )
+    if not is_audio:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Attachment is not an audio file",
+        )
+    if attachment.text is not None:
+        return {"queued": False}
+
+    celery_app.send_task(
+        "tasks.audio_convert.convert_audio_task",
+        args=[
+            str(user_id),
+            str(chat_id),
+            str(message_id),
+            str(attachment.id),
+            attachment.file_key,
+        ],
+    )
+    return {"queued": True}
 
 
 @message_router.put("/messages/{message_id}")
@@ -312,6 +465,10 @@ async def update_message(
         )
     await session.commit()
     await invalidate_chat_history(redis, res.chat_id)
+    await redis.publish(
+        f"chat:{res.chat_id}",
+        json.dumps({"event": "message:updated", "data": MessageResponse.model_validate(res).model_dump(mode="json")}),
+    )
     return res
 
 
@@ -338,5 +495,9 @@ async def delete_message(
         await invalidate_chat_history(
             redis=redis,
             chat_id=message_chat_id,
+        )
+        await redis.publish(
+            f"chat:{message_chat_id}",
+            json.dumps({"event": "message:deleted", "data": {"chat_id": str(message_chat_id), "message_id": str(message_id)}}),
         )
     return {"deleted": True}

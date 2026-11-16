@@ -2,12 +2,12 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import aioboto3
-import pytest
-import pytest_asyncio
-import redis.asyncio as aioredis
 from botocore.client import Config
 from httpx2 import ASGITransport, AsyncClient
 from main import app
+import pytest
+import pytest_asyncio
+import redis.asyncio as aioredis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs

@@ -12,19 +12,20 @@ Authorization: Bearer <access_token>
 
 ### `POST /api/v1/auth/register`
 
-Создает пользователя и ставит задачу отправки письма с подтверждением. Токен в ответе регистрации пустой; для входа сначала подтвердите адрес электронной почты.
+Создает пользователя и ставит задачу отправки письма с подтверждением. До подтверждения email access token не выдается.
 
 Запрос (`application/json`):
 
 ```json
 {
   "username": "john_doe",
+  "tag": "john_doe",
   "email": "john@example.com",
   "password": "StrongPass123"
 }
 ```
 
-Имя пользователя должно содержать 3–50 символов. Пароль — 8–250 символов, включая строчные и заглавные латинские буквы и цифру.
+Поле `tag` необязательно: если его не передать, сервер создаст свободный тег на основе имени пользователя. Теги нормализуются и уникальны.
 
 Ответ `201 Created`:
 
@@ -32,21 +33,23 @@ Authorization: Bearer <access_token>
 {
   "id": "11111111-eeee-aaaa-bbbb-cccccccccccc",
   "username": "john_doe",
+  "tag": "john_doe",
   "email": "john@example.com",
-  "access_token": "",
-  "token_type": "bearer"
+  "verification_required": true
 }
 ```
 
+Ссылка в письме ведет на `FRONTEND_BASE_URL/verify-email/{verification_token}`. Фронтенд показывает страницу подтверждения и отправляет `GET /api/v1/auth/verification/{verification_token}`. После успешной проверки API возвращает пользователя и access token; фронтенд сохраняет токен и открывает страницу чатов.
+
 ### `POST /api/v1/auth/login`
 
-Вход принимает `application/x-www-form-urlencoded` (или `multipart/form-data`) с полями `username` и `password`. В поле `username` можно передать имя пользователя или адрес электронной почты.
+Вход принимает `application/x-www-form-urlencoded` (или `multipart/form-data`) с полями `username` и `password`. В поле `username` можно передать уникальный тег, имя пользователя или адрес электронной почты.
 
-Ответ `200 OK` имеет ту же структуру, что и при регистрации, но содержит JWT в `access_token`. Для неподтвержденного аккаунта возвращается `403 Forbidden`, для неверных учетных данных — `401 Unauthorized`.
+Ответ `200 OK` содержит пользователя и JWT в `access_token`. Для неподтвержденного аккаунта возвращается `403 Forbidden`, для неверных учетных данных — `401 Unauthorized`.
 
 ### `GET /api/v1/auth/verification/{verification_token}`
 
-Подтверждает электронную почту по токену из письма и возвращает объект пользователя с новым access token (`200 OK`). Недействительный или просроченный токен приводит к `401 Unauthorized`.
+Подтверждает email по токену из письма и возвращает пользователя с новым access token (`200 OK`). Повторное использование действующего токена безопасно и также возвращает токен. Недействительный или просроченный токен приводит к `401 Unauthorized`.
 
 ## 2. Пользователи — `/api/v1/users`
 

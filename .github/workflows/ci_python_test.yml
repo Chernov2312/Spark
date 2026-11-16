@@ -20,7 +20,8 @@ jobs:
       REDIS_PASSWORD: test-only-password
       REDIS_USER: default
       REDIS_USER_PASSWORD: test-only-password
-      API_GEMINI: test-only-gemini-key
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: qwen3:0.6b
       YANDEX_CLOUD_KEY_ID: test-only-access-key
       YANDEX_CLOUD_KEY: test-only-secret-key
       BUCKET_NAME: spark-test-bucket

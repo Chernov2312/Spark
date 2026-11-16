@@ -1,9 +1,9 @@
-import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+import uuid
 
-import pytest
 from fastapi import HTTPException
+import pytest
 
 from api.v1 import message as message_api
 from core.message_queue import (
