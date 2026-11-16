@@ -38,6 +38,18 @@ async function openAuthenticatedChat(page: Page, chatId: string) {
   await expect(page.locator(".chat-view__title")).toBeVisible();
 }
 
+async function mockSocialApi(page: Page) {
+  await page.route("**/api/v1/friends", async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: { friends: [], requests: [], categories: [] },
+    });
+  });
+  await page.route("**/api/v1/chat-folders", async (route) => {
+    await route.fulfill({ status: 200, json: { folders: [] } });
+  });
+}
+
 async function mockChatMediaApi(page: Page) {
   let uploadNumber = 0;
   let attachmentNumber = 0;
@@ -50,6 +62,7 @@ async function mockChatMediaApi(page: Page) {
   const savedMessages = new Map<string, Array<Record<string, unknown>>>();
   const storedMedia = new Map<string, { body: Buffer; contentType: string }>();
 
+  await mockSocialApi(page);
   await page.routeWebSocket(/\/ws(?:\?|$)/, (socket) => socket.close());
   await page.route("**/api/v1/chats", async (route) => {
     await route.fulfill({ status: 200, json: { chats: chatFixtures } });
@@ -175,6 +188,7 @@ test("registration validation blocks incomplete data before calling the API", as
 test("login opens the chat list and logout returns to login", async ({
   page,
 }) => {
+  await mockSocialApi(page);
   await page.route("**/api/v1/auth/login", async (route) => {
     await route.fulfill({ status: 200, json: user });
   });

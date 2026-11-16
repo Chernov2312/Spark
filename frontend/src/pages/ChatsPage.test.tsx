@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ChatsPage from "./ChatsPage.jsx";
 
-const { apiMocks, socketState } = vi.hoisted(() => ({
+const { apiMocks, socialMocks, socketState } = vi.hoisted(() => ({
   apiMocks: {
     listChats: vi.fn(),
     listMessages: vi.fn(),
@@ -11,6 +11,10 @@ const { apiMocks, socketState } = vi.hoisted(() => ({
     uploadAttachment: vi.fn(),
     getAttachmentDownloadUrl: vi.fn(),
     sendMessage: vi.fn(),
+  },
+  socialMocks: {
+    listFriends: vi.fn(),
+    listChatFolders: vi.fn(),
   },
   socketState: {
     options: null as null | {
@@ -21,6 +25,7 @@ const { apiMocks, socketState } = vi.hoisted(() => ({
 
 vi.mock("../api", () => ({
   chats: { listChats: apiMocks.listChats },
+  social: socialMocks,
   messages: {
     listMessages: apiMocks.listMessages,
     sendMessage: apiMocks.sendMessage,
@@ -86,6 +91,12 @@ describe("ChatsPage media controls", () => {
     localStorage.setItem("user", JSON.stringify({ id: "user-1" }));
     apiMocks.listChats.mockResolvedValue([chat]);
     apiMocks.listMessages.mockResolvedValue([audioMessage]);
+    socialMocks.listFriends.mockResolvedValue({
+      friends: [],
+      requests: [],
+      categories: [],
+    });
+    socialMocks.listChatFolders.mockResolvedValue([]);
     apiMocks.transcribeAttachment.mockResolvedValue({ queued: true });
     apiMocks.getAttachmentDownloadUrl.mockResolvedValue(
       "https://storage.test/download/audio.ogg",
