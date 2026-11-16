@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import RouteTags, StorageClientMethod
 from core.security import get_id_current_user
 from core.storage import S3Storage
+from core.user_tags import normalize_user_tag
 from db.dao.attachment_dao import AttachmentDao
 from db.dao.user_dao import UserDao
 from db.database import get_session
@@ -38,6 +39,7 @@ async def get_me(
     return UserRead(
         id=user.id,
         username=user.username,
+        tag=user.tag,
         email=user.email,
         avatar_urls=avatar_urls,
         created_at=user.created_at,
@@ -50,10 +52,21 @@ async def update_me(
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_id_current_user),
 ) -> UserRead:
-    user: UserRead = await UserDao.update_by_id(
+    update_data = update_user.model_dump(exclude_unset=True)
+    if "tag" in update_data:
+        update_data["tag"] = normalize_user_tag(update_data["tag"])
+        if len(update_data["tag"]) < 3:
+            raise HTTPException(
+                status_code=422,
+                detail="Tag must contain at least 3 letters or digits",
+            )
+        existing_tag = await UserDao.get_by_tag(session, update_data["tag"])
+        if existing_tag is not None and existing_tag.id != current_user_id:
+            raise HTTPException(status_code=409, detail="This tag is already taken")
+    user = await UserDao.update_by_id(
         session=session,
         target_id=current_user_id,
-        data=update_user.model_dump(exclude_unset=True),
+        data=update_data,
     )
 
     if not user:
@@ -66,6 +79,7 @@ async def update_me(
     return UserRead(
         id=user.id,
         username=user.username,
+        tag=user.tag,
         email=user.email,
         avatar_urls=avatar_urls,
         created_at=user.created_at,
@@ -104,6 +118,9 @@ async def get_user_by_username(
     user_id: uuid.UUID = Depends(get_id_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> UserListResponse:
+    target = user.username.strip()
+    if target.startswith("@"):
+        target = normalize_user_tag(target)
     return UserListResponse(
-        users=await UserDao.find_by_username(session=session, target=user.username),
+        users=await UserDao.find_by_username(session=session, target=target),
     )

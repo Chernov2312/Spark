@@ -1,28 +1,6 @@
 import { api } from "./client";
 import { getAvatarImageError, uploadToTemporaryUrl } from "./imageUpload";
 
-/* Бэкенд отдаёт avatar_urls как массив строк.
-   Последний элемент = текущий аватар. */
-function extractUrl(data) {
-  if (!data) return null;
-
-  const raw =
-    (Array.isArray(data.avatar_urls) && data.avatar_urls.length
-      ? data.avatar_urls
-      : null) ??
-    data.avatar_url ??
-    data.url ??
-    null;
-  if (!raw) return null;
-
-  // Массив — берём последний
-  if (Array.isArray(raw)) {
-    return raw.length > 0 ? raw[raw.length - 1] : null;
-  }
-
-  return typeof raw === "string" ? raw : null;
-}
-
 function extractFileKey(url) {
   if (!url) return null;
 
@@ -37,24 +15,39 @@ function extractFileKey(url) {
   }
 }
 
-export async function getMe() {
-  const { data } = await api.get("/users/me");
-  const url = extractUrl(data);
+function normalizeUser(data) {
+  if (!data) return data;
+
+  const avatarUrls = Array.isArray(data.avatar_urls)
+    ? data.avatar_urls.filter((url) => typeof url === "string" && url)
+    : [];
+  const urls = avatarUrls.length > 0
+    ? avatarUrls
+    : typeof data.avatar_url === "string" && data.avatar_url
+      ? [data.avatar_url]
+      : typeof data.url === "string" && data.url
+        ? [data.url]
+        : [];
+  const avatars = urls.map((url) => ({ url, file_key: extractFileKey(url) }));
+  const currentAvatar = avatars.at(-1) ?? null;
+
   return {
     ...data,
-    avatar_url: url, // строка — для <img src>
-    avatar_file_key: extractFileKey(url),
+    avatar_urls: urls,
+    avatars,
+    avatar_url: currentAvatar?.url ?? null,
+    avatar_file_key: currentAvatar?.file_key ?? null,
   };
+}
+
+export async function getMe() {
+  const { data } = await api.get("/users/me");
+  return normalizeUser(data);
 }
 
 export async function updateMe(payload) {
   const { data } = await api.patch("/users/me", payload);
-  const url = extractUrl(data);
-  const normalized = {
-    ...data,
-    avatar_url: url,
-    avatar_file_key: extractFileKey(url),
-  };
+  const normalized = normalizeUser(data);
 
   const raw = localStorage.getItem("user");
   if (raw) {
@@ -64,6 +57,7 @@ export async function updateMe(payload) {
       JSON.stringify({
         ...user,
         username: normalized.username ?? user.username,
+        tag: normalized.tag ?? user.tag,
         email: normalized.email ?? user.email,
       }),
     );

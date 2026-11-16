@@ -21,6 +21,14 @@ class ChatAssistantResponse(BaseModel):
     context_messages: int
 
 
+class SystemAssistantRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+
+
+class SystemAssistantResponse(BaseModel):
+    answer: str
+
+
 class RewriteRequest(BaseModel):
     text: str
     mode: Literal["professional", "friendly", "fix_grammar", "make_longer"] = (

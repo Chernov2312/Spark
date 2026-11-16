@@ -1,4 +1,4 @@
-﻿import { Routes, Route, Navigate } from "react-router-dom";
+﻿import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import HomePage from "./pages/HomePage";
@@ -25,9 +25,12 @@ function SimplePage({ title, text }) {
 }
 
 export default function App() {
+  const { pathname } = useLocation();
+  const isVerificationPage = pathname.startsWith("/verify-email/");
+
   return (
     <>
-      <Header />
+      {!isVerificationPage && <Header />}
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/register" element={<RegisterPage />} />
@@ -79,7 +82,7 @@ export default function App() {
         />
         <Route path="*" element={<NotFound />} />
       </Routes>
-      <Footer />
+      {!isVerificationPage && <Footer />}
     </>
   );
 }

@@ -1,9 +1,11 @@
 /* ---------- Переменные (тёмная тема Spark) ---------- */
 :root {
+  color-scheme: dark;
   --bg: #0a0a0f;
   --bg-elevated: #131319;
   --bg-input: #0f0f15;
   --bg-hover: #1c1c25;
+  --header-bg: rgba(19, 19, 25, 0.85);
 
   --border: #26262f;
   --border-focus: #7c6cff;
@@ -13,12 +15,42 @@
   --text-dim: #5a5f70;
 
   --spark: #7c6cff;
+  --spark-text: #aa9dff;
   --spark-hover: #6a58f0;
   --spark-dim: rgba(124, 108, 255, 0.14);
   --spark-glow: rgba(124, 108, 255, 0.35);
 
   --danger: #ff6b6b;
   --success: #4ade80;
+  --shadow-card: 0 24px 64px rgba(0, 0, 0, 0.5);
+  --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.6);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f6fb;
+  --bg-elevated: #ffffff;
+  --bg-input: #f8f9fd;
+  --bg-hover: #eef0f8;
+  --header-bg: rgba(255, 255, 255, 0.88);
+
+  --border: #e2e5ef;
+  --border-focus: #6e5bea;
+
+  --text: #24263a;
+  --text-muted: #6d7187;
+  --text-dim: #9296a8;
+
+  --spark: #6b58e8;
+  --spark-text: #5946ce;
+  --spark-hover: #5845d4;
+  --spark-dim: rgba(107, 88, 232, 0.11);
+  --spark-glow: rgba(107, 88, 232, 0.18);
+
+  --danger: #d84458;
+  --success: #218653;
+  --shadow-card: 0 20px 54px rgba(37, 43, 76, 0.1);
+  --shadow-modal: 0 24px 64px rgba(29, 34, 59, 0.18);
 }
 
 * {
@@ -39,6 +71,7 @@ body {
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+  transition: color 180ms ease, background-color 180ms ease;
 }
 #root {
   display: flex;

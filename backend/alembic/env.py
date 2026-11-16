@@ -21,6 +21,13 @@ from db.models.chat import Chat
 from db.models.message import Message
 from db.models.message_reaction import MessageReaction
 from db.models.attachment import Attachment
+from db.models.social import (
+    ChatFolder,
+    FriendCategory,
+    Friendship,
+    chat_folder_chats,
+    friendship_categories,
+)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

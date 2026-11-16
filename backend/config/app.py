@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     REDIS_USER_PASSWORD: str
     REDIS_PORT: int = 6379
 
+    API_BASE_URL: str = "http://localhost:8001"
+    FRONTEND_BASE_URL: str = "http://localhost:5174/"
+    # Kept for compatibility with existing local environments. New settings
+    # should use API_BASE_URL and FRONTEND_BASE_URL explicitly.
     APP_BASE_URL: str = "http://localhost:5174/"
 
     @property

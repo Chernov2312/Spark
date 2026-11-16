@@ -253,6 +253,43 @@
   background: var(--bg-elevated);
 }
 
+.chat-view__tabs,
+.ai-panel__modes {
+  display: flex;
+  gap: 6px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.chat-view__tabs button,
+.ai-panel__modes button {
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.chat-view__tabs button[aria-selected="true"],
+.ai-panel__modes button[aria-selected="true"] {
+  border-color: var(--border);
+  background: var(--bg-input);
+  color: var(--spark);
+}
+
+.ai-panel__modes {
+  padding: 10px 14px;
+}
+
+.ai-panel__modes button {
+  flex: 1;
+  padding-inline: 6px;
+}
+
 .chat-avatar-upload {
   margin-left: auto;
   padding: 8px 12px;
@@ -980,7 +1017,7 @@
   padding: 28px 32px;
   width: 100%;
   max-width: 420px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--shadow-modal);
 }
 .modal h3 {
   margin: 0 0 20px;

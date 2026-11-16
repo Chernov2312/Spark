@@ -3,6 +3,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.database import Base
+from core.user_tags import normalize_user_tag
 
 user_chat = Table(
     "user_chat",
@@ -27,7 +28,16 @@ class User(Base):
     username: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
+        unique=False,
+    )
+    tag: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
         unique=True,
+        index=True,
+        default=lambda context: normalize_user_tag(
+            context.get_current_parameters().get("username", "user"),
+        ),
     )
     password: Mapped[str] = mapped_column(String(250), nullable=False)
     email: Mapped[str] = mapped_column(

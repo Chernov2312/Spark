@@ -13,12 +13,20 @@ function getErrorMessage(error) {
 }
 
 export default function AIChatPanel({ chatId, onClose }) {
+  const [mode, setMode] = useState("chat");
   const [entries, setEntries] = useState([]);
   const [question, setQuestion] = useState("");
   const [messageLimit, setMessageLimit] = useState(30);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const endOfConversationRef = useRef(null);
+
+  const changeMode = (nextMode) => {
+    setMode(nextMode);
+    setEntries([]);
+    setQuestion("");
+    setError("");
+  };
 
   useEffect(() => {
     endOfConversationRef.current?.scrollIntoView({ block: "end" });
@@ -54,11 +62,9 @@ export default function AIChatPanel({ chatId, onClose }) {
     setError("");
     setEntries((current) => [...current, { role: "user", content: prompt }]);
     try {
-      const result = await aiApi.askChatAssistant(
-        chatId,
-        prompt,
-        messageLimit,
-      );
+      const result = mode === "chat"
+        ? await aiApi.askChatAssistant(chatId, prompt, messageLimit)
+        : await aiApi.askSystemAssistant(prompt);
       setEntries((current) => [
         ...current,
         { role: "assistant", content: result.answer },
@@ -72,11 +78,11 @@ export default function AIChatPanel({ chatId, onClose }) {
   };
 
   return (
-    <aside className="ai-panel" aria-label="Помощник по чату">
+    <aside className="ai-panel" aria-label={mode === "chat" ? "Помощник по чату" : "Системный помощник"}>
       <header className="ai-panel__header">
         <div>
-          <h2>ИИ-помощник</h2>
-          <p>Ответы и сводки по сообщениям этого чата</p>
+          <h2>{mode === "chat" ? "Работа с чатом" : "Системный помощник"}</h2>
+          <p>{mode === "chat" ? "Ответы и сводки по сообщениям этого чата" : "Общие вопросы и помощь без контекста переписки"}</p>
         </div>
         <button
           type="button"
@@ -88,7 +94,16 @@ export default function AIChatPanel({ chatId, onClose }) {
         </button>
       </header>
 
-      <div className="ai-panel__tools">
+      <div className="ai-panel__modes" role="tablist" aria-label="Режим помощника">
+        <button type="button" role="tab" aria-selected={mode === "chat"} disabled={busy} onClick={() => changeMode("chat")}>
+          Работа с чатом
+        </button>
+        <button type="button" role="tab" aria-selected={mode === "system"} disabled={busy} onClick={() => changeMode("system")}>
+          Системный помощник
+        </button>
+      </div>
+
+      {mode === "chat" && <div className="ai-panel__tools">
         <label>
           Сообщений в контексте
           <select
@@ -111,12 +126,12 @@ export default function AIChatPanel({ chatId, onClose }) {
         >
           Сделать сводку
         </button>
-      </div>
+      </div>}
 
       <div className="ai-panel__conversation" aria-live="polite">
         {entries.length === 0 && (
           <p className="ai-panel__empty">
-            Спросите о договорённостях, задачах или попросите краткую сводку.
+            {mode === "chat" ? "Спросите о договорённостях, задачах или попросите краткую сводку." : "Задайте общий вопрос системному помощнику."}
           </p>
         )}
         {entries.map((entry, index) => (
@@ -142,8 +157,8 @@ export default function AIChatPanel({ chatId, onClose }) {
         <textarea
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Спросите что-нибудь по переписке…"
-          aria-label="Вопрос ИИ-помощнику"
+          placeholder={mode === "chat" ? "Спросите что-нибудь по переписке…" : "Напишите вопрос системному помощнику…"}
+          aria-label={mode === "chat" ? "Вопрос ИИ-помощнику" : "Вопрос системному помощнику"}
           maxLength={2000}
           rows={2}
           disabled={busy}

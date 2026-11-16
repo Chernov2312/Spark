@@ -17,6 +17,8 @@ from schemas.ai_message import (
     ChatAssistantResponse,
     RewriteRequest,
     RewriteResponse,
+    SystemAssistantRequest,
+    SystemAssistantResponse,
     SummarizeResponce,
 )
 from schemas.message import MessageHistory, MessageResponse
@@ -193,6 +195,30 @@ async def ask_chat_assistant(
         system_instruction=str(AIPrompts.CHAT_ASSISTANT),
     )
     return ChatAssistantResponse(answer=answer, context_messages=len(messages))
+
+
+@ai_router.post("/assistant")
+async def ask_system_assistant(
+    request: SystemAssistantRequest,
+    ai_service: AIService = Depends(get_ai_service),
+    _: uuid.UUID = Depends(get_id_current_user),
+) -> SystemAssistantResponse:
+    question = request.question.strip()
+    if not question:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Question cannot be empty",
+        )
+    answer = await ai_service.generate_text(
+        prompt=question,
+        system_instruction=(
+            "Ты системный помощник в мессенджере. Отвечай по-русски, ясно и по делу. "
+            "Помогай с общими вопросами, идеями, объяснениями и планированием. "
+            "Если не знаешь ответа, скажи об этом прямо. У тебя нет доступа к чатам "
+            "и данным пользователя, если они не приведены в запросе."
+        ),
+    )
+    return SystemAssistantResponse(answer=answer)
 
 
 @ai_router.post("/messages/rewrite")

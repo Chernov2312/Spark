@@ -19,7 +19,7 @@ const DEMO_USER = {
 
 export default function ProfilePage({ demo = false }) {
   const [me, setMe] = useState(null);
-  const [form, setForm] = useState({ username: "", email: "" });
+  const [form, setForm] = useState({ username: "", tag: "", email: "" });
   const [loading, setLoading] = useState(!demo);
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -28,6 +28,8 @@ export default function ProfilePage({ demo = false }) {
   const [tab, setTab] = useState("info");
   const [editMode, setEditMode] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [confirmDeleteIndex, setConfirmDeleteIndex] = useState(null);
+  const [activeAvatarIndex, setActiveAvatarIndex] = useState(0);
 
   const fileInputRef = useRef(null);
 
@@ -36,7 +38,8 @@ export default function ProfilePage({ demo = false }) {
       .getMe()
       .then((data) => {
         setMe(data); // данные уже нормализованы в users.js
-        setForm({ username: data.username || "", email: data.email || "" });
+        setActiveAvatarIndex(Math.max(0, (data.avatars?.length ?? 1) - 1));
+        setForm({ username: data.username || "", tag: data.tag || "", email: data.email || "" });
       })
       .catch((e) =>
         setError(e.response?.data?.detail || "Не удалось загрузить профиль"),
@@ -55,6 +58,7 @@ export default function ProfilePage({ demo = false }) {
     const patch = {};
     if (form.username && form.username !== me.username)
       patch.username = form.username.trim();
+    if (form.tag && form.tag !== me.tag) patch.tag = form.tag.trim();
     if (form.email && form.email !== me.email) patch.email = form.email.trim();
 
     if (Object.keys(patch).length === 0) {
@@ -89,7 +93,7 @@ export default function ProfilePage({ demo = false }) {
   };
 
   const handleCancelEdit = () => {
-    setForm({ username: me.username || "", email: me.email || "" });
+    setForm({ username: me.username || "", tag: me.tag || "", email: me.email || "" });
     setEditMode(false);
     setError(null);
   };
@@ -97,12 +101,13 @@ export default function ProfilePage({ demo = false }) {
   const pickAvatar = () => fileInputRef.current?.click();
 
   const handleAvatarChange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
 
-    const fileError = getAvatarImageError(file);
-    if (fileError) {
-      setError(fileError);
+    const invalidFile = files.find((file) => getAvatarImageError(file));
+    if (invalidFile) {
+      setError(getAvatarImageError(invalidFile));
+      e.target.value = "";
       return;
     }
 
@@ -110,30 +115,57 @@ export default function ProfilePage({ demo = false }) {
     setSuccess(null);
     setUploadingAvatar(true);
 
+    const uploadedAvatars = [];
+    let uploadError = null;
+
     try {
-      const { avatar_url, avatar_file_key } = await users.uploadAvatar(file);
-      setMe((prev) => ({
-        ...prev,
-        avatar_url,
-        avatar_file_key,
-      }));
-      setSuccess("Аватар обновлён");
-    } catch (err) {
-      setError(err.message || "Не удалось загрузить аватар");
+      for (const file of files) {
+        try {
+          const uploaded = await users.uploadAvatar(file);
+          uploadedAvatars.push({
+            url: uploaded.avatar_url,
+            file_key: uploaded.avatar_file_key,
+          });
+        } catch (err) {
+          uploadError = err;
+          break;
+        }
+      }
+
+      if (uploadedAvatars.length > 0) {
+        const firstNewIndex = me.avatars?.length ?? 0;
+        setMe((prev) => {
+          const avatars = [...(prev.avatars ?? []), ...uploadedAvatars];
+          return {
+            ...prev,
+            avatars,
+            avatar_urls: avatars.map((avatar) => avatar.url),
+            avatar_url: avatars.at(-1)?.url ?? null,
+            avatar_file_key: avatars.at(-1)?.file_key ?? null,
+          };
+        });
+        setActiveAvatarIndex(firstNewIndex + uploadedAvatars.length - 1);
+      }
+
+      if (uploadError) {
+        setError(uploadError.message || "Не удалось загрузить фото");
+      } else {
+        setSuccess(`Добавлено фотографий: ${uploadedAvatars.length}`);
+      }
     } finally {
       setUploadingAvatar(false);
       e.target.value = "";
     }
   };
-  const handleDeleteAvatar = async () => {
-    if (!me?.avatar_url) {
-      console.warn("[DELETE] нет avatar_url в стейте");
-      return;
-    }
 
-    const fileKey = me.avatar_file_key;
+  const handleDeleteAvatar = async () => {
+    const avatar = me?.avatars?.[confirmDeleteIndex];
+    if (!avatar) return;
+
+    const fileKey = avatar.file_key;
     if (!fileKey) {
-      setError("Не удалось определить ключ аватара для удаления");
+      setError("Не удалось определить ключ фотографии для удаления");
+      setConfirmDeleteOpen(false);
       return;
     }
 
@@ -144,21 +176,28 @@ export default function ProfilePage({ demo = false }) {
     try {
       await users.deleteAvatar(fileKey);
 
+      const remainingAvatars = me.avatars.filter((item) => item.file_key !== fileKey);
       setMe((prev) => ({
         ...prev,
-        avatar_url: null,
-        avatar_file_key: null,
+        avatars: remainingAvatars,
+        avatar_urls: remainingAvatars.map((item) => item.url),
+        avatar_url: remainingAvatars.at(-1)?.url ?? null,
+        avatar_file_key: remainingAvatars.at(-1)?.file_key ?? null,
       }));
-      setSuccess("Аватар удалён");
+      setActiveAvatarIndex((current) =>
+        Math.max(0, Math.min(current, remainingAvatars.length - 1)),
+      );
+      setSuccess("Фотография удалена");
     } catch (err) {
       const detail = err.response?.data?.detail;
-      let msg = "Не удалось удалить аватар";
+      let msg = "Не удалось удалить фотографию";
       if (typeof detail === "string") msg = detail;
       else if (Array.isArray(detail) && detail[0]?.msg) msg = detail[0].msg;
       else if (err.message) msg = err.message;
       setError(msg);
     } finally {
       setUploadingAvatar(false);
+      setConfirmDeleteOpen(false);
     }
   };
 
@@ -179,6 +218,13 @@ export default function ProfilePage({ demo = false }) {
   }
 
   const initial = me.username?.[0]?.toUpperCase() || "?";
+  const avatars = me.avatars ?? (me.avatar_url
+    ? [{ url: me.avatar_url, file_key: me.avatar_file_key }]
+    : []);
+  const currentAvatarIndex = avatars.length
+    ? Math.min(activeAvatarIndex, avatars.length - 1)
+    : 0;
+  const currentAvatar = avatars[currentAvatarIndex] ?? null;
   const memberSince = me.created_at
     ? new Date(me.created_at).toLocaleDateString("ru-RU", {
         day: "numeric",
@@ -200,38 +246,91 @@ export default function ProfilePage({ demo = false }) {
           <div className="vk-profile__cover-gradient" />
 
           <div className="vk-profile__header">
-            <button
-              type="button"
-              className="vk-avatar"
-              onClick={pickAvatar}
-              disabled={uploadingAvatar}
-              title="Сменить аватар"
-            >
-              {me.avatar_url ? (
-                <img
-                  src={me.avatar_url}
-                  alt="Аватар"
-                  className="vk-avatar__img"
-                />
-              ) : (
-                <span className="vk-avatar__placeholder">{initial}</span>
+            <div className="vk-avatar-carousel">
+              <div className="vk-avatar-carousel__stage">
+                <button
+                  type="button"
+                  className="vk-avatar"
+                  onClick={() => setTab("photos")}
+                  title="Открыть фотографии профиля"
+                  aria-label="Открыть фотографии профиля"
+                >
+                  {currentAvatar ? (
+                    <img
+                      src={currentAvatar.url}
+                      alt={`Фото профиля ${currentAvatarIndex + 1}`}
+                      className="vk-avatar__img"
+                    />
+                  ) : (
+                    <span className="vk-avatar__placeholder">{initial}</span>
+                  )}
+                  <span className="vk-avatar__overlay">
+                    {avatars.length > 1
+                      ? `${currentAvatarIndex + 1} / ${avatars.length} · Смотреть`
+                      : "Смотреть фото"}
+                  </span>
+                </button>
+
+                {avatars.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      className="vk-avatar-carousel__arrow vk-avatar-carousel__arrow--previous"
+                      aria-label="Предыдущее фото"
+                      onClick={() => setActiveAvatarIndex((index) => (index - 1 + avatars.length) % avatars.length)}
+                    >
+                      ‹
+                    </button>
+                    <button
+                      type="button"
+                      className="vk-avatar-carousel__arrow vk-avatar-carousel__arrow--next"
+                      aria-label="Следующее фото"
+                      onClick={() => setActiveAvatarIndex((index) => (index + 1) % avatars.length)}
+                    >
+                      ›
+                    </button>
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  className="vk-avatar__add"
+                  onClick={pickAvatar}
+                  disabled={uploadingAvatar}
+                  aria-label="Добавить фотографии"
+                  title="Добавить фотографии"
+                >
+                  +
+                </button>
+              </div>
+
+              {avatars.length > 1 && (
+                <div className="vk-avatar-carousel__indicators" aria-label="Выбор фотографии">
+                  {avatars.map((avatar, index) => (
+                    <button
+                      key={avatar.file_key ?? `${avatar.url}-${index}`}
+                      type="button"
+                      className={`vk-avatar-carousel__indicator${index === currentAvatarIndex ? " vk-avatar-carousel__indicator--active" : ""}`}
+                      aria-label={`Показать фото ${index + 1}`}
+                      aria-pressed={index === currentAvatarIndex}
+                      onClick={() => setActiveAvatarIndex(index)}
+                    />
+                  ))}
+                </div>
               )}
-              <span className="vk-avatar__overlay">
-                {uploadingAvatar ? "…" : "Сменить"}
-              </span>
-            </button>
+            </div>
 
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              multiple
               onChange={handleAvatarChange}
               style={{ display: "none" }}
             />
-
             <div className="vk-profile__identity">
               <h1 className="vk-profile__name">{me.username}</h1>
-              <p className="vk-profile__status">@{me.username} · Spark</p>
+              <p className="vk-profile__status">@{me.tag} · Spark</p>
             </div>
           </div>
         </div>
@@ -246,13 +345,16 @@ export default function ProfilePage({ demo = false }) {
               >
                 Редактировать профиль
               </button>
-              {me.avatar_url && (
+              {avatars.length > 0 && (
                 <button
                   type="button"
                   className="vk-btn"
-                  onClick={() => setConfirmDeleteOpen(true)}
+                  onClick={() => {
+                    setConfirmDeleteIndex(currentAvatarIndex);
+                    setConfirmDeleteOpen(true);
+                  }}
                 >
-                  Удалить аватар
+                  Удалить фото
                 </button>
               )}
             </>
@@ -308,6 +410,10 @@ export default function ProfilePage({ demo = false }) {
                     <span className="vk-info-row__value">{me.email}</span>
                   </li>
                   <li className="vk-info-row">
+                    <span className="vk-info-row__label">Тег пользователя</span>
+                    <span className="vk-info-row__value">@{me.tag}</span>
+                  </li>
+                  <li className="vk-info-row">
                     <span className="vk-info-row__label">С нами с</span>
                     <span className="vk-info-row__value">{memberSince}</span>
                   </li>
@@ -324,6 +430,20 @@ export default function ProfilePage({ demo = false }) {
                       maxLength={32}
                       autoComplete="username"
                     />
+                  </label>
+
+                  <label className="vk-field">
+                    <span className="vk-field__label">Уникальный тег</span>
+                    <input
+                      type="text"
+                      value={form.tag}
+                      onChange={update("tag")}
+                      minLength={3}
+                      maxLength={32}
+                      autoComplete="off"
+                      placeholder="@username"
+                    />
+                    <small>Тег приводится к нижнему регистру; похожие буквы считаются одинаковыми.</small>
                   </label>
 
                   <label className="vk-field">
@@ -347,7 +467,64 @@ export default function ProfilePage({ demo = false }) {
           )}
 
           {tab === "photos" && (
-            <p className="vk-empty">Фотографии появятся здесь позже.</p>
+            <section className="avatar-gallery" aria-label="Фотографии профиля">
+              <div className="avatar-gallery__header">
+                <div>
+                  <h2>Фотографии профиля</h2>
+                  <p>Добавьте несколько фото и переключайтесь между ними.</p>
+                </div>
+                <button
+                  type="button"
+                  className="vk-btn vk-btn--primary"
+                  onClick={pickAvatar}
+                  disabled={uploadingAvatar}
+                >
+                  {uploadingAvatar ? "Загрузка…" : "Добавить фото"}
+                </button>
+              </div>
+
+              {error && <p className="register-card__error">{error}</p>}
+              {success && <p className="profile-form__success">{success}</p>}
+
+              {avatars.length > 0 ? (
+                <div className="avatar-gallery__grid">
+                  {avatars.map((avatar, index) => (
+                    <article
+                      key={avatar.file_key ?? `${avatar.url}-${index}`}
+                      className={`avatar-gallery__item${index === currentAvatarIndex ? " avatar-gallery__item--active" : ""}`}
+                    >
+                      <button
+                        type="button"
+                        className="avatar-gallery__photo"
+                        onClick={() => setActiveAvatarIndex(index)}
+                        aria-pressed={index === currentAvatarIndex}
+                        aria-label={`Показать фото ${index + 1}`}
+                      >
+                        <img src={avatar.url} alt={`Фото профиля ${index + 1}`} />
+                        {index === currentAvatarIndex && (
+                          <span className="avatar-gallery__current">Выбрано</span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        className="avatar-gallery__delete"
+                        onClick={() => {
+                          setConfirmDeleteIndex(index);
+                          setConfirmDeleteOpen(true);
+                        }}
+                        disabled={uploadingAvatar}
+                        aria-label={`Удалить фото ${index + 1}`}
+                        title="Удалить фото"
+                      >
+                        ×
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="vk-empty">Здесь появятся добавленные вами фотографии.</p>
+              )}
+            </section>
           )}
         </div>
       </div>

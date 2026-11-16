@@ -8,14 +8,14 @@ Spark — веб-мессенджер с REST API и WebSocket-соединен�
 - Личные и групповые чаты, профили, аватары и статусы набора текста.
 - Сообщения с файлами, изображения в чате и реакции.
 - Поиск по пользователям и создание групповых чатов.
-- Форматирование сообщений, краткое содержание переписки и переписывание текста с Gemini.
+- Форматирование сообщений, краткое содержание переписки и переписывание текста через Ollama с OpenAI-совместимым клиентом.
 - Распознавание голосовых вложений через Whisper по запросу пользователя.
 - Загрузка файлов в S3-совместимое хранилище Yandex Cloud.
 
 ## Требования
 
 - Docker Desktop с Docker Compose.
-- Для реальной отправки почты, загрузки файлов и функций Gemini заполните соответствующие значения в `.env`.
+- Ollama запускается в Docker и не требует внешнего API-ключа. Для реальной отправки почты и загрузки файлов укажите соответствующие значения в `.env`.
 - Backend image использует Python 3.13 и FFmpeg для подготовки аудио к Whisper.
 
 ## Запуск через Docker Compose
@@ -34,7 +34,7 @@ Spark — веб-мессенджер с REST API и WebSocket-соединен�
    cp .env.example .env
    ```
 
-2. Для локальной разработки задайте `APP_BASE_URL=http://localhost:8001/api/v1` в `.env`. Укажите реальные ключи Yandex Cloud, Gemini и SMTP, если нужны эти интеграции. Тестовые заглушки из `.env.example` не подходят для отправки писем и работы с объектным хранилищем.
+2. Для локальной разработки оставьте `API_BASE_URL=http://localhost:8001` и `FRONTEND_BASE_URL=http://localhost:5174` в `.env`. Первая настройка задаёт адрес API для браузера, вторая — адрес фронтенда в ссылках подтверждения почты. При необходимости измените `OLLAMA_MODEL` и `OLLAMA_BASE_URL`; по умолчанию используется `qwen3:0.6b` и адрес `http://ollama:11434`. Укажите реальные ключи Yandex Cloud и SMTP, если нужны эти интеграции. Тестовые заглушки из `.env.example` не подходят для отправки писем и работы с объектным хранилищем.
 
 3. Соберите и запустите приложение:
 
@@ -42,7 +42,7 @@ Spark — веб-мессенджер с REST API и WebSocket-соединен�
    docker compose --profile dev up --build
    ```
 
-   При старте backend применяет миграции Alembic. Compose запускает PostgreSQL, Redis, FastAPI, Celery worker и beat, а также frontend.
+   Compose запускает Ollama и загружает выбранную модель, затем запускает PostgreSQL, Redis, FastAPI, Celery worker и beat, а также frontend. Backend обращается к локальной модели через OpenAI-совместимый API и применяет миграции Alembic.
 
 Откройте:
 
@@ -52,8 +52,9 @@ Spark — веб-мессенджер с REST API и WebSocket-соединен�
 - Health check: <http://localhost:8001/health>
 - PostgreSQL: `localhost:5433`
 - Redis: `localhost:6380`
+- Ollama API: <http://localhost:11434>
 
-Чтобы остановить сервисы и сохранить данные, выполните `docker compose --profile dev down`. Для полной очистки также удалите Docker volume `spark_postgres_data` и локальную папку `redisdata`.
+Чтобы остановить сервисы и сохранить данные, выполните `docker compose --profile dev down`. Для полной очистки также удалите Docker volumes `spark_postgres_data` и `spark_ollama_data`, а также локальную папку `redisdata`.
 
 ## Whisper cache
 
@@ -93,5 +94,15 @@ docker compose --env-file .env.test -f docker-compose.test.yml up -d --build
 docker compose --env-file .env.test -f docker-compose.test.yml exec backend-test pytest
 docker compose --env-file .env.test -f docker-compose.test.yml down
 ```
+
+Проверка Python-кода через Ruff выполняется из корня репозитория:
+
+```bash
+pip install -r backend/requirements/dev.txt
+ruff check .
+ruff format --check .
+```
+
+Чтобы автоматически отформатировать Python-файлы, выполните `ruff format .`.
 
 Тестовое окружение поднимает отдельные PostgreSQL и Redis; для интеграционных тестов также требуется Docker для Testcontainers.

@@ -7,10 +7,27 @@ from sqlalchemy.orm import load_only, selectinload
 
 from db.dao.basedao import BaseDao
 from db.models import Chat, User
+from core.user_tags import normalize_user_tag
 
 
 class UserDao(BaseDao[User]):
     model = User
+
+    @classmethod
+    async def get_by_tag(cls, session: AsyncSession, tag: str) -> User | None:
+        result = await session.execute(select(User).where(User.tag == normalize_user_tag(tag)))
+        return result.scalar_one_or_none()
+
+    @classmethod
+    async def available_tag(cls, session: AsyncSession, display_name: str) -> str:
+        base = normalize_user_tag(display_name)
+        candidate = base
+        suffix = 1
+        while await cls.get_by_tag(session, candidate):
+            suffix += 1
+            tail = str(suffix)
+            candidate = f"{base[:32-len(tail)]}{tail}"
+        return candidate
 
     @classmethod
     async def get_by_username_or_email(
@@ -32,8 +49,8 @@ class UserDao(BaseDao[User]):
         reg = rf"^{safe}"
         query = (
             select(User)
-            .where(User.username.op("~*")(reg))
-            .options(load_only(User.id, User.username))
+            .where(or_(User.tag.op("~*")(reg), User.username.op("~*")(reg)))
+            .options(load_only(User.id, User.username, User.tag))
         )
         res = await session.execute(query)
         return res.scalars().all()

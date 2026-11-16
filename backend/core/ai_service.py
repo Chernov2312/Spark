@@ -1,7 +1,4 @@
-import httpx
-from google import genai
-from google.genai import types
-from google.genai.errors import APIError
+from openai import AsyncOpenAI
 
 from config import ai_settings
 
@@ -9,49 +6,40 @@ from config import ai_settings
 class AIService:
     def __init__(
         self,
-        model_name: str = "gemini-3.5-flash-lite",
+        model_name: str | None = None,
         ollama_base_url: str | None = None,
+        client: AsyncOpenAI | None = None,
     ):
-        self.model = model_name
-        self.ollama_base_url = ollama_base_url.rstrip("/") if ollama_base_url else None
-        self.client = (
-            None if self.ollama_base_url else genai.Client(api_key=ai_settings.API_GEMINI)
-        )
+        self.model = model_name or ai_settings.OLLAMA_MODEL
+        self.base_url = (
+            ollama_base_url or ai_settings.OLLAMA_BASE_URL
+        ).rstrip("/") + "/v1"
+        self.client = client
 
     async def generate_text(
         self,
         prompt: str,
         system_instruction: str | None = None,
     ) -> str:
-        if self.ollama_base_url:
-            messages = []
-            if system_instruction:
-                messages.append({"role": "system", "content": system_instruction})
-            messages.append({"role": "user", "content": prompt})
-            async with httpx.AsyncClient(timeout=180) as client:
-                response = await client.post(
-                    f"{self.ollama_base_url}/api/chat",
-                    json={
-                        "model": self.model,
-                        "messages": messages,
-                        "options": {"temperature": 0.3},
-                        "stream": False,
-                        "think": False,
-                    },
-                )
-                response.raise_for_status()
-            return response.json()["message"]["content"] or "AI generation failed."
+        messages = []
+        if system_instruction:
+            messages.append({"role": "system", "content": system_instruction})
+        messages.append({"role": "user", "content": prompt})
 
-        config = types.GenerateContentConfig(
-            temperature=0.3,
-            system_instruction=system_instruction,
-        )
-        try:
-            response = await self.client.aio.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=config,
-            )
-            return response.text or "AI generation failed."
-        except APIError as error:
-            raise error
+        request = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": 0.3,
+        }
+
+        if self.client:
+            response = await self.client.chat.completions.create(**request)
+        else:
+            async with AsyncOpenAI(
+                base_url=self.base_url,
+                api_key="ollama",
+                timeout=180,
+            ) as client:
+                response = await client.chat.completions.create(**request)
+
+        return response.choices[0].message.content or "AI generation failed."

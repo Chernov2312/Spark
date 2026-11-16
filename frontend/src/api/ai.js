@@ -14,3 +14,8 @@ export async function askChatAssistant(chatId, question, limit = 30) {
   });
   return data;
 }
+
+export async function askSystemAssistant(question) {
+  const { data } = await api.post("/ai/assistant", { question });
+  return data;
+}

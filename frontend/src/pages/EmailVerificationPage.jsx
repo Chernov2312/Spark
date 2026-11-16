@@ -11,6 +11,7 @@ export default function EmailVerificationPage() {
 
   useEffect(() => {
     let cancelled = false;
+    let redirectTimer;
 
     async function verify() {
       try {
@@ -18,14 +19,19 @@ export default function EmailVerificationPage() {
         if (cancelled) return;
 
         setStatus("success");
-        setTimeout(() => navigate("/chats", { replace: true }), 1200);
+        redirectTimer = setTimeout(
+          () => navigate("/chats", { replace: true }),
+          2800,
+        );
       } catch (err) {
         if (cancelled) return;
         setStatus("error");
         setError(
-          err.response?.data?.detail ||
-            err.message ||
-            "Не удалось подтвердить почту. Попробуйте ещё раз.",
+          err.response?.status === 401
+            ? "\u0421\u0441\u044b\u043b\u043a\u0430 \u043d\u0435\u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0442\u0435\u043b\u044c\u043d\u0430 \u0438\u043b\u0438 \u0441\u0440\u043e\u043a \u0435\u0451 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044f \u0438\u0441\u0442\u0451\u043a. \u0415\u0441\u043b\u0438 \u0432\u044b \u0443\u0436\u0435 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u043b\u0438 \u043f\u043e\u0447\u0442\u0443, \u043f\u0440\u043e\u0441\u0442\u043e \u0432\u043e\u0439\u0434\u0438\u0442\u0435 \u0432 \u0430\u043a\u043a\u0430\u0443\u043d\u0442."
+            : err.response?.data?.detail ||
+              err.message ||
+              "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044c \u043f\u043e\u0447\u0442\u0443. \u041f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u0441\u043e\u0435\u0434\u0438\u043d\u0435\u043d\u0438\u0435 \u0438 \u043f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u0435\u0449\u0451 \u0440\u0430\u0437.",
         );
       }
     }
@@ -34,6 +40,7 @@ export default function EmailVerificationPage() {
 
     return () => {
       cancelled = true;
+      clearTimeout(redirectTimer);
     };
   }, [token, navigate]);
 
@@ -113,9 +120,15 @@ export default function EmailVerificationPage() {
           )}
 
           {status === "success" && (
-            <div className="verification-note">
-              <span className="verification-note__dot" />
-              Переходим в чат…
+            <div className="verification-card__actions">
+              <button
+                type="button"
+                className="verification-button"
+                onClick={() => navigate("/chats", { replace: true })}
+              >
+                {"\u041e\u0442\u043a\u0440\u044b\u0442\u044c Spark"}
+                <span aria-hidden="true">{"\u2192"}</span>
+              </button>
             </div>
           )}
 

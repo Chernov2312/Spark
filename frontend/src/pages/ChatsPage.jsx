@@ -17,6 +17,7 @@ import {
 } from "../api";
 import FormatToolbar from "../components/FormatToolbar";
 import AIChatPanel from "../components/AIChatPanel";
+import SocialSidebar from "../components/SocialSidebar";
 
 /* ============================================================
    Утилиты времени
@@ -516,17 +517,16 @@ export default function ChatsPage() {
   const [chats, setChats] = useState([]);
   const [chatsLoading, setChatsLoading] = useState(true);
   const [chatsError, setChatsError] = useState(null);
-
   const [messages, setMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState(null);
   const [chatDetailsOpen, setChatDetailsOpen] = useState(true);
+  const [activeChatTab, setActiveChatTab] = useState("messages");
   const [aiPanelOpen, setAIPanelOpen] = useState(false);
   const [transcribingAttachments, setTranscribingAttachments] = useState(
     () => new Set(),
   );
 
-  const [search, setSearch] = useState("");
   const [text, setText] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [selectedPreviewUrls, setSelectedPreviewUrls] = useState([]);
@@ -858,7 +858,13 @@ export default function ChatsPage() {
       setRecordingError(null);
       setRecordingSeconds(0);
       recordingChunksRef.current = [];
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
       recordingStreamRef.current = stream;
       const mimeType =
         typeof MediaRecorder.isTypeSupported === "function"
@@ -1321,14 +1327,6 @@ export default function ChatsPage() {
   };
 
   /* ---------- 12. Производные ---------- */
-  const filtered = useMemo(
-    () =>
-      chats.filter((c) =>
-        (c.title || "").toLowerCase().includes(search.toLowerCase()),
-      ),
-    [chats, search],
-  );
-
   const activeChat = useMemo(
     () => chats.find((c) => c.id === chatId),
     [chats, chatId],
@@ -1388,75 +1386,19 @@ export default function ChatsPage() {
   return (
     <main className="chats-page">
       {/* ---------- Левая колонка ---------- */}
-      <aside
-        className={`chats-sidebar ${chatId ? "chats-sidebar--hidden-mobile" : ""}`}
-      >
-        <div className="chats-sidebar__header">
-          <input
-            className="chats-search"
-            type="text"
-            placeholder="Поиск"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <button
-            className="chats-new"
-            type="button"
-            title="Создать группу"
-            onClick={() => {
-              setCreateChatError(null);
-              setUsernameQuery("");
-              setUserSearchResults([]);
-              setSelectedUsers([]);
-              setSelectedAvatarFiles([]);
-              setCreateOpen(true);
-            }}
-          >
-            +
-          </button>
-        </div>
-
-        {chatsLoading && <p className="chats-empty">Загрузка чатов…</p>}
-        {chatsError && (
-          <p className="chats-empty" style={{ color: "var(--danger)" }}>
-            {chatsError}
-          </p>
-        )}
-
-        {!chatsLoading && !chatsError && (
-          <ul className="chats-list">
-            {filtered.map((c) => (
-              <li
-                key={c.id}
-                className={`chat-item ${chatId === c.id ? "chat-item--active" : ""}`}
-                onClick={() => navigate(`/chats/${c.id}`)}
-              >
-                <ChatAvatar chat={c} />
-                <div className="chat-item__body">
-                  <div className="chat-item__top">
-                    <span className="chat-item__title">{c.title}</span>
-                    {c.last_message?.created_at && (
-                      <span className="chat-item__time">
-                        {timeAgo(c.last_message.created_at)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="chat-item__bottom">
-                    <span className="chat-item__preview">
-                      {c.last_message?.text || "Нет сообщений"}
-                    </span>
-                  </div>
-                </div>
-              </li>
-            ))}
-            {filtered.length === 0 && (
-              <li className="chats-empty">
-                {search ? "Ничего не найдено" : "Пока нет чатов"}
-              </li>
-            )}
-          </ul>
-        )}
-      </aside>
+      <SocialSidebar
+        chats={chats}
+        chatId={chatId}
+        navigate={navigate}
+        onCreateChat={() => {
+          setCreateChatError(null);
+          setUsernameQuery("");
+          setUserSearchResults([]);
+          setSelectedUsers([]);
+          setSelectedAvatarFiles([]);
+          setCreateOpen(true);
+        }}
+      />
 
       {/* ---------- Правая колонка ---------- */}
       <section className={`chat-view ${!chatId ? "chat-view--empty" : ""}`}>
@@ -1521,7 +1463,16 @@ export default function ChatsPage() {
               </p>
             )}
 
-            <section className="chat-details" aria-label="Информация о чате">
+            <nav className="chat-view__tabs" role="tablist" aria-label="Разделы чата">
+              <button type="button" role="tab" aria-selected={activeChatTab === "messages"} onClick={() => setActiveChatTab("messages")}>
+                Переписка
+              </button>
+              <button type="button" role="tab" aria-selected={activeChatTab === "profile"} onClick={() => setActiveChatTab("profile")}>
+                Профиль чата
+              </button>
+            </nav>
+
+            {activeChatTab === "profile" && <section className="chat-details" aria-label="Информация о чате">
               <div className="chat-details__heading">
                 <div>
                   <h2>О чате</h2>
@@ -1572,9 +1523,9 @@ export default function ChatsPage() {
                   </div>
                 </>
               )}
-            </section>
+            </section>}
 
-            <div className="chat-view__messages">
+            {activeChatTab === "messages" && <><div className="chat-view__messages">
               {messagesLoading && (
                 <p className="chats-empty">Загрузка сообщений…</p>
               )}
@@ -1747,7 +1698,7 @@ export default function ChatsPage() {
                   </ul>
                 </>
               )}
-            </div>
+            </div></>}
             {aiPanelOpen && (
               <AIChatPanel
                 key={chatId}
@@ -1861,7 +1812,7 @@ export default function ChatsPage() {
               <ul className="chat-user-search-results">
                 {userSearchResults.map((user) => (
                   <li key={user.id}>
-                    <span>@{user.username}</span>
+                    <span>{user.username} <small>@{user.tag}</small></span>
                     <button
                       type="button"
                       className="vk-btn"
@@ -1881,10 +1832,10 @@ export default function ChatsPage() {
               <ul className="chat-selected-users">
                 {selectedUsers.map((user) => (
                   <li key={user.id}>
-                    <span>@{user.username}</span>
+                    <span>{user.username} <small>@{user.tag}</small></span>
                     <button
                       type="button"
-                      aria-label={`Убрать @${user.username}`}
+                      aria-label={`Убрать @${user.tag}`}
                       onClick={() =>
                         setSelectedUsers((current) =>
                           current.filter((selected) => selected.id !== user.id),
