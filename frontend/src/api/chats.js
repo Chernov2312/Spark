@@ -57,6 +57,21 @@ export async function markChatRead(chatId, messageId) {
   return data;
 }
 
+export async function setPersonalChatAvatar(chatId, file) {
+  const error = getAvatarImageError(file);
+  if (error) throw new Error(error);
+  const { fileKey } = await uploadToTemporaryUrl(api, file, {
+    type: "personal_chat_avatar", targetId: chatId, maxSizeBytes: 5 * 1024 * 1024,
+  });
+  const { data } = await api.put(`/chats/${chatId}/personal-avatar`, { file_key: fileKey });
+  return data;
+}
+
+export async function resetPersonalChatAvatar(chatId) {
+  const { data } = await api.delete(`/chats/${chatId}/personal-avatar`);
+  return data;
+}
+
 export async function searchUsersByUsername(username) {
   const { data } = await api.get("/users/search", {
     params: { username: username.trim(), limit: 20 },

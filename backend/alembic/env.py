@@ -14,7 +14,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
-from config import settings
+from config import get_settings
 from db.database import Base
 from db.models.chat_state import ChatReadState, MessagePin
 from db.models.user import User
@@ -36,7 +36,7 @@ config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
-config.set_main_option("sqlalchemy.url", settings.db_url)
+config.set_main_option("sqlalchemy.url", str(get_settings().db_url))
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 

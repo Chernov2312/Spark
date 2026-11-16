@@ -6,9 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags
 from core.dependencies import get_redis
+from core.chat_appearance import clear_personal_avatar, set_personal_avatar
+from core.message_actions import get_chat_message_previews
 from core.security import get_id_current_user
 from core.storage import S3Storage
 from db.dao.chat_dao import ChatDao
+from db.dao.chat_appearance_dao import ChatAppearanceDao
 from db.dao.user_dao import UserDao
 from db.database import get_session
 from db.models import Chat
@@ -24,6 +27,8 @@ from schemas.chats import (
     AddUserToChatResponse,
     ChatAddUserRequest,
     ChatResponse,
+    ChatPersonalAvatarRequest,
+    ChatPersonalAvatarResponse,
     GetChatsResponse,
     NewChatRequest,
     NewChatResponse,
@@ -33,6 +38,25 @@ from schemas.responses import ChatMemberRoleResponse
 from schemas.websockets import WsEvent
 
 chat_router = APIRouter(prefix="/api/v1", tags=[RouteTags.CHAT])
+
+
+@chat_router.put("/chats/{chat_id}/personal-avatar")
+async def update_personal_chat_avatar(
+    chat_id: uuid.UUID,
+    data: ChatPersonalAvatarRequest,
+    session: AsyncSession = Depends(get_session),
+    user_id: uuid.UUID = Depends(get_id_current_user),
+) -> ChatPersonalAvatarResponse:
+    return await set_personal_avatar(session, user_id, chat_id, data.file_key)
+
+
+@chat_router.delete("/chats/{chat_id}/personal-avatar")
+async def reset_personal_chat_avatar(
+    chat_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user_id: uuid.UUID = Depends(get_id_current_user),
+) -> ChatPersonalAvatarResponse:
+    return await clear_personal_avatar(session, user_id, chat_id)
 
 
 @chat_router.get("/chats/{chat_id}/members")
@@ -122,11 +146,16 @@ async def mark_chat_read(
 async def get_chats(
     session: AsyncSession = Depends(get_session),
     user_id: uuid.UUID = Depends(get_id_current_user),
+    redis: Redis = Depends(get_redis),
 ) -> GetChatsResponse:
     s3 = S3Storage()
     user = await UserDao.get_user_with_chats(session=session, target_id=user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
+    previews = await get_chat_message_previews(session, redis, {chat.id for chat in user.chats})
+    personal_keys = await ChatAppearanceDao.get_avatar_keys(
+        session, user_id, {chat.id for chat in user.chats},
+    )
     chats = []
     for chat in user.chats:
         avatars = []
@@ -134,6 +163,9 @@ async def get_chats(
             avatars.append(await s3.get_temporary_url(avatar.file_key))
         chat_model = ChatResponse.model_validate(chat)
         chat_model.avatar_urls = avatars.copy()
+        chat_model.last_message = previews.get(chat.id)
+        if chat.id in personal_keys:
+            chat_model.personal_avatar_url = await s3.get_temporary_url(personal_keys[chat.id])
         chats.append(chat_model)
     return GetChatsResponse(chats=chats)
 

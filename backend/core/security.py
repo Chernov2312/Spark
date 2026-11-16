@@ -9,7 +9,7 @@ from jwt import InvalidTokenError
 from pwdlib import PasswordHash
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import settings
+from config import get_settings
 from db.dao.user_dao import UserDao
 from db.models import User
 from schemas.auth import UserLogin
@@ -48,7 +48,12 @@ def create_access_token(
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    settings = get_settings()
+    encoded_jwt = jwt.encode(
+        to_encode,
+        settings.SECRET_KEY.get_secret_value(),
+        algorithm=settings.ALGORITHM,
+    )
     return encoded_jwt
 
 
@@ -60,8 +65,13 @@ async def get_id_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    settings = get_settings()
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY.get_secret_value(),
+            algorithms=[settings.ALGORITHM],
+        )
         sub_id = payload.get("sub")
         if sub_id is None:
             raise credentials_exception

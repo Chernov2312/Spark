@@ -7,16 +7,16 @@ import smtplib
 from urllib.parse import quote
 import uuid
 
-from config import email
-from config.app import settings
+from config import get_email_settings, get_settings
 from core.security import create_access_token
 
 logger = logging.getLogger(__name__)
 
 
 def _deliver_email(message: EmailMessage) -> None:
+    email = get_email_settings()
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(email.LOGIN_EMAIL, email.PASSWORD_EMAIL)
+        server.login(email.LOGIN_EMAIL, email.PASSWORD_EMAIL.get_secret_value())
         server.send_message(message)
 
 
@@ -26,6 +26,8 @@ async def send_verification_email(
     user_id: str,
     base_url: str,
 ) -> None:
+    settings = get_settings()
+    email = get_email_settings()
     msg = EmailMessage()
     msg["Subject"] = "Подтверждение регистрации в Мессенджере"
     msg["From"] = email.FROM_EMAIL
@@ -76,6 +78,8 @@ async def send_password_reset_email(
     user_id: str,
     base_url: str,
 ) -> None:
+    settings = get_settings()
+    email = get_email_settings()
     reset_token = create_access_token(
         data={
             "sub": user_email,

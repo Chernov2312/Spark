@@ -16,6 +16,10 @@ class UserData(BaseModel):
     created_at: datetime | None = None
     user_reaction: str | None = None
     reactions_count: dict[str, int] = Field(default_factory=dict)
+    reply_to_id: uuid.UUID | None = None
+    reply_to_text: str | None = None
+    thread_root_id: uuid.UUID | None = None
+    thread_reply_count: int = 0
 
 
 class ChatData(BaseModel):

@@ -4,12 +4,12 @@ from celery import Celery
 from celery.schedules import crontab
 from celery.signals import worker_process_init
 
-from config import settings
+from config import get_settings
 from db.database import engine
 
 T = TypeVar("T")
 
-celery_app = Celery("tasks", broker=settings.redis_url)
+celery_app = Celery("tasks", broker=str(get_settings().redis_url))
 celery_app.conf.beat_schedule = {
     "sync-reactions-every-1-minutes": {
         "task": "tasks.message_reactions.add_reactions_in_db",

@@ -4,6 +4,7 @@ from uuid import uuid4
 import aioboto3
 from botocore.client import Config
 from httpx2 import ASGITransport, AsyncClient
+from pydantic import SecretStr
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -12,7 +13,7 @@ from testcontainers.core.waiting_utils import wait_for_logs
 from testcontainers.postgres import PostgresContainer
 from testcontainers.redis import RedisContainer
 
-from config import yandex_storage
+from config import get_storage_settings
 from core.security import create_access_token, get_password_hash
 from db.dao.user_dao import UserDao
 from db.database import Base, get_session
@@ -77,6 +78,7 @@ def minio_container():
 
 @pytest_asyncio.fixture(scope="function", loop_scope="session")
 async def minio_s3_storage(minio_container, monkeypatch):
+    yandex_storage = get_storage_settings()
     endpoint = (
         f"http://{minio_container.get_container_host_ip()}:"
         f"{minio_container.get_exposed_port(9000)}"
@@ -85,7 +87,7 @@ async def minio_s3_storage(minio_container, monkeypatch):
     secret_key = "spark-test-secret-key"
     bucket_name = f"spark-test-{uuid4().hex}"
     monkeypatch.setattr(yandex_storage, "YANDEX_CLOUD_KEY_ID", access_key)
-    monkeypatch.setattr(yandex_storage, "YANDEX_CLOUD_KEY", secret_key)
+    monkeypatch.setattr(yandex_storage, "YANDEX_CLOUD_KEY", SecretStr(secret_key))
     monkeypatch.setattr(yandex_storage, "BUCKET_NAME", bucket_name)
     monkeypatch.setattr(yandex_storage, "ENDPOINT_URL", endpoint)
 

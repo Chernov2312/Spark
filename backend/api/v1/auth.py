@@ -10,7 +10,7 @@ from jwt import InvalidTokenError
 from sqlalchemy.ext.asyncio import AsyncSession
 from tasks.email import send_mail_task, send_password_reset_mail_task
 
-from config import RouteTags, settings
+from config import RouteTags, get_settings
 from core.dependencies import get_redis
 from core.security import (
     authenticate_user,
@@ -58,7 +58,7 @@ async def request_password_reset(
                 user.email,
                 user.username,
                 str(user.id),
-                settings.FRONTEND_BASE_URL,
+                get_settings().FRONTEND_BASE_URL,
             )
     return PasswordResetMessageResponse(
         message="If an account with this email exists, a password reset link will be sent.",
@@ -78,8 +78,8 @@ async def reset_password(
     try:
         payload = jwt.decode(
             data.token,
-            settings.SECRET_KEY,
-            algorithms=[settings.ALGORITHM],
+            get_settings().SECRET_KEY.get_secret_value(),
+            algorithms=[get_settings().ALGORITHM],
         )
         if payload.get("purpose") != "password_reset":
             raise invalid_link
@@ -132,8 +132,8 @@ async def verification(
     try:
         payload = jwt.decode(
             verification_token,
-            settings.SECRET_KEY,
-            algorithms=[settings.ALGORITHM],
+            get_settings().SECRET_KEY.get_secret_value(),
+            algorithms=[get_settings().ALGORITHM],
         )
         email = payload.get("sub")
         user_id = payload.get("user_id")
@@ -150,7 +150,9 @@ async def verification(
             cur_user = await UserDao.mark_verified(session, cur_user.id)
     except (InvalidTokenError, KeyError, TypeError):
         raise credentials_exception from None
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(
+        minutes=get_settings().ACCESS_TOKEN_EXPIRE_MINUTES,
+    )
     access_token = create_access_token(
         data={"sub": str(cur_user.id)},
         expires_delta=access_token_expires,
@@ -203,7 +205,7 @@ async def register(
         new_user.email,
         new_user.username,
         str(new_user.id),
-        settings.FRONTEND_BASE_URL,
+        get_settings().FRONTEND_BASE_URL,
     )
     return UserRegistrationResponse(
         id=new_user.id,
@@ -235,7 +237,9 @@ async def login_for_access_token(
             detail="Unverifeied email adress",
         )
 
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(
+        minutes=get_settings().ACCESS_TOKEN_EXPIRE_MINUTES,
+    )
     access_token = create_access_token(
         data={"sub": str(user.id)},
         expires_delta=access_token_expires,

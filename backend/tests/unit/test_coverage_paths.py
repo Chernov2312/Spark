@@ -250,7 +250,7 @@ async def test_auth_register_hashes_password_and_sends_verification(
         "new@example.com",
         "new",
         str(response.id),
-        auth_api.settings.FRONTEND_BASE_URL,
+        auth_api.get_settings().FRONTEND_BASE_URL,
     )
     categories = await auth_api.SocialDao.list_friend_categories(
         db_session,

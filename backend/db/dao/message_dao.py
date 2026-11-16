@@ -23,6 +23,7 @@ class QueuedMessage(Protocol):
     user_id: uuid.UUID
     text: str | None
     reply_to_id: uuid.UUID | None
+    thread_root_id: uuid.UUID | None
     created_at: datetime
     attachments: Sequence[QueuedAttachment]
 
@@ -35,6 +36,23 @@ class MessageReactionData(TypedDict):
 
 class MessageDao(BaseDao[Message]):
     model = Message
+
+    @classmethod
+    async def get_latest_for_chats(
+        cls,
+        session: AsyncSession,
+        chat_ids: set[uuid.UUID],
+    ) -> list[Message]:
+        if not chat_ids:
+            return []
+        result = await session.scalars(
+            select(Message)
+            .where(Message.chat_id.in_(chat_ids))
+            .distinct(Message.chat_id)
+            .order_by(Message.chat_id, Message.created_at.desc(), Message.id.desc())
+            .options(selectinload(Message.attachments)),
+        )
+        return list(result.all())
 
     @classmethod
     async def get_with_attachments(
@@ -146,6 +164,7 @@ class MessageDao(BaseDao[Message]):
             .where(
                 and_(
                     Message.chat_id == chat_id,
+                    Message.thread_root_id.is_(None),
                     Message.chat.has(Chat.users.any(User.id == user_id)),
                 ),
             )
@@ -159,6 +178,74 @@ class MessageDao(BaseDao[Message]):
 
         res = await session.execute(query)
         return res.scalars().all()
+
+    @classmethod
+    async def get_thread_messages(
+        cls,
+        session: AsyncSession,
+        chat_id: uuid.UUID,
+        root_message_id: uuid.UUID,
+        user_id: uuid.UUID,
+        limit: int = 100,
+        before: datetime | None = None,
+    ) -> list[Message]:
+        query = (
+            select(Message)
+            .where(
+                Message.chat_id == chat_id,
+                Message.thread_root_id == root_message_id,
+                Message.chat.has(Chat.users.any(User.id == user_id)),
+            )
+            .order_by(
+                Message.created_at.desc() if before is not None else Message.created_at.asc(),
+            )
+            .limit(min(max(limit, 1), 200))
+            .options(selectinload(Message.attachments))
+        )
+        if before is not None:
+            query = query.where(Message.created_at < before)
+        result = await session.execute(query)
+        return result.scalars().all()
+
+    @classmethod
+    async def get_thread_reply_counts(
+        cls,
+        session: AsyncSession,
+        root_message_ids: set[uuid.UUID],
+    ) -> dict[uuid.UUID, int]:
+        if not root_message_ids:
+            return {}
+        result = await session.execute(
+            select(Message.thread_root_id, func.count(Message.id))
+            .where(Message.thread_root_id.in_(root_message_ids))
+            .group_by(Message.thread_root_id),
+        )
+        return {root_id: count for root_id, count in result.all()}
+
+    @classmethod
+    async def get_thread_roots(
+        cls,
+        session: AsyncSession,
+        chat_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> list[Message]:
+        result = await session.scalars(
+            select(Message)
+            .where(
+                Message.chat_id == chat_id,
+                Message.thread_root_id.is_(None),
+                Message.id.in_(
+                    select(Message.thread_root_id).where(
+                        Message.chat_id == chat_id,
+                        Message.thread_root_id.is_not(None),
+                    ),
+                ),
+                Message.chat.has(Chat.users.any(User.id == user_id)),
+            )
+            .order_by(Message.created_at.desc())
+            .options(selectinload(Message.attachments)),
+        )
+        return list(result.all())
 
     @classmethod
     async def search_chat_history(
@@ -295,6 +382,7 @@ class MessageDao(BaseDao[Message]):
                 "user_id": message.user_id,
                 "text": message.text,
                 "reply_to_id": message.reply_to_id,
+                "thread_root_id": message.thread_root_id,
                 "created_at": message.created_at,
             }
             for message in data_messages

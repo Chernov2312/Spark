@@ -1,10 +1,32 @@
 import { api } from "./client";
 
+export async function listThreads(chatId) {
+  const { data } = await api.get(`/chats/${chatId}/threads`);
+  return data.messages;
+}
+
+export async function forwardMessage(chatId, messageId, targetChatId) {
+  const { data } = await api.post(`/chats/${chatId}/messages/${messageId}/forward`, {
+    target_chat_id: targetChatId,
+  });
+  return data;
+}
+
 // GET /chats/{id}/messages
 export async function listMessages(chatId, { limit = 50, before } = {}) {
   const params = { limit };
   if (before) params.before = before;
   const { data } = await api.get(`/chats/${chatId}/messages`, { params });
+  return data.messages;
+}
+
+export async function listThreadMessages(chatId, rootMessageId, { limit = 100, before } = {}) {
+  const params = { limit };
+  if (before) params.before = before;
+  const { data } = await api.get(
+    `/chats/${chatId}/messages/${rootMessageId}/thread`,
+    { params },
+  );
   return data.messages;
 }
 

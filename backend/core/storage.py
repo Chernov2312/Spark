@@ -7,11 +7,12 @@ import aiofiles
 from botocore.client import Config
 from fastapi import UploadFile
 
-from config import yandex_storage
+from config import get_storage_settings
 
 
 class S3Storage:
     def __init__(self) -> None:
+        yandex_storage = get_storage_settings()
         self.session = aioboto3.Session()
         s3_config = Config(
             signature_version="s3v4",
@@ -20,7 +21,7 @@ class S3Storage:
         )
         self.config = {
             "aws_access_key_id": yandex_storage.YANDEX_CLOUD_KEY_ID,
-            "aws_secret_access_key": yandex_storage.YANDEX_CLOUD_KEY,
+            "aws_secret_access_key": yandex_storage.YANDEX_CLOUD_KEY.get_secret_value(),
             "endpoint_url": yandex_storage.ENDPOINT_URL,
             "config": s3_config,
         }

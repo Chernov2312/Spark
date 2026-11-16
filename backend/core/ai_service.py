@@ -6,7 +6,7 @@ from fastapi import HTTPException, status
 from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import ai_settings
+from config import get_ai_settings
 from db.dao.chat_dao import ChatDao
 from db.dao.message_dao import MessageDao
 from infrastructure.redis.client import Redis
@@ -43,6 +43,7 @@ class AIService:
         ollama_base_url: str | None = None,
         client: AsyncOpenAI | None = None,
     ) -> None:
+        ai_settings = get_ai_settings()
         self.model = model_name or ai_settings.OLLAMA_MODEL
         self.base_url = (ollama_base_url or ai_settings.OLLAMA_BASE_URL).rstrip(
             "/"

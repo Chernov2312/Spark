@@ -29,6 +29,7 @@ function SimplePage({ title, text }) {
 export default function App() {
   const { pathname } = useLocation();
   const isVerificationPage = pathname.startsWith("/verify-email/");
+  const isChatsPage = pathname === "/chats" || pathname.startsWith("/chats/");
 
   return (
     <>
@@ -86,7 +87,7 @@ export default function App() {
         />
         <Route path="*" element={<NotFound />} />
       </Routes>
-      {!isVerificationPage && <Footer />}
+      {!isVerificationPage && !isChatsPage && <Footer />}
     </>
   );
 }

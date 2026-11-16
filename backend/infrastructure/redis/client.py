@@ -7,7 +7,7 @@ import redis.asyncio as aioredis
 from redis.asyncio.client import Pipeline
 from redis.exceptions import RedisError
 
-from config import settings
+from config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,10 @@ class Redis(aioredis.Redis):
 
 
 def create_redis_client(redis_url: str | None = None) -> Redis:
-    client = Redis.from_url(redis_url or settings.redis_url, decode_responses=True)
+    client = Redis.from_url(
+        redis_url or str(get_settings().redis_url),
+        decode_responses=True,
+    )
     logger.info("Redis client created")
     return client
 

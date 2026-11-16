@@ -244,3 +244,13 @@
     padding-inline: 8px;
   }
 }
+.sidebar-scope { display: flex; gap: 6px; padding: 10px; border-bottom: 1px solid var(--border); }
+.sidebar-scope button { padding: 8px; border: 1px solid var(--border); border-radius: 8px; color: var(--text-muted); background: transparent; cursor: pointer; }
+.sidebar-scope button[aria-selected="true"] { color: var(--spark); background: var(--bg-hover); }
+.sidebar-scope button:disabled { opacity: 0.4; cursor: default; }
+.sidebar-thread-heading { padding: 0 14px; font-size: 14px; overflow-wrap: anywhere; }
+.sidebar-threads { margin: 0; padding: 0 10px; list-style: none; }
+.sidebar-threads button { display: flex; flex-direction: column; gap: 7px; width: 100%; text-align: left; padding: 12px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--text); cursor: pointer; }
+.sidebar-threads button span { overflow-wrap: anywhere; }
+.sidebar-threads button small { color: var(--text-muted); }
+.sidebar-threads button:hover, .sidebar-threads button.is-active { background: var(--bg-hover); border-color: var(--border); }

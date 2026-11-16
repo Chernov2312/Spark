@@ -1,6 +1,7 @@
 from db.models.attachment import Attachment
 from db.models.chat_state import ChatReadState, MessagePin
 from db.models.chat import Chat
+from db.models.chat_appearance import ChatAppearance
 from db.models.message import Message
 from db.models.message_reaction import MessageReaction
 from db.models.social import (
@@ -15,6 +16,7 @@ from db.models.user import User, user_chat
 __all__ = (
     "User",
     "Chat",
+    "ChatAppearance",
     "MessageReaction",
     "Message",
     "Attachment",

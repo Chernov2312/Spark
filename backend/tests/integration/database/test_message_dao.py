@@ -7,6 +7,26 @@ from db.dao.message_dao import MessageDao
 from db.models import Attachment, Message
 
 
+async def test_latest_messages_for_chats_include_attachments_and_thread_replies(db_session, db_userchat):
+    chat, member = db_userchat
+    root = await MessageDao.create_with_attachments(
+        db_session, {"chat_id": chat.id, "user_id": member.id, "text": "first",
+                     "created_at": datetime(2026, 1, 1)}, [],
+    )
+    latest = await MessageDao.create_with_attachments(
+        db_session, {"chat_id": chat.id, "user_id": member.id, "text": None,
+                     "created_at": datetime(2026, 1, 2), "thread_root_id": root.id},
+        [{"chat_id": chat.id, "file_key": "voice.ogg", "file_name": "voice.ogg",
+          "file_size": 3, "mime_type": "audio/ogg"}],
+    )
+    messages = await MessageDao.get_latest_for_chats(db_session, {chat.id, uuid.uuid4()})
+    assert [message.id for message in messages] == [latest.id]
+    assert messages[0].attachments[0].mime_type == "audio/ogg"
+    assert await MessageDao.get_latest_for_chats(db_session, set()) == []
+    await MessageDao.delete_by_id(db_session, latest.id, member.id)
+    assert [message.id for message in await MessageDao.get_latest_for_chats(db_session, {chat.id})] == [root.id]
+
+
 async def test_get_chat_history_orders_pages_and_checks_membership(
     db_session,
     db_user,
@@ -51,6 +71,52 @@ async def test_get_chat_history_orders_pages_and_checks_membership(
     assert hidden_history == []
 
 
+async def test_thread_queries_return_replies_and_counts(
+    db_session,
+    db_user,
+    db_userchat,
+):
+    chat, member = db_userchat
+    root = await MessageDao.create_with_attachments(
+        db_session,
+        {"chat_id": chat.id, "user_id": db_user.id, "text": "root"},
+        [],
+    )
+    reply = await MessageDao.create_with_attachments(
+        db_session,
+        {
+            "chat_id": chat.id,
+            "user_id": db_user.id,
+            "text": "thread reply",
+            "thread_root_id": root.id,
+        },
+        [],
+    )
+
+    thread = await MessageDao.get_thread_messages(
+        db_session,
+        chat.id,
+        root.id,
+        member.id,
+    )
+    hidden_thread = await MessageDao.get_thread_messages(
+        db_session,
+        chat.id,
+        root.id,
+        uuid.uuid4(),
+    )
+    counts = await MessageDao.get_thread_reply_counts(db_session, {root.id})
+
+    assert [message.id for message in thread] == [reply.id]
+    assert hidden_thread == []
+    assert counts == {root.id: 1}
+    assert await MessageDao.get_thread_reply_counts(db_session, set()) == {}
+    roots = await MessageDao.get_thread_roots(db_session, chat.id, member.id)
+    assert [message.id for message in roots] == [root.id]
+    assert await MessageDao.get_thread_roots(db_session, chat.id, uuid.uuid4()) == []
+    assert await MessageDao.get_thread_roots(db_session, uuid.uuid4(), member.id) == []
+
+
 async def test_message_update_delete_are_limited_to_author(
     db_session,
     db_user,
@@ -91,6 +157,11 @@ async def test_bulk_insert_messages_preserves_timestamp_and_ignores_duplicate(
     db_userchat,
 ):
     chat, _ = db_userchat
+    root = await MessageDao.create_with_attachments(
+        db_session,
+        {"chat_id": chat.id, "user_id": db_user.id, "text": "thread root"},
+        [],
+    )
     message_id = uuid.uuid4()
     created_at = datetime(2025, 2, 3, 4, 5, tzinfo=timezone.utc).replace(tzinfo=None)
     message = Message(
@@ -98,6 +169,7 @@ async def test_bulk_insert_messages_preserves_timestamp_and_ignores_duplicate(
         chat_id=chat.id,
         user_id=db_user.id,
         text="retry-safe insert",
+        thread_root_id=root.id,
         created_at=created_at,
     )
 
@@ -106,6 +178,7 @@ async def test_bulk_insert_messages_preserves_timestamp_and_ignores_duplicate(
     loaded = await MessageDao.get_by_id(db_session, message_id)
 
     assert loaded.text == "retry-safe insert"
+    assert loaded.thread_root_id == root.id
     assert loaded.created_at == created_at
     assert await MessageDao.bulk_insert_messages(db_session, []) is None
 
