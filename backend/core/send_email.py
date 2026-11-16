@@ -1,7 +1,7 @@
-import smtplib
 from datetime import timedelta
 from email.message import EmailMessage
 from html import escape
+import smtplib
 from urllib.parse import quote
 
 from config import email
@@ -27,8 +27,7 @@ def send_verification_email(
     )
 
     verification_link = (
-        f"{base_url.rstrip('/')}/verify-email/"
-        f"{quote(verification_token, safe='')}"
+        f"{base_url.rstrip('/')}/verify-email/{quote(verification_token, safe='')}"
     )
     safe_username = escape(user_username)
     safe_link = escape(verification_link, quote=True)

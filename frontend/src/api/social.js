@@ -5,6 +5,7 @@ export async function listFriends() {
   return {
     friends: Array.isArray(data.friends) ? data.friends : [],
     requests: Array.isArray(data.requests) ? data.requests : [],
+    sentRequests: Array.isArray(data.sent_requests) ? data.sent_requests : [],
     categories: Array.isArray(data.categories) ? data.categories : [],
   };
 }

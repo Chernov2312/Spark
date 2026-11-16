@@ -2,11 +2,19 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { chats as chatsApi, social as socialApi } from "../api";
 import "../styles/social-sidebar.css";
 
-export default function SocialSidebar({ chats, chatId, navigate, onCreateChat }) {
+export default function SocialSidebar({
+  chats,
+  chatsLoading,
+  chatsError,
+  chatId,
+  navigate,
+  onCreateChat,
+}) {
   const [tab, setTab] = useState("chats");
   const [search, setSearch] = useState("");
   const [friends, setFriends] = useState([]);
   const [requests, setRequests] = useState([]);
+  const [sentRequests, setSentRequests] = useState([]);
   const [friendCategories, setFriendCategories] = useState([]);
   const [chatFolders, setChatFolders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -27,6 +35,7 @@ export default function SocialSidebar({ chats, chatId, navigate, onCreateChat })
     ]);
     setFriends(friendData.friends);
     setRequests(friendData.requests);
+    setSentRequests(friendData.sentRequests);
     setFriendCategories(friendData.categories);
     setChatFolders(folders);
   }
@@ -38,6 +47,7 @@ export default function SocialSidebar({ chats, chatId, navigate, onCreateChat })
         if (cancelled) return;
         setFriends(friendData.friends);
         setRequests(friendData.requests);
+        setSentRequests(friendData.sentRequests);
         setFriendCategories(friendData.categories);
         setChatFolders(folders);
       })
@@ -55,8 +65,6 @@ export default function SocialSidebar({ chats, chatId, navigate, onCreateChat })
   useEffect(() => {
     const query = friendQuery.trim();
     if (tab !== "friends" || query.length < 2) {
-      setSearchResults([]);
-      setSearching(false);
       return undefined;
     }
     let cancelled = false;
@@ -68,6 +76,7 @@ export default function SocialSidebar({ chats, chatId, navigate, onCreateChat })
           const excluded = new Set([
             ...friends.map((friend) => friend.id),
             ...requests.map((friend) => friend.id),
+            ...sentRequests.map((friend) => friend.id),
           ]);
           setSearchResults(results.filter((person) => !excluded.has(person.id)));
         }
@@ -78,7 +87,7 @@ export default function SocialSidebar({ chats, chatId, navigate, onCreateChat })
       }
     }, 250);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [tab, friendQuery, friends, requests]);
+  }, [tab, friendQuery, friends, requests, sentRequests]);
 
   const shownChats = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -198,8 +207,9 @@ export default function SocialSidebar({ chats, chatId, navigate, onCreateChat })
 
   async function sendRequest(personId) {
     try {
-      await socialApi.requestFriend(personId);
+      const result = await socialApi.requestFriend(personId);
       await refresh();
+      if (result.status === "accepted") setCategoryFilter("all");
       setFriendQuery("");
       setSearchResults([]);
     } catch (cause) {
@@ -250,9 +260,11 @@ export default function SocialSidebar({ chats, chatId, navigate, onCreateChat })
       </form>}
 
       {error && <p className="social-sidebar-error" role="alert">{error}</p>}
-      {loading && <p className="chats-empty">Загрузка…</p>}
+      {tab === "friends" && loading && <p className="chats-empty">Загрузка…</p>}
+      {tab === "chats" && chatsLoading && <p className="chats-empty">Загрузка чатов…</p>}
+      {tab === "chats" && chatsError && <p className="social-sidebar-error" role="alert">{chatsError}</p>}
 
-      {!loading && tab === "chats" && <ul className="chats-list">
+      {!chatsLoading && !chatsError && tab === "chats" && <ul className="chats-list">
         {chatGroups.map((group) => group.chats.length > 0 && <Fragment key={group.id}>
           {folderFilter === "all" && <li className="sidebar-group-heading"><span>{group.name}</span><span>{group.chats.length}</span></li>}
           {group.chats.map((chat) => {
@@ -280,7 +292,7 @@ export default function SocialSidebar({ chats, chatId, navigate, onCreateChat })
       </ul>}
 
       {!loading && tab === "friends" && <div className="friends-list">
-        <label className="friend-search"><span>Добавить друга</span><input value={friendQuery} onChange={(event) => setFriendQuery(event.target.value)} placeholder="Имя или @тег" /></label>
+        <label className="friend-search"><span>Добавить друга</span><input value={friendQuery} onChange={(event) => { setFriendQuery(event.target.value); setSearchResults([]); setSearching(false); }} placeholder="Имя или @тег" /></label>
         {searching && <p className="friends-list__hint">Ищем пользователей…</p>}
         {searchResults.map((person) => <div className="friend-item" key={person.id}>
           <div className="friend-avatar">{person.username?.[0]?.toUpperCase()}</div>
@@ -292,6 +304,13 @@ export default function SocialSidebar({ chats, chatId, navigate, onCreateChat })
             <div className="friend-avatar">{person.username?.[0]?.toUpperCase()}</div>
             <div className="friend-item__identity"><strong>{person.username}</strong><span>@{person.tag}</span></div>
             <button type="button" onClick={() => acceptRequest(person.id)}>Принять</button>
+          </div>)}
+        </section>}
+        {sentRequests.length > 0 && <section className="friend-requests friend-requests--sent"><h3>Отправленные заявки · {sentRequests.length}</h3>
+          {sentRequests.map((person) => <div className="friend-item" key={person.id}>
+            <div className="friend-avatar">{person.username?.[0]?.toUpperCase()}</div>
+            <div className="friend-item__identity"><strong>{person.username}</strong><span>@{person.tag}</span></div>
+            <span className="friend-request-status">Заявка отправлена</span>
           </div>)}
         </section>}
         {friendGroups.map((group) => group.friends.length > 0 && <section className="friend-group" key={group.id}>

@@ -12,14 +12,19 @@ const TABS = [
 const DEMO_USER = {
   id: "demo-user",
   username: "chel",
+  tag: "chel",
   email: "john@example.com",
   avatar_url: null,
   created_at: "2026-10-03T09:21:00Z",
 };
 
 export default function ProfilePage({ demo = false }) {
-  const [me, setMe] = useState(null);
-  const [form, setForm] = useState({ username: "", tag: "", email: "" });
+  const [me, setMe] = useState(demo ? DEMO_USER : null);
+  const [form, setForm] = useState(() => ({
+    username: demo ? DEMO_USER.username : "",
+    tag: demo ? DEMO_USER.tag || "" : "",
+    email: demo ? DEMO_USER.email : "",
+  }));
   const [loading, setLoading] = useState(!demo);
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -34,6 +39,8 @@ export default function ProfilePage({ demo = false }) {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
+    if (demo) return;
+
     users
       .getMe()
       .then((data) => {

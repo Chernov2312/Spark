@@ -1,12 +1,11 @@
 import asyncio
-import uuid
 from typing import TypedDict
-
-from tasks.config_celery import celery_app, get_redis, run_async_task
+import uuid
 
 from db.dao.message_dao import MessageDao
 from db.dao.message_reactions_dao import MessageReactionDao
 from db.database import async_session_maker
+from tasks.config_celery import celery_app, get_redis, run_async_task
 
 
 class MessageReactionData(TypedDict):

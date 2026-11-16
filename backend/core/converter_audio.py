@@ -1,13 +1,12 @@
 import os
-import uuid
 from typing import Optional
+import uuid
 
-import whisper
 from pydub import AudioSegment, effects
+import whisper
 
 
 class AudioConverter:
-
     __model = whisper.load_model("base")
 
     @staticmethod

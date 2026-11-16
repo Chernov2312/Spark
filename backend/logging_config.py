@@ -1,17 +1,15 @@
 import logging
-import os
 from logging.handlers import RotatingFileHandler
+import os
 from pathlib import Path
 
 
 def configure_logging() -> None:
     """Write application and database diagnostics to separate log files."""
-    log_dir = Path(os.getenv("LOG_DIR", "../logs"))
+    log_dir = Path(os.getenv("LOG_DIR", str(Path(__file__).resolve().parent / "logs")))
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    formatter = logging.Formatter(
-        "%(asctime)s %(levelname)s [%(name)s] %(message)s"
-    )
+    formatter = logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
     backend_handler = logging.FileHandler(log_dir / "backend.log", encoding="utf-8")
     backend_handler.setFormatter(formatter)
 

@@ -1,9 +1,10 @@
 from contextlib import asynccontextmanager
 import logging
 
-import redis.asyncio as aioredis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from logging_config import configure_logging
+import redis.asyncio as aioredis
 
 from api.v1.ai import ai_router
 from api.v1.auth import auth_router
@@ -16,7 +17,6 @@ from api.v1.social import social_router
 from api.v1.user import user_router
 from api.v1.websockets.chat_typing import ws_router
 from config import settings
-from logging_config import configure_logging
 
 configure_logging()
 logger = logging.getLogger(__name__)

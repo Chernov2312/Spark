@@ -1,10 +1,10 @@
 from contextlib import asynccontextmanager
 from typing import Awaitable, TypeVar
 
-import redis.asyncio as aioredis
 from celery import Celery
 from celery.schedules import crontab
 from celery.signals import worker_process_init
+import redis.asyncio as aioredis
 
 from config import settings
 from db.database import engine

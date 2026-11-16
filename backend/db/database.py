@@ -1,18 +1,18 @@
-import uuid
 from collections.abc import AsyncGenerator
 from datetime import datetime
+import uuid
 
-from sqlalchemy import UUID, func, inspect
+from sqlalchemy import func, inspect, UUID
 from sqlalchemy.ext.asyncio import (
+    async_sessionmaker,
     AsyncAttrs,
     AsyncSession,
-    async_sessionmaker,
     create_async_engine,
 )
 from sqlalchemy.orm import (
     DeclarativeBase,
-    Mapped,
     declared_attr,
+    Mapped,
     mapped_column,
 )
 

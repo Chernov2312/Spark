@@ -32,6 +32,16 @@ export async function deleteMessage(messageId) {
   await api.delete(`/messages/${messageId}`);
 }
 
+export async function searchMessages(chatId, filters = {}) {
+  const { data } = await api.get(`/chats/${chatId}/messages/search`, { params: filters });
+  return data.messages || [];
+}
+
+export async function togglePin(chatId, messageId) {
+  const { data } = await api.put(`/chats/${chatId}/messages/${messageId}/pin`);
+  return data.pinned;
+}
+
 // POST /messages/{id}/reactions
 export async function addReaction(messageId, emoji) {
   const { data } = await api.post(`/messages/${messageId}/reactions`, { emoji });

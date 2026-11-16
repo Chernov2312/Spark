@@ -1,11 +1,11 @@
-import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
+import uuid
 
-import pytest
 from fastapi import HTTPException, Response, WebSocketDisconnect
 from jwt import InvalidTokenError
+import pytest
 
 from api.v1 import auth as auth_api
 from api.v1 import chats as chats_api
@@ -240,7 +240,12 @@ async def test_auth_register_hashes_password_and_sends_verification(
     db_session,
 ):
     user_id = uuid.uuid4()
-    new_user = SimpleNamespace(id=user_id, username="new", email="new@example.com")
+    new_user = SimpleNamespace(
+        id=user_id,
+        username="new",
+        tag="new",
+        email="new@example.com",
+    )
     add = AsyncMock(return_value=new_user)
     mail = MagicMock()
     monkeypatch.setattr(
@@ -266,7 +271,7 @@ async def test_auth_register_hashes_password_and_sends_verification(
         "new@example.com",
         "new",
         str(user_id),
-        auth_api.settings.APP_BASE_URL,
+        auth_api.settings.FRONTEND_BASE_URL,
     )
     assert response.id == user_id
 
@@ -276,7 +281,13 @@ async def test_verification_marks_user_verified_and_returns_access_token(
     db_session,
 ):
     user_id = uuid.uuid4()
-    current_user = SimpleNamespace(is_verified=False)
+    current_user = SimpleNamespace(
+        id=user_id,
+        username="user",
+        tag="user",
+        email="user@example.com",
+        is_verified=False,
+    )
     commit = AsyncMock(wraps=db_session.commit)
     monkeypatch.setattr(db_session, "commit", commit)
     monkeypatch.setattr(
@@ -350,6 +361,7 @@ async def test_user_get_me_signs_avatar_urls(monkeypatch, db_session):
     user = SimpleNamespace(
         id=user_id,
         username="user",
+        tag="user",
         email="user@example.com",
         created_at=created_at,
         avatars=[SimpleNamespace(file_key="avatar/key")],

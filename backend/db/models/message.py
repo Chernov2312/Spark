@@ -1,6 +1,7 @@
+from datetime import datetime
 import uuid
 
-from sqlalchemy import ForeignKey, Index, String
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -19,6 +20,11 @@ class Message(Base):
         nullable=False,
     )
     chat: Mapped["Chat"] = relationship("Chat")
+    reply_to_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     text: Mapped[str] = mapped_column(String(1000), nullable=True)
     attachments: Mapped[list["Attachment"]] = relationship("Attachment")
     reactions_count: Mapped[dict] = mapped_column(

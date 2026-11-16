@@ -1,9 +1,9 @@
-import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import uuid
 
-import pytest
 from main import app
+import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from tasks import message as message_tasks

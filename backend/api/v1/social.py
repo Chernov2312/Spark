@@ -11,12 +11,12 @@ from config import RouteTags
 from core.security import get_id_current_user
 from db.database import get_session
 from db.models import (
+    chat_folder_chats,
     ChatFolder,
     FriendCategory,
     Friendship,
-    User,
-    chat_folder_chats,
     friendship_categories,
+    User,
     user_chat,
 )
 
@@ -88,6 +88,20 @@ async def list_friends(
             .order_by(Friendship.created_at.desc()),
         )
     ).all()
+    sent_rows = (
+        await session.scalars(
+            select(Friendship)
+            .where(
+                Friendship.status == "pending",
+                Friendship.requested_by_id == current_user_id,
+                or_(
+                    Friendship.user_low_id == current_user_id,
+                    Friendship.user_high_id == current_user_id,
+                ),
+            )
+            .order_by(Friendship.created_at.desc()),
+        )
+    ).all()
 
     friends = []
     for friendship in friendship_rows:
@@ -118,9 +132,21 @@ async def list_friends(
             },
         )
 
+    sent_requests = []
+    for friendship in sent_rows:
+        friend = await _other_user(session, friendship, current_user_id)
+        sent_requests.append(
+            {
+                "id": str(friend.id),
+                "username": friend.username,
+                "tag": friend.tag,
+            },
+        )
+
     return {
         "friends": friends,
         "requests": requests,
+        "sent_requests": sent_requests,
         "categories": [
             {
                 "id": str(category.id),

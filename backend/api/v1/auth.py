@@ -1,9 +1,9 @@
 from datetime import timedelta
 from typing import Annotated
 
-import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+import jwt
 from jwt import InvalidTokenError
 from sqlalchemy.ext.asyncio import AsyncSession
 from tasks.email import send_mail_task
@@ -55,7 +55,7 @@ async def verification(
             cur_user.is_verified = True
             await session.commit()
     except (InvalidTokenError, KeyError, TypeError):
-        raise credentials_exception
+        raise credentials_exception from None
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": str(cur_user.id)},

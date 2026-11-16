@@ -17,9 +17,9 @@ from schemas.ai_message import (
     ChatAssistantResponse,
     RewriteRequest,
     RewriteResponse,
+    SummarizeResponce,
     SystemAssistantRequest,
     SystemAssistantResponse,
-    SummarizeResponce,
 )
 from schemas.message import MessageHistory, MessageResponse
 

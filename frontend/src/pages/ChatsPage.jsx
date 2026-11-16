@@ -23,18 +23,6 @@ import SocialSidebar from "../components/SocialSidebar";
    Утилиты времени
    ============================================================ */
 
-function timeAgo(iso) {
-  if (!iso) return "";
-  const d = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (d < 60) return "только что";
-  if (d < 3600) return `${Math.floor(d / 60)} мин`;
-  if (d < 86400) return `${Math.floor(d / 3600)} ч`;
-  return new Date(iso).toLocaleDateString("ru-RU", {
-    day: "numeric",
-    month: "short",
-  });
-}
-
 function msgTime(iso) {
   if (!iso) return "";
   return new Date(iso).toLocaleTimeString("ru-RU", {
@@ -432,6 +420,12 @@ const MessageItem = React.memo(function MessageItem({
   onDownload,
   transcribingAttachments,
   onOpenMedia,
+  onReply,
+  onEdit,
+  onDelete,
+  onPin,
+  onJumpTo,
+  readBy,
 }) {
   const html = useMemo(() => renderMarkdown(m.text), [m.text]);
   const attachments = Array.isArray(m.attachments) ? m.attachments : [];
@@ -447,6 +441,7 @@ const MessageItem = React.memo(function MessageItem({
 
   return (
     <div
+      id={`message-${m.id}`}
       className={`msg ${isMe ? "msg--me" : ""}`}
       onContextMenu={(e) => onContextMenu(e, m.id)}
       title="Правый клик — добавить реакцию"
@@ -457,6 +452,11 @@ const MessageItem = React.memo(function MessageItem({
         </div>
       )}
       <div className="msg__bubble">
+        {m.reply_to_id && (
+          <button type="button" className="msg__reply-quote" onClick={() => onJumpTo(m.reply_to_id)}>
+            {m.reply_to_text || "Исходное сообщение"}
+          </button>
+        )}
         {m.text && (
           <div
             className="msg__text"
@@ -484,7 +484,14 @@ const MessageItem = React.memo(function MessageItem({
           ),
         )}
 
-        <span className="msg__time">{msgTime(m.created_at)}</span>
+        <span className="msg__time">{msgTime(m.created_at)}{m.edited_at ? " · изменено" : ""}{readBy ? " · прочитано" : ""}</span>
+      </div>
+
+      <div className="msg__actions">
+        <button type="button" onClick={() => onReply(m)} aria-label="Ответить">↩</button>
+        {isMe && <button type="button" onClick={() => onEdit(m)} aria-label="Редактировать">Изменить</button>}
+        {isMe && <button type="button" onClick={() => onDelete(m.id)} aria-label="Удалить">Удалить</button>}
+        <button type="button" onClick={() => onPin(m)} aria-label={m.is_pinned ? "Открепить" : "Закрепить"}>{m.is_pinned ? "Открепить" : "Закрепить"}</button>
       </div>
 
       {hasReactions && (
@@ -528,6 +535,16 @@ export default function ChatsPage() {
   );
 
   const [text, setText] = useState("");
+  const [replyTo, setReplyTo] = useState(null);
+  const [searchText, setSearchText] = useState("");
+  const [attachmentFilter, setAttachmentFilter] = useState("");
+  const [authorFilter, setAuthorFilter] = useState("");
+  const [sinceFilter, setSinceFilter] = useState("");
+  const [untilFilter, setUntilFilter] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [chatPrefs, setChatPrefs] = useState({ color: "", background: "", muted: false, sound: true, shareReads: true, sharePresence: true });
+  const [chatMembers, setChatMembers] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [selectedPreviewUrls, setSelectedPreviewUrls] = useState([]);
   const [recording, setRecording] = useState(false);
@@ -537,6 +554,7 @@ export default function ChatsPage() {
   const [recordingError, setRecordingError] = useState(null);
   const [sending, setSending] = useState(false);
   const [typingUsers, setTypingUsers] = useState(new Set());
+  const [onlineUsers, setOnlineUsers] = useState(new Set());
   const [createOpen, setCreateOpen] = useState(false);
   const [newChat, setNewChat] = useState({
     title: "",
@@ -596,6 +614,31 @@ export default function ChatsPage() {
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
+
+  useEffect(() => {
+    if (!chatId) return;
+    try {
+      setChatPrefs({ color: "", background: "", muted: false, sound: true, shareReads: true, sharePresence: true, ...JSON.parse(localStorage.getItem(`chat-prefs:${chatId}`) || "{}") });
+    } catch { setChatPrefs({ color: "", background: "", muted: false, sound: true, shareReads: true, sharePresence: true }); }
+  }, [chatId]);
+
+  useEffect(() => {
+    if (chatId) localStorage.setItem(`chat-draft:${chatId}`, text);
+  }, [chatId, text]);
+
+  useEffect(() => {
+    if (chatId) localStorage.setItem(`chat-prefs:${chatId}`, JSON.stringify(chatPrefs));
+  }, [chatId, chatPrefs]);
+
+  useEffect(() => {
+    if (!chatId || !messages.length || !chatPrefs.shareReads) return;
+    chatsApi.markChatRead?.(chatId, messages.at(-1)?.id)?.catch(() => {});
+  }, [chatId, messages, chatPrefs.shareReads]);
+
+  useEffect(() => {
+    if (!chatId) return;
+    Promise.resolve(chatsApi.getChatMembers?.(chatId)).then((rows) => setChatMembers(rows || [])).catch(() => setChatMembers([]));
+  }, [chatId]);
 
   // Тикер для обновления относительного времени ("только что" -> "1 мин")
   const [, tick] = useReducer((x) => x + 1, 0);
@@ -671,7 +714,8 @@ export default function ChatsPage() {
   /* ---------- 2. Загрузка сообщений + сброс композера при смене чата ---------- */
   useEffect(() => {
     // Сбрасываем состояние композера при переходе между чатами
-    setText("");
+    setText(chatId ? localStorage.getItem(`chat-draft:${chatId}`) || "" : "");
+    setReplyTo(null);
     setSelectedFiles([]);
     setAIPanelOpen(false);
     setRecordedAudio(null);
@@ -733,11 +777,21 @@ export default function ChatsPage() {
 
     try {
       sock = createChatSocket(chatId, {
+        sharePresence: chatPrefs.sharePresence,
         onOpen: () => {
           socketOpenRef.current = true;
+          const key = `unsent-messages:${chatId}`;
+          const pending = JSON.parse(localStorage.getItem(key) || "[]");
+          Promise.all(pending.map((item) => messagesApi.sendMessage(chatId, { text: item.text }).then(() => null).catch(() => item)))
+            .then((results) => {
+              const failed = results.filter(Boolean);
+              if (failed.length) localStorage.setItem(key, JSON.stringify(failed));
+              else localStorage.removeItem(key);
+            });
           console.info("[WS] Подключён к чату", chatId);
         },
         onEvent: (event, data) => {
+          const mentionsMe = Boolean(me?.tag) && String(data.text || "").toLowerCase().includes(`@${me.tag.toLowerCase()}`);
           if (event === "message:new" && data.chat_id === chatId) {
             setMessages((prev) => {
               const exists = prev.some((m) => m.id === data.id);
@@ -757,6 +811,40 @@ export default function ChatsPage() {
                   : c,
               ),
             );
+            if (!chatPrefs.muted && data.user_id !== me?.id && chatPrefs.sound && typeof AudioContext !== "undefined") {
+              try {
+                const audio = new AudioContext();
+                const tone = audio.createOscillator();
+                const gain = audio.createGain();
+                tone.connect(gain); gain.connect(audio.destination);
+                gain.gain.value = 0.035; tone.frequency.value = 660;
+                tone.start(); tone.stop(audio.currentTime + 0.1);
+                tone.onended = () => audio.close();
+              } catch {}
+            }
+            if (!chatPrefs.muted && data.user_id !== me?.id && !mentionsMe && typeof Notification !== "undefined" && Notification.permission === "granted") {
+              new Notification("Новое сообщение", { body: data.text || "Вложение", tag: `chat-${chatId}` });
+            }
+          }
+
+          if (mentionsMe && !chatPrefs.muted && typeof Notification !== "undefined" && Notification.permission === "granted") {
+            new Notification("Вас упомянули", { body: data.text, tag: `mention-${chatId}` });
+          }
+          if (event === "message:updated" && data.chat_id === chatId) {
+            setMessages((prev) => prev.map((item) => item.id === data.id ? { ...item, ...data } : item));
+          }
+          if (event === "message:deleted" && data.chat_id === chatId) {
+            setMessages((prev) => prev.filter((item) => item.id !== data.message_id));
+          }
+          if (event === "user:presence" && data.chat_id === chatId) {
+            setOnlineUsers((previous) => {
+              const next = new Set(previous);
+              if (data.online) next.add(data.user_id); else next.delete(data.user_id);
+              return next;
+            });
+          }
+          if (event === "user:read" && data.chat_id === chatId) {
+            setChatMembers((previous) => previous.map((member) => member.id === data.user_id ? { ...member, last_read_message_id: data.last_read_message_id } : member));
           }
 
           if (event === "attachment:text" && data.chat_id === chatId) {
@@ -842,7 +930,7 @@ export default function ChatsPage() {
     };
     // me?.id намеренно не в зависимостях: сокет пересоздаётся только при смене чата
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId]);
+  }, [chatId, chatPrefs.sharePresence]);
 
   /* ---------- 4. Скролл вниз ---------- */
   useEffect(() => {
@@ -960,6 +1048,18 @@ export default function ChatsPage() {
         return;
       }
 
+      if (scheduledAt && new Date(scheduledAt).getTime() > Date.now()) {
+        if (filesToSend.length) {
+          setMessagesError("Отложенная отправка пока поддерживает только текст.");
+          return;
+        }
+        const queue = JSON.parse(localStorage.getItem("scheduled-messages") || "[]");
+        queue.push({ chatId, text: text.trim(), reply_to_id: replyTo?.id || null, at: new Date(scheduledAt).toISOString() });
+        localStorage.setItem("scheduled-messages", JSON.stringify(queue));
+        setText(""); setReplyTo(null); setScheduledAt("");
+        return;
+      }
+
       sendingRef.current = true;
       setSending(true);
       setMessagesError(null);
@@ -998,6 +1098,7 @@ export default function ChatsPage() {
         const created = await messagesApi.sendMessage(chatId, {
           text: messageText,
           attachments: attachmentRequests,
+          reply_to_id: replyTo?.id || null,
         });
 
         // 4) Мержим в список по id (защита от дубля с WS)
@@ -1024,11 +1125,16 @@ export default function ChatsPage() {
         );
 
         setText("");
+        setReplyTo(null);
         setSelectedFiles([]);
         setRecordedAudio(null);
         setShowFormat(false);
         if (textareaRef.current) textareaRef.current.style.height = "auto";
       } catch (err) {
+        const pendingKey = `unsent-messages:${chatId}`;
+        const pending = JSON.parse(localStorage.getItem(pendingKey) || "[]");
+        pending.push({ text: text.trim() });
+        localStorage.setItem(pendingKey, JSON.stringify(pending));
         setMessagesError(
           translateApiError(
             err,
@@ -1040,8 +1146,23 @@ export default function ChatsPage() {
         setSending(false);
       }
     },
-    [chatId, recordedAudio, selectedFiles, text],
+    [chatId, recordedAudio, selectedFiles, text, replyTo, scheduledAt],
   );
+
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      const queue = JSON.parse(localStorage.getItem("scheduled-messages") || "[]");
+      const due = queue.filter((item) => Date.parse(item.at) <= Date.now());
+      if (!due.length) return;
+      const remaining = queue.filter((item) => Date.parse(item.at) > Date.now());
+      for (const item of due) {
+        try { await messagesApi.sendMessage(item.chatId, { text: item.text, reply_to_id: item.reply_to_id }); }
+        catch { remaining.push(item); }
+      }
+      localStorage.setItem("scheduled-messages", JSON.stringify(remaining));
+    }, 10000);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleTranscribe = useCallback(
     async (message, attachment) => {
@@ -1331,6 +1452,8 @@ export default function ChatsPage() {
     () => chats.find((c) => c.id === chatId),
     [chats, chatId],
   );
+  const mentionQuery = text.match(/(?:^|\s)@([^\s]*)$/)?.[1];
+  const mentionSuggestions = mentionQuery === undefined ? [] : chatMembers.filter((member) => member.id !== me?.id && (member.tag || member.username).toLowerCase().startsWith(mentionQuery.toLowerCase())).slice(0, 5);
 
   useEffect(() => {
     setChatDetailsOpen(true);
@@ -1380,6 +1503,37 @@ export default function ChatsPage() {
     [openReactionPicker],
   );
 
+  const replyToMessage = useCallback((message) => setReplyTo(message), []);
+  const editMessage = useCallback(async (message) => {
+    const nextText = window.prompt("Изменить сообщение", message.text || "");
+    if (nextText === null || nextText.trim() === "") return;
+    try {
+      const updated = await messagesApi.updateMessage(message.id, nextText.trim());
+      setMessages((previous) => previous.map((item) => item.id === updated.id ? { ...item, ...updated } : item));
+    } catch (error) { setMessagesError(translateApiError(error, "Не удалось изменить сообщение")); }
+  }, []);
+  const removeMessage = useCallback(async (messageId) => {
+    if (!window.confirm("Удалить это сообщение?")) return;
+    try { await messagesApi.deleteMessage(messageId); setMessages((previous) => previous.filter((item) => item.id !== messageId)); }
+    catch (error) { setMessagesError(translateApiError(error, "Не удалось удалить сообщение")); }
+  }, []);
+  const pinMessage = useCallback(async (message) => {
+    try {
+      const pinned = await messagesApi.togglePin(chatId, message.id);
+      setMessages((previous) => previous.map((item) => item.id === message.id ? { ...item, is_pinned: pinned } : item));
+    } catch (error) { setMessagesError(translateApiError(error, "Не удалось закрепить сообщение")); }
+  }, [chatId]);
+  const jumpToMessage = useCallback((id) => document.getElementById(`message-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), []);
+  const runMessageSearch = useCallback(async (event) => {
+    event?.preventDefault();
+    if (!chatId) return;
+    if (!searchText && !attachmentFilter && !authorFilter && !sinceFilter && !untilFilter) { setSearching(false); messagesApi.listMessages(chatId).then((list) => setMessages([...list].reverse())); return; }
+    try {
+      const found = await messagesApi.searchMessages(chatId, { text: searchText || undefined, attachment_type: attachmentFilter || undefined, author_id: authorFilter || undefined, since: sinceFilter || undefined, until: untilFilter || undefined });
+      setMessages([...found].reverse()); setSearching(true);
+    } catch (error) { setMessagesError(translateApiError(error, "Не удалось найти сообщения")); }
+  }, [chatId, searchText, attachmentFilter, authorFilter, sinceFilter, untilFilter]);
+
   /* ============================================================
      Рендер
      ============================================================ */
@@ -1388,6 +1542,8 @@ export default function ChatsPage() {
       {/* ---------- Левая колонка ---------- */}
       <SocialSidebar
         chats={chats}
+        chatsLoading={chatsLoading}
+        chatsError={chatsError}
         chatId={chatId}
         navigate={navigate}
         onCreateChat={() => {
@@ -1401,7 +1557,7 @@ export default function ChatsPage() {
       />
 
       {/* ---------- Правая колонка ---------- */}
-      <section className={`chat-view ${!chatId ? "chat-view--empty" : ""}`}>
+      <section className={`chat-view ${!chatId ? "chat-view--empty" : ""}`} style={{ "--chat-accent": chatPrefs.color || undefined, background: chatPrefs.background || undefined }}>
         {!chatId ? (
           <div className="chat-view__placeholder">
             <div className="chat-view__placeholder-icon">💬</div>
@@ -1429,7 +1585,7 @@ export default function ChatsPage() {
                 <div className="chat-view__status">
                   {typingUsers.size > 0
                     ? `${typingUsers.size} печатает…`
-                    : activeChat.description || "был(а) недавно"}
+                    : onlineUsers.size > 0 ? `${onlineUsers.size} online` : activeChat.description || "был(а) недавно"}
                 </div>
               </div>
               <button
@@ -1489,6 +1645,25 @@ export default function ChatsPage() {
               </div>
               {chatDetailsOpen && (
                 <>
+                  <div className="chat-preferences">
+                    <label>Цвет чата <input type="color" value={chatPrefs.color || "#64748b"} onChange={(e) => setChatPrefs((p) => ({ ...p, color: e.target.value }))} /></label>
+                    <label>Фон <input type="color" value={chatPrefs.background || "#ffffff"} onChange={(e) => setChatPrefs((p) => ({ ...p, background: e.target.value }))} /></label>
+                    <label><input type="checkbox" checked={chatPrefs.muted} onChange={(e) => setChatPrefs((p) => ({ ...p, muted: e.target.checked }))} /> Без уведомлений</label>
+                    <label><input type="checkbox" checked={chatPrefs.sound} onChange={(e) => setChatPrefs((p) => ({ ...p, sound: e.target.checked }))} /> Звук</label>
+                    <label><input type="checkbox" checked={chatPrefs.shareReads} onChange={(e) => setChatPrefs((p) => ({ ...p, shareReads: e.target.checked }))} /> Показывать прочтение</label>
+                    <label><input type="checkbox" checked={chatPrefs.sharePresence} onChange={(e) => setChatPrefs((p) => ({ ...p, sharePresence: e.target.checked }))} /> Показывать статус в сети</label>
+                    <button type="button" onClick={() => { if (typeof Notification !== "undefined") Notification.requestPermission(); }}>Включить уведомления</button>
+                  </div>
+                  <section className="chat-members" aria-label="Участники чата">
+                    <h3>Участники</h3>
+                    {chatMembers.map((member) => <div key={member.id} className="chat-member">
+                      <span>@{member.tag || member.username} · {member.role}</span>
+                      {activeChat.owner_id === me?.id && member.id !== me?.id && <select aria-label={`Роль ${member.username}`} value={member.role} onChange={async (event) => {
+                        try { await chatsApi.updateMemberRole(chatId, member.id, event.target.value); setChatMembers((current) => current.map((item) => item.id === member.id ? { ...item, role: event.target.value } : item)); }
+                        catch (error) { setMessagesError(translateApiError(error, "Не удалось изменить роль")); }
+                      }}><option value="member">Участник</option><option value="moderator">Модератор</option></select>}
+                    </div>)}
+                  </section>
                   <div className="chat-details__meta">
                     <span>{messages.length} сообщений загружено</span>
                     {activeChat.created_at && (
@@ -1526,6 +1701,17 @@ export default function ChatsPage() {
             </section>}
 
             {activeChatTab === "messages" && <><div className="chat-view__messages">
+              <form className="message-search" onSubmit={runMessageSearch}>
+                <input aria-label="Поиск по сообщениям" placeholder="Поиск по переписке" value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+                <select aria-label="Тип вложения" value={attachmentFilter} onChange={(e) => setAttachmentFilter(e.target.value)}>
+                  <option value="">Любой тип</option><option value="image">Фото</option><option value="video">Видео</option><option value="audio">Аудио</option><option value="file">Файлы</option>
+                </select>
+                <select aria-label="Автор сообщения" value={authorFilter} onChange={(e) => setAuthorFilter(e.target.value)}><option value="">Все авторы</option>{chatMembers.map((member) => <option key={member.id} value={member.id}>{member.username}</option>)}</select>
+                <label>С <input type="datetime-local" value={sinceFilter} onChange={(e) => setSinceFilter(e.target.value)} /></label>
+                <label>По <input type="datetime-local" value={untilFilter} onChange={(e) => setUntilFilter(e.target.value)} /></label>
+                <button type="submit">Найти</button>
+                {searching && <button type="button" onClick={() => { setSearchText(""); setAttachmentFilter(""); setAuthorFilter(""); setSinceFilter(""); setUntilFilter(""); setSearching(false); messagesApi.listMessages(chatId).then((list) => setMessages([...list].reverse())); }}>Сбросить</button>}
+              </form>
               {messagesLoading && (
                 <p className="chats-empty">Загрузка сообщений…</p>
               )}
@@ -1547,6 +1733,12 @@ export default function ChatsPage() {
                     onDownload={downloadMedia}
                     transcribingAttachments={transcribingAttachments}
                     onOpenMedia={openMediaViewer}
+                    onReply={replyToMessage}
+                    onEdit={editMessage}
+                    onDelete={removeMessage}
+                    onPin={pinMessage}
+                    onJumpTo={jumpToMessage}
+                    readBy={m.user_id === me?.id && chatMembers.some((member) => member.id !== me?.id && member.last_read_message_id === m.id)}
                   />
                 ))}
               <div ref={bottomRef} />
@@ -1555,8 +1747,16 @@ export default function ChatsPage() {
             {/* ---------- Composer ---------- */}
             <div className="chat-view__composer-wrapper">
               <FormatToolbar onFormat={applyFormat} visible={showFormat} />
+              {mentionSuggestions.length > 0 && <div className="mention-suggestions" role="listbox" aria-label="Упоминания">
+                {mentionSuggestions.map((member) => <button key={member.id} type="button" role="option" onClick={() => {
+                  const tag = member.tag || member.username;
+                  setText((current) => current.replace(/(?:^|\s)@[^\s]*$/, (match) => `${match.startsWith(" ") ? " " : ""}@${tag} `));
+                  textareaRef.current?.focus();
+                }}>@{member.tag || member.username}</button>)}
+              </div>}
 
               <form className="chat-view__composer" onSubmit={handleSend}>
+                {replyTo && <div className="reply-preview"><span>Ответ: {replyTo.text || "вложение"}</span><button type="button" onClick={() => setReplyTo(null)} aria-label="Отменить ответ">×</button></div>}
                 {recording ? (
                   <>
                     <span className="voice-recording__timer" aria-live="polite">
@@ -1637,6 +1837,7 @@ export default function ChatsPage() {
                   ➤
                 </button>
               </form>
+              <label className="schedule-send">Отправить позже <input type="datetime-local" value={scheduledAt} min={new Date(Date.now() + 60000).toISOString().slice(0, 16)} onChange={(e) => setScheduledAt(e.target.value)} /></label>
 
               {recordingError && (
                 <p className="voice-recording__error" role="alert">

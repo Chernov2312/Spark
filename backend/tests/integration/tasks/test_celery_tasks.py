@@ -1,6 +1,6 @@
 import asyncio
-import uuid
 from contextlib import asynccontextmanager
+import uuid
 
 import redis.asyncio as aioredis
 from sqlalchemy import select

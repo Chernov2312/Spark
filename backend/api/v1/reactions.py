@@ -1,7 +1,7 @@
 import uuid
 
-import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends
+import redis.asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags

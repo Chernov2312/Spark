@@ -1,8 +1,8 @@
 import asyncio
-import uuid
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
+import uuid
 
 import pytest
 from tasks import audio_convert, config_celery, message_reactions, scheduler
@@ -41,7 +41,8 @@ def test_send_verification_email_builds_and_sends_html_message(monkeypatch):
     smtp.login.assert_called_once()
     sent_message = smtp.send_message.call_args.args[0]
     assert sent_message["To"] == "person@example.com"
-    assert "verification/" in sent_message.get_content()
+    plain_content = sent_message.get_body(preferencelist=("plain",)).get_content()
+    assert "https://spark.example/verify-email/" in plain_content
 
 
 def test_send_verification_email_swallows_smtp_errors(monkeypatch):

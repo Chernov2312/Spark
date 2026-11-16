@@ -1,7 +1,7 @@
 from datetime import timedelta
 
-import pytest
 from fastapi import HTTPException
+import pytest
 
 from core.security import (
     create_access_token,

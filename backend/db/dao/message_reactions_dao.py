@@ -1,5 +1,5 @@
-import uuid
 from typing import TypedDict
+import uuid
 
 from sqlalchemy import and_, bindparam, select, update
 from sqlalchemy.ext.asyncio import AsyncSession

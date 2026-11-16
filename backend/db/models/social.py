@@ -2,14 +2,14 @@ import uuid
 
 from sqlalchemy import (
     CheckConstraint,
+    Column,
+    false,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
     String,
     Table,
     UniqueConstraint,
-    Column,
-    false,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -22,13 +22,16 @@ class Friendship(Base):
     """A single relationship for an unordered pair of users."""
 
     user_low_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
     )
     user_high_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
     )
     requested_by_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
     )
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
 
@@ -52,7 +55,8 @@ class FriendCategory(Base):
     __tablename__ = "friend_categories"
 
     owner_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
     )
     name: Mapped[str] = mapped_column(String(40), nullable=False)
     color: Mapped[str | None] = mapped_column(String(7), nullable=True)
@@ -99,7 +103,8 @@ class ChatFolder(Base):
     __tablename__ = "chat_folders"
 
     owner_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
     )
     name: Mapped[str] = mapped_column(String(40), nullable=False)
     color: Mapped[str | None] = mapped_column(String(7), nullable=True)

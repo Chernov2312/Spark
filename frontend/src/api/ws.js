@@ -8,7 +8,7 @@ const WS_BASE = API_BASE
 
 const noopSocket = { send() {}, close() {} };
 
-export function createChatSocket(chatId, { onEvent, onOpen, onClose, onError } = {}) {
+export function createChatSocket(chatId, { onEvent, onOpen, onClose, onError, sharePresence = true } = {}) {
   if (!WS_ENABLED) {
     console.info("[WS] Отключён флагом VITE_WS_ENABLED=false");
     return noopSocket;
@@ -29,7 +29,7 @@ export function createChatSocket(chatId, { onEvent, onOpen, onClose, onError } =
   let attempt = 0;
 
   const connect = () => {
-    const url = `${WS_BASE}/${chatId}/ws?token=${encodeURIComponent(token)}`;
+    const url = `${WS_BASE}/${chatId}/ws?token=${encodeURIComponent(token)}&share_presence=${sharePresence}`;
     console.info("[WS] Подключаюсь:", url.replace(/token=[^&]+/, "token=***"));
 
     try {

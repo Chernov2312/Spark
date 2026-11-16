@@ -1,9 +1,9 @@
-from sqlalchemy import Boolean, Column, ForeignKey, String, Table, false
+from sqlalchemy import Boolean, Column, false, ForeignKey, String, Table, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from db.database import Base
 from core.user_tags import normalize_user_tag
+from db.database import Base
 
 user_chat = Table(
     "user_chat",
@@ -20,6 +20,7 @@ user_chat = Table(
         ForeignKey("chats.id", ondelete="CASCADE"),
         primary_key=True,
     ),
+    Column("role", String(16), nullable=False, server_default=text("'member'")),
     keep_existing=True,
 )
 

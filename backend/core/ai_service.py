@@ -11,9 +11,9 @@ class AIService:
         client: AsyncOpenAI | None = None,
     ):
         self.model = model_name or ai_settings.OLLAMA_MODEL
-        self.base_url = (
-            ollama_base_url or ai_settings.OLLAMA_BASE_URL
-        ).rstrip("/") + "/v1"
+        self.base_url = (ollama_base_url or ai_settings.OLLAMA_BASE_URL).rstrip(
+            "/"
+        ) + "/v1"
         self.client = client
 
     async def generate_text(

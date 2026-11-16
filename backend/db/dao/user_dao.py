@@ -5,9 +5,9 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only, selectinload
 
+from core.user_tags import normalize_user_tag
 from db.dao.basedao import BaseDao
 from db.models import Chat, User
-from core.user_tags import normalize_user_tag
 
 
 class UserDao(BaseDao[User]):
@@ -15,7 +15,9 @@ class UserDao(BaseDao[User]):
 
     @classmethod
     async def get_by_tag(cls, session: AsyncSession, tag: str) -> User | None:
-        result = await session.execute(select(User).where(User.tag == normalize_user_tag(tag)))
+        result = await session.execute(
+            select(User).where(User.tag == normalize_user_tag(tag))
+        )
         return result.scalar_one_or_none()
 
     @classmethod
@@ -26,7 +28,7 @@ class UserDao(BaseDao[User]):
         while await cls.get_by_tag(session, candidate):
             suffix += 1
             tail = str(suffix)
-            candidate = f"{base[:32-len(tail)]}{tail}"
+            candidate = f"{base[: 32 - len(tail)]}{tail}"
         return candidate
 
     @classmethod

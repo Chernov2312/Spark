@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 from config import settings
 from db.database import Base
+from db.models.chat_state import ChatReadState, MessagePin
 from db.models.user import User
 from db.models.chat import Chat
 from db.models.message import Message

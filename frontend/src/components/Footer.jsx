@@ -1,9 +1,9 @@
 ﻿import { Link } from "react-router-dom";
 import SparkLogo from "./SparkLogo";
 
-export default function Footer() {
-  const year = new Date().getFullYear();
+const currentYear = new Date().getFullYear();
 
+export default function Footer() {
   return (
     <footer className="site-footer">
       <div className="site-footer__inner">
@@ -39,7 +39,7 @@ export default function Footer() {
 
       <div className="site-footer__bottom">
         <div className="site-footer__inner site-footer__inner--bottom">
-          <span>© {year} Spark</span>
+          <span>© {currentYear} Spark</span>
           <span className="site-footer__made">Оставайтесь на связи</span>
         </div>
       </div>

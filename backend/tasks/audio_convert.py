@@ -4,13 +4,12 @@ import os
 import tempfile
 import uuid
 
-from tasks.config_celery import celery_app, get_redis, run_async_task
-
 from core.converter_audio import AudioConverter
 from core.storage import S3Storage
 from db.dao.attachment_dao import AttachmentDao
 from db.database import async_session_maker
 from schemas.websockets import AttachmentText, WsEvent
+from tasks.config_celery import celery_app, get_redis, run_async_task
 
 logger = logging.getLogger(__name__)
 
