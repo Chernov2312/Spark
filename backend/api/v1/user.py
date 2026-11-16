@@ -27,6 +27,8 @@ async def get_me(
     user_id: uuid.UUID = Depends(get_id_current_user),
 ) -> UserRead:
     user = await UserDao.get_user_with_avatars(session=session, target_id=user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
     avatar_urls = []
     s3 = S3Storage()
     for i in user.avatars:
@@ -69,13 +71,12 @@ async def update_me(
         data=update_data,
     )
 
-    if not user:
+    if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     avatar_urls = []
     s3 = S3Storage()
     for i in user.avatars:
         avatar_urls.append(await s3.get_temporary_url(i.file_key))
-    await session.commit()
     return UserRead(
         id=user.id,
         username=user.username,
@@ -91,8 +92,8 @@ async def delete_avatar(
     avatar: Avatar,
     session: AsyncSession = Depends(get_session),
     current_user_id: uuid.UUID = Depends(get_id_current_user),
-):
-    image = await AttachmentDao.delete_attachment_by_url_and_user_id(
+) -> Response:
+    image = await AttachmentDao.get_avatar_by_url_and_user_id(
         session=session,
         target_url=avatar.url,
         user_id=current_user_id,
@@ -104,11 +105,11 @@ async def delete_avatar(
         )
     s3 = S3Storage()
     if not await s3.delete_file_by_key(file_key=avatar.url):
-        await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="Failed to delete image from storage",
         )
+    await AttachmentDao.delete_by_id(session, image.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

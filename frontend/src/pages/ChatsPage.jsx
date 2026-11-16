@@ -17,7 +17,9 @@ import {
 } from "../api";
 import FormatToolbar from "../components/FormatToolbar";
 import AIChatPanel from "../components/AIChatPanel";
+import CallPanel from "../components/CallPanel";
 import SocialSidebar from "../components/SocialSidebar";
+import { messageTimestamp } from "../utils/messagePreview";
 
 /* ============================================================
    Утилиты времени
@@ -136,6 +138,7 @@ function renderMarkdown(text) {
 const EMOJI_SET = ["👍", "❤️", "🔥", "😂", "😮", "😢", "🎉", "👏"];
 
 function getChatAvatarUrls(chat) {
+  if (chat?.personal_avatar_url) return [chat.personal_avatar_url];
   const avatarUrls = Array.isArray(chat?.avatar_urls)
     ? chat.avatar_urls.filter((url) => typeof url === "string" && url)
     : [];
@@ -421,12 +424,11 @@ const MessageItem = React.memo(function MessageItem({
   transcribingAttachments,
   onOpenMedia,
   onReply,
-  onEdit,
-  onDelete,
-  onPin,
   onJumpTo,
   readBy,
 }) {
+  const swipeStartRef = useRef(null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
   const html = useMemo(() => renderMarkdown(m.text), [m.text]);
   const attachments = Array.isArray(m.attachments) ? m.attachments : [];
   const attachmentGroups = attachments.reduce((groups, attachment) => {
@@ -444,7 +446,29 @@ const MessageItem = React.memo(function MessageItem({
       id={`message-${m.id}`}
       className={`msg ${isMe ? "msg--me" : ""}`}
       onContextMenu={(e) => onContextMenu(e, m.id)}
-      title="Правый клик — добавить реакцию"
+      style={{ transform: swipeOffset ? `translateX(${swipeOffset}px)` : undefined }}
+      onPointerDown={(event) => {
+        if (event.pointerType === "mouse" || event.target.closest("button, a, input, video, audio")) return;
+        swipeStartRef.current = { x: event.clientX, y: event.clientY };
+      }}
+      onPointerMove={(event) => {
+        const start = swipeStartRef.current;
+        if (!start) return;
+        const dx = event.clientX - start.x;
+        const dy = event.clientY - start.y;
+        if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 12) {
+          swipeStartRef.current = null;
+          setSwipeOffset(0);
+        } else if (Math.abs(dx) > 12) setSwipeOffset(Math.max(-80, Math.min(80, dx)));
+      }}
+      onPointerUp={(event) => {
+        const start = swipeStartRef.current;
+        if (start && Math.abs(event.clientX - start.x) >= 60 && Math.abs(event.clientY - start.y) < 35) onReply(m);
+        swipeStartRef.current = null;
+        setSwipeOffset(0);
+      }}
+      onPointerCancel={() => { swipeStartRef.current = null; setSwipeOffset(0); }}
+      title="Правый клик — действия с сообщением"
     >
       {!isMe && (
         <div className="msg__author">
@@ -489,9 +513,11 @@ const MessageItem = React.memo(function MessageItem({
 
       <div className="msg__actions">
         <button type="button" onClick={() => onReply(m)} aria-label="Ответить">↩</button>
-        {isMe && <button type="button" onClick={() => onEdit(m)} aria-label="Редактировать">Изменить</button>}
-        {isMe && <button type="button" onClick={() => onDelete(m.id)} aria-label="Удалить">Удалить</button>}
-        <button type="button" onClick={() => onPin(m)} aria-label={m.is_pinned ? "Открепить" : "Закрепить"}>{m.is_pinned ? "Открепить" : "Закрепить"}</button>
+        {m.is_pinned && <span className="msg__pin-label">Закреплено</span>}
+        <button type="button" aria-label="Действия с сообщением" onClick={(event) => {
+          const bounds = event.currentTarget.getBoundingClientRect();
+          onContextMenu({ preventDefault() {}, clientX: bounds.left, clientY: bounds.bottom }, m.id);
+        }}>⋯</button>
       </div>
 
       {hasReactions && (
@@ -524,10 +550,68 @@ export default function ChatsPage() {
   const [chats, setChats] = useState([]);
   const [chatsLoading, setChatsLoading] = useState(true);
   const [chatsError, setChatsError] = useState(null);
+  const chatPreviewRevisionRef = useRef(0);
+  const updateChatPreview = useCallback((targetChatId, message, edited = false) => {
+    chatPreviewRevisionRef.current += 1;
+    setChats((items) => items.map((chat) => {
+      if (chat.id !== targetChatId) return chat;
+      if (edited && chat.last_message?.id !== message.id) return chat;
+      if (!edited && messageTimestamp(message.created_at) < messageTimestamp(chat.last_message?.created_at)) return chat;
+      return { ...chat, last_message: message };
+    }));
+  }, []);
+  const refreshChatPreviews = useCallback(async () => {
+    const revision = ++chatPreviewRevisionRef.current;
+    try {
+      const refreshed = await chatsApi.listChats();
+      if (revision !== chatPreviewRevisionRef.current) return;
+      const byId = new Map(refreshed.map((chat) => [chat.id, chat.last_message || null]));
+      setChats((items) => items.map((chat) => byId.has(chat.id) ? { ...chat, last_message: byId.get(chat.id) } : chat));
+    } catch (error) { setMessagesError(translateApiError(error, "Не удалось обновить последнее сообщение")); }
+  }, []);
   const [messages, setMessages] = useState([]);
+  const [activeThread, setActiveThread] = useState(null);
+  const [threadMessages, setThreadMessages] = useState([]);
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [threads, setThreads] = useState([]);
+  const [threadsLoading, setThreadsLoading] = useState(false);
+  const [threadsError, setThreadsError] = useState("");
+  const [threadsVersion, refreshThreads] = useReducer((version) => version + 1, 0);
+  const [sidebarMode, setSidebarMode] = useState("chats");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [forwarding, setForwarding] = useState(null);
+  const [forwardTarget, setForwardTarget] = useState("");
+  const [forwardBusy, setForwardBusy] = useState(false);
+  const [forwardError, setForwardError] = useState("");
+  const activeThreadRef = useRef(null);
+  activeThreadRef.current = activeThread;
+  const threadRequestRef = useRef(0);
+  useEffect(() => {
+    if (!chatId) return;
+    let cancelled = false;
+    setThreadsLoading(true);
+    setThreadsError("");
+    messagesApi.listThreads(chatId).then((loaded) => {
+      if (!cancelled) setThreads(loaded);
+    }).catch((error) => {
+      if (!cancelled) setThreadsError(translateApiError(error, "Не удалось загрузить треды"));
+    }).finally(() => { if (!cancelled) setThreadsLoading(false); });
+    return () => { cancelled = true; };
+  }, [chatId, threadsVersion]);
+  const threadSeenIdsRef = useRef(new Set());
+  useEffect(() => {
+    setActiveThread(null);
+    setThreadMessages([]);
+    setThreads([]);
+    setThreadLoading(false);
+    setForwarding(null);
+    threadRequestRef.current += 1;
+    threadSeenIdsRef.current.clear();
+  }, [chatId]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState(null);
   const [chatDetailsOpen, setChatDetailsOpen] = useState(true);
+  const [callPanelOpen, setCallPanelOpen] = useState(false);
   const [activeChatTab, setActiveChatTab] = useState("messages");
   const [aiPanelOpen, setAIPanelOpen] = useState(false);
   const [transcribingAttachments, setTranscribingAttachments] = useState(
@@ -542,7 +626,13 @@ export default function ChatsPage() {
   const [sinceFilter, setSinceFilter] = useState("");
   const [untilFilter, setUntilFilter] = useState("");
   const [searching, setSearching] = useState(false);
+  const [searchBusy, setSearchBusy] = useState(false);
   const [scheduledAt, setScheduledAt] = useState("");
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const sendHoldTimerRef = useRef(null);
+  const sendHeldRef = useRef(false);
+  const messageMenuRef = useRef(null);
   const [chatPrefs, setChatPrefs] = useState({ color: "", background: "", muted: false, sound: true, shareReads: true, sharePresence: true });
   const [chatMembers, setChatMembers] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -570,12 +660,31 @@ export default function ChatsPage() {
   const [uploadingChatAvatars, setUploadingChatAvatars] = useState(false);
   const [createChatError, setCreateChatError] = useState(null);
   const [chatAvatarError, setChatAvatarError] = useState(null);
+  const [personalAvatarBusy, setPersonalAvatarBusy] = useState(false);
+  const [personalAvatarError, setPersonalAvatarError] = useState("");
 
   const [showFormat, setShowFormat] = useState(false);
   const [reactionPicker, setReactionPicker] = useState(null);
+  useEffect(() => {
+    if (!reactionPicker) return;
+    const menu = messageMenuRef.current;
+    if (!menu) return;
+    const bounds = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.min(reactionPicker.x, window.innerWidth - bounds.width - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(reactionPicker.y, window.innerHeight - bounds.height - 8))}px`;
+    menu.querySelector("button")?.focus();
+    const dismiss = (event) => {
+      if (event.key === "Escape") setReactionPicker(null);
+    };
+    window.addEventListener("keydown", dismiss);
+    return () => window.removeEventListener("keydown", dismiss);
+  }, [reactionPicker]);
+  useEffect(() => () => clearTimeout(sendHoldTimerRef.current), []);
   const [galleryIndex, setGalleryIndex] = useState(null);
 
   const bottomRef = useRef(null);
+  const messageScrollRef = useRef(null);
+  const followMessagesRef = useRef(true);
   const socketRef = useRef(null);
   const socketOpenRef = useRef(false);
   const typingSentAtRef = useRef(0);
@@ -718,6 +827,15 @@ export default function ChatsPage() {
     setReplyTo(null);
     setSelectedFiles([]);
     setAIPanelOpen(false);
+    setActiveChatTab("messages");
+    setPersonalAvatarError("");
+    setSearchOpen(false);
+    setScheduleOpen(false);
+    setScheduledAt("");
+    setReactionPicker(null);
+    followMessagesRef.current = true;
+    clearTimeout(sendHoldTimerRef.current);
+    sendHeldRef.current = false;
     setRecordedAudio(null);
     setGalleryIndex(null);
     setRecording(false);
@@ -782,7 +900,11 @@ export default function ChatsPage() {
           socketOpenRef.current = true;
           const key = `unsent-messages:${chatId}`;
           const pending = JSON.parse(localStorage.getItem(key) || "[]");
-          Promise.all(pending.map((item) => messagesApi.sendMessage(chatId, { text: item.text }).then(() => null).catch(() => item)))
+          Promise.all(pending.map((item) => messagesApi.sendMessage(chatId, {
+            text: item.text,
+            reply_to_id: item.reply_to_id,
+            thread_root_id: item.thread_root_id,
+          }).then(() => null).catch(() => item)))
             .then((results) => {
               const failed = results.filter(Boolean);
               if (failed.length) localStorage.setItem(key, JSON.stringify(failed));
@@ -793,24 +915,24 @@ export default function ChatsPage() {
         onEvent: (event, data) => {
           const mentionsMe = Boolean(me?.tag) && String(data.text || "").toLowerCase().includes(`@${me.tag.toLowerCase()}`);
           if (event === "message:new" && data.chat_id === chatId) {
-            setMessages((prev) => {
-              const exists = prev.some((m) => m.id === data.id);
-              if (exists) return prev;
-              return [...prev, data];
-            });
-            setChats((prev) =>
-              prev.map((c) =>
-                c.id === chatId
-                  ? {
-                      ...c,
-                      last_message: {
-                        text: data.text || "Вложение",
-                        created_at: data.created_at,
-                      },
-                    }
-                  : c,
-              ),
-            );
+            if (data.thread_root_id) {
+              const isNewThreadReply = !threadSeenIdsRef.current.has(data.id);
+              threadSeenIdsRef.current.add(data.id);
+              if (isNewThreadReply) setMessages((prev) => prev.map((item) => item.id === data.thread_root_id
+                ? { ...item, thread_reply_count: (item.thread_reply_count || 0) + 1 }
+                : item));
+              refreshThreads();
+              setThreadMessages((prev) => activeThreadRef.current?.id === data.thread_root_id && !prev.some((m) => m.id === data.id)
+                ? [...prev, data]
+                : prev);
+            } else {
+              setMessages((prev) => {
+                const exists = prev.some((m) => m.id === data.id);
+                if (exists) return prev;
+                return [...prev, data];
+              });
+            }
+            updateChatPreview(chatId, data);
             if (!chatPrefs.muted && data.user_id !== me?.id && chatPrefs.sound && typeof AudioContext !== "undefined") {
               try {
                 const audio = new AudioContext();
@@ -831,10 +953,16 @@ export default function ChatsPage() {
             new Notification("Вас упомянули", { body: data.text, tag: `mention-${chatId}` });
           }
           if (event === "message:updated" && data.chat_id === chatId) {
+            updateChatPreview(chatId, data, true);
             setMessages((prev) => prev.map((item) => item.id === data.id ? { ...item, ...data } : item));
+            setThreadMessages((prev) => prev.map((item) => item.id === data.id ? { ...item, ...data } : item));
           }
           if (event === "message:deleted" && data.chat_id === chatId) {
+            refreshChatPreviews();
             setMessages((prev) => prev.filter((item) => item.id !== data.message_id));
+            setThreadMessages((prev) => prev.filter((item) => item.id !== data.message_id));
+            refreshThreads();
+            if (activeThreadRef.current?.id === data.message_id) setActiveThread(null);
           }
           if (event === "user:presence" && data.chat_id === chatId) {
             setOnlineUsers((previous) => {
@@ -880,7 +1008,7 @@ export default function ChatsPage() {
                   ? {
                       ...c,
                       title: data.title ?? c.title,
-                      avatar_url: data.avatar_url ?? getChatAvatarUrl(c),
+                      avatar_url: data.avatar_url ?? getChatAvatarUrls(c).at(-1),
                     }
                   : c,
               ),
@@ -934,8 +1062,9 @@ export default function ChatsPage() {
 
   /* ---------- 4. Скролл вниз ---------- */
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const container = messageScrollRef.current;
+    if (container && followMessagesRef.current) container.scrollTop = container.scrollHeight;
+  }, [messages, threadMessages, activeThread]);
 
   const startVoiceRecording = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
@@ -1048,15 +1177,19 @@ export default function ChatsPage() {
         return;
       }
 
-      if (scheduledAt && new Date(scheduledAt).getTime() > Date.now()) {
+      if (scheduleOpen && (!Number.isFinite(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= Date.now())) {
+        setMessagesError("Выберите время отправки в будущем.");
+        return;
+      }
+      if (scheduleOpen && scheduledAt) {
         if (filesToSend.length) {
           setMessagesError("Отложенная отправка пока поддерживает только текст.");
           return;
         }
         const queue = JSON.parse(localStorage.getItem("scheduled-messages") || "[]");
-        queue.push({ chatId, text: text.trim(), reply_to_id: replyTo?.id || null, at: new Date(scheduledAt).toISOString() });
+        queue.push({ chatId, text: text.trim(), reply_to_id: replyTo?.id || null, thread_root_id: activeThread?.id || null, at: new Date(scheduledAt).toISOString() });
         localStorage.setItem("scheduled-messages", JSON.stringify(queue));
-        setText(""); setReplyTo(null); setScheduledAt("");
+        setText(""); setReplyTo(null); setScheduledAt(""); setScheduleOpen(false);
         return;
       }
 
@@ -1099,10 +1232,19 @@ export default function ChatsPage() {
           text: messageText,
           attachments: attachmentRequests,
           reply_to_id: replyTo?.id || null,
+          thread_root_id: activeThread?.id || null,
         });
 
         // 4) Мержим в список по id (защита от дубля с WS)
-        setMessages((prev) => {
+        if (activeThread) {
+          refreshThreads();
+          const isNewThreadReply = !threadSeenIdsRef.current.has(created.id);
+          threadSeenIdsRef.current.add(created.id);
+          setThreadMessages((prev) => prev.some((m) => m.id === created.id) ? prev : [...prev, created]);
+          if (isNewThreadReply) setMessages((prev) => prev.map((item) => item.id === activeThread.id
+            ? { ...item, thread_reply_count: (item.thread_reply_count || 0) + 1 }
+            : item));
+        } else setMessages((prev) => {
           const idx = prev.findIndex((m) => m.id === created.id);
           if (idx === -1) return [...prev, created];
           const next = [...prev];
@@ -1110,19 +1252,7 @@ export default function ChatsPage() {
           return next;
         });
 
-        setChats((prev) =>
-          prev.map((c) =>
-            c.id === chatId
-              ? {
-                  ...c,
-                  last_message: {
-                    text: created.text || "Вложение",
-                    created_at: created.created_at,
-                  },
-                }
-              : c,
-          ),
-        );
+        updateChatPreview(chatId, created);
 
         setText("");
         setReplyTo(null);
@@ -1133,7 +1263,11 @@ export default function ChatsPage() {
       } catch (err) {
         const pendingKey = `unsent-messages:${chatId}`;
         const pending = JSON.parse(localStorage.getItem(pendingKey) || "[]");
-        pending.push({ text: text.trim() });
+        pending.push({
+          text: text.trim(),
+          reply_to_id: replyTo?.id || null,
+          thread_root_id: activeThread?.id || null,
+        });
         localStorage.setItem(pendingKey, JSON.stringify(pending));
         setMessagesError(
           translateApiError(
@@ -1146,7 +1280,7 @@ export default function ChatsPage() {
         setSending(false);
       }
     },
-    [chatId, recordedAudio, selectedFiles, text, replyTo, scheduledAt],
+    [chatId, recordedAudio, selectedFiles, text, replyTo, scheduledAt, scheduleOpen, activeThread, updateChatPreview],
   );
 
   useEffect(() => {
@@ -1156,7 +1290,7 @@ export default function ChatsPage() {
       if (!due.length) return;
       const remaining = queue.filter((item) => Date.parse(item.at) > Date.now());
       for (const item of due) {
-        try { await messagesApi.sendMessage(item.chatId, { text: item.text, reply_to_id: item.reply_to_id }); }
+        try { await messagesApi.sendMessage(item.chatId, { text: item.text, reply_to_id: item.reply_to_id, thread_root_id: item.thread_root_id }); }
         catch { remaining.push(item); }
       }
       localStorage.setItem("scheduled-messages", JSON.stringify(remaining));
@@ -1391,6 +1525,22 @@ export default function ChatsPage() {
     }
   };
 
+  const changePersonalAvatar = async (file) => {
+    if (personalAvatarBusy || !chatId) return;
+    const targetChatId = chatId;
+    setPersonalAvatarBusy(true);
+    setPersonalAvatarError("");
+    try {
+      const result = file
+        ? await chatsApi.setPersonalChatAvatar(targetChatId, file)
+        : await chatsApi.resetPersonalChatAvatar(targetChatId);
+      setChats((items) => items.map((chat) => chat.id === targetChatId
+        ? { ...chat, personal_avatar_url: result.personal_avatar_url } : chat));
+    } catch (error) {
+      setPersonalAvatarError(translateApiError(error, error.message || "Не удалось изменить картинку чата"));
+    } finally { setPersonalAvatarBusy(false); }
+  };
+
   /* ---------- 10. Реакции (с toggle и user_reaction) ---------- */
   const handleReaction = useCallback(async (messageId, emoji) => {
     try {
@@ -1461,8 +1611,8 @@ export default function ChatsPage() {
 
   const galleryAttachments = useMemo(
     () =>
-      messages.flatMap((message) => message.attachments || []).filter(isVisualMedia),
-    [messages],
+      (activeThread ? threadMessages : messages).flatMap((message) => message.attachments || []).filter(isVisualMedia),
+    [messages, threadMessages, activeThread],
   );
   const openMediaViewer = useCallback(
     (attachment) => {
@@ -1502,37 +1652,111 @@ export default function ChatsPage() {
     (e, messageId) => openReactionPicker(e, messageId),
     [openReactionPicker],
   );
+  const menuMessage = reactionPicker
+    ? [...messages, ...threadMessages].find((message) => message.id === reactionPicker.messageId)
+    : null;
+  const runMenuAction = (action) => {
+    setReactionPicker(null);
+    action();
+  };
 
-  const replyToMessage = useCallback((message) => setReplyTo(message), []);
+  const replyToMessage = useCallback((message) => {
+    setReplyTo(message);
+    textareaRef.current?.focus();
+  }, []);
+  const openThread = useCallback(async (message) => {
+    const rootId = message.thread_root_id || message.id;
+    const root = threads.find((item) => item.id === rootId) || message;
+    const requestId = ++threadRequestRef.current;
+    setActiveThread({ ...root, id: rootId });
+    setThreadMessages([]);
+    setSidebarMode("threads");
+    setActiveChatTab("messages");
+    setReplyTo(null);
+    followMessagesRef.current = true;
+    setThreadLoading(true);
+    try {
+      const loaded = await messagesApi.listThreadMessages(chatId, rootId);
+      if (requestId !== threadRequestRef.current) return;
+      threadSeenIdsRef.current = new Set(loaded.map((item) => item.id));
+      setThreadMessages(loaded);
+    } catch (error) {
+      if (requestId === threadRequestRef.current) setMessagesError(translateApiError(error, "Не удалось загрузить тред"));
+    } finally {
+      if (requestId === threadRequestRef.current) setThreadLoading(false);
+    }
+  }, [chatId, threads]);
+  const closeThread = () => {
+    threadRequestRef.current += 1;
+    setActiveThread(null);
+    setThreadMessages([]);
+    setReplyTo(null);
+    followMessagesRef.current = true;
+  };
+  const handleForward = async (event) => {
+    event.preventDefault();
+    if (!forwarding || !forwardTarget || forwardBusy) return;
+    setForwardBusy(true);
+    setForwardError("");
+    try {
+      const created = await messagesApi.forwardMessage(chatId, forwarding.id, forwardTarget);
+      if (forwardTarget === chatId) setMessages((items) => items.some((item) => item.id === created.id) ? items : [...items, created]);
+      updateChatPreview(forwardTarget, created);
+      setForwarding(null);
+    } catch (error) { setForwardError(translateApiError(error, "Не удалось переслать сообщение")); }
+    finally { setForwardBusy(false); }
+  };
   const editMessage = useCallback(async (message) => {
     const nextText = window.prompt("Изменить сообщение", message.text || "");
     if (nextText === null || nextText.trim() === "") return;
     try {
       const updated = await messagesApi.updateMessage(message.id, nextText.trim());
+      updateChatPreview(updated.chat_id || chatId, updated, true);
       setMessages((previous) => previous.map((item) => item.id === updated.id ? { ...item, ...updated } : item));
+      setThreadMessages((previous) => previous.map((item) => item.id === updated.id ? { ...item, ...updated } : item));
+      refreshThreads();
     } catch (error) { setMessagesError(translateApiError(error, "Не удалось изменить сообщение")); }
-  }, []);
+  }, [chatId, updateChatPreview]);
   const removeMessage = useCallback(async (messageId) => {
     if (!window.confirm("Удалить это сообщение?")) return;
-    try { await messagesApi.deleteMessage(messageId); setMessages((previous) => previous.filter((item) => item.id !== messageId)); }
+    try {
+      await messagesApi.deleteMessage(messageId);
+      refreshChatPreviews();
+      setMessages((previous) => previous.filter((item) => item.id !== messageId));
+      setThreadMessages((previous) => previous.filter((item) => item.id !== messageId));
+      if (activeThreadRef.current?.id === messageId) setActiveThread(null);
+      refreshThreads();
+    }
     catch (error) { setMessagesError(translateApiError(error, "Не удалось удалить сообщение")); }
-  }, []);
+  }, [refreshChatPreviews]);
   const pinMessage = useCallback(async (message) => {
     try {
       const pinned = await messagesApi.togglePin(chatId, message.id);
       setMessages((previous) => previous.map((item) => item.id === message.id ? { ...item, is_pinned: pinned } : item));
+      setThreadMessages((previous) => previous.map((item) => item.id === message.id ? { ...item, is_pinned: pinned } : item));
     } catch (error) { setMessagesError(translateApiError(error, "Не удалось закрепить сообщение")); }
   }, [chatId]);
-  const jumpToMessage = useCallback((id) => document.getElementById(`message-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), []);
+  const jumpToMessage = useCallback((id) => {
+    const node = document.getElementById(`message-${id}`);
+    const container = messageScrollRef.current;
+    if (node && container) container.scrollTop += node.getBoundingClientRect().top - container.getBoundingClientRect().top - container.clientHeight / 2;
+  }, []);
   const runMessageSearch = useCallback(async (event) => {
     event?.preventDefault();
     if (!chatId) return;
     if (!searchText && !attachmentFilter && !authorFilter && !sinceFilter && !untilFilter) { setSearching(false); messagesApi.listMessages(chatId).then((list) => setMessages([...list].reverse())); return; }
+    setSearchBusy(true);
     try {
       const found = await messagesApi.searchMessages(chatId, { text: searchText || undefined, attachment_type: attachmentFilter || undefined, author_id: authorFilter || undefined, since: sinceFilter || undefined, until: untilFilter || undefined });
       setMessages([...found].reverse()); setSearching(true);
     } catch (error) { setMessagesError(translateApiError(error, "Не удалось найти сообщения")); }
+    finally { setSearchBusy(false); }
   }, [chatId, searchText, attachmentFilter, authorFilter, sinceFilter, untilFilter]);
+  const resetMessageSearch = async () => {
+    setSearchText(""); setAttachmentFilter(""); setAuthorFilter(""); setSinceFilter(""); setUntilFilter(""); setSearching(false);
+    try { setMessages([...(await messagesApi.listMessages(chatId))].reverse()); }
+    catch (error) { setMessagesError(translateApiError(error, "Не удалось восстановить переписку")); }
+  };
 
   /* ============================================================
      Рендер
@@ -1541,11 +1765,20 @@ export default function ChatsPage() {
     <main className="chats-page">
       {/* ---------- Левая колонка ---------- */}
       <SocialSidebar
+        threads={activeThread && !threads.some((thread) => thread.id === activeThread.id) ? [activeThread, ...threads] : threads}
+        threadsLoading={threadsLoading}
+        threadsError={threadsError}
+        activeThreadId={activeThread?.id}
+        onOpenThread={openThread}
+        mode={sidebarMode}
+        onModeChange={(mode) => { setSidebarMode(mode); if (mode === "chats") closeThread(); }}
+        mobileOpen={sidebarOpen}
+        onCloseMobile={() => setSidebarOpen(false)}
         chats={chats}
         chatsLoading={chatsLoading}
         chatsError={chatsError}
         chatId={chatId}
-        navigate={navigate}
+        navigate={(path) => { closeThread(); setSidebarOpen(false); navigate(path); }}
         onCreateChat={() => {
           setCreateChatError(null);
           setUsernameQuery("");
@@ -1571,6 +1804,7 @@ export default function ChatsPage() {
         ) : (
           <>
             <header className="chat-view__header">
+              <button type="button" className="chat-sidebar-toggle" aria-label="Чаты и треды" onClick={() => setSidebarOpen(true)}>☰</button>
               <button
                 className="chat-view__back"
                 type="button"
@@ -1579,15 +1813,17 @@ export default function ChatsPage() {
               >
                 ←
               </button>
-              <ChatAvatar chat={activeChat} compact />
-              <div>
+              <button type="button" className="chat-profile-trigger chat-profile-trigger--avatar" aria-label="Открыть информацию о чате" aria-expanded={activeChatTab === "profile"} onClick={() => { setActiveChatTab("profile"); setChatDetailsOpen(true); }}>
+                <ChatAvatar chat={activeChat} compact />
+              </button>
+              <button type="button" className="chat-profile-trigger chat-profile-trigger--title" aria-label={`О чате ${activeChat.title}`} onClick={() => { setActiveChatTab("profile"); setChatDetailsOpen(true); }}>
                 <div className="chat-view__title">{activeChat.title}</div>
                 <div className="chat-view__status">
                   {typingUsers.size > 0
                     ? `${typingUsers.size} печатает…`
                     : onlineUsers.size > 0 ? `${onlineUsers.size} online` : activeChat.description || "был(а) недавно"}
                 </div>
-              </div>
+              </button>
               <button
                 type="button"
                 className="ai-panel__toggle"
@@ -1597,20 +1833,23 @@ export default function ChatsPage() {
               >
                 ✨ ИИ
               </button>
-              <label
-                className="chat-avatar-upload"
-                title="Добавить аватарки группы"
+              <button
+                type="button"
+                className="chat-search-toggle"
+                aria-label={searchOpen ? "Закрыть поиск" : "Открыть поиск"}
+                aria-expanded={searchOpen}
+                aria-controls="chat-message-search"
+                onClick={() => { setSearchOpen((open) => !open); setActiveChatTab("messages"); if (activeThread) closeThread(); }}
+              >⌕ Поиск</button>
+              <button
+                type="button"
+                className="call-start-button"
+                onClick={() => setCallPanelOpen(true)}
+                aria-label="Начать звонок"
+                title="Аудио- и видеозвонок"
               >
-                {uploadingChatAvatars ? "Загрузка…" : "Добавить фото"}
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
-                  multiple
-                  hidden
-                  disabled={uploadingChatAvatars}
-                  onChange={handleChatAvatarSelection}
-                />
-              </label>
+                ☎ <span>Позвонить</span>
+              </button>
             </header>
 
             {chatAvatarError && (
@@ -1619,16 +1858,8 @@ export default function ChatsPage() {
               </p>
             )}
 
-            <nav className="chat-view__tabs" role="tablist" aria-label="Разделы чата">
-              <button type="button" role="tab" aria-selected={activeChatTab === "messages"} onClick={() => setActiveChatTab("messages")}>
-                Переписка
-              </button>
-              <button type="button" role="tab" aria-selected={activeChatTab === "profile"} onClick={() => setActiveChatTab("profile")}>
-                Профиль чата
-              </button>
-            </nav>
-
             {activeChatTab === "profile" && <section className="chat-details" aria-label="Информация о чате">
+              <button type="button" className="chat-profile-back" onClick={() => setActiveChatTab("messages")}>← Вернуться к сообщениям</button>
               <div className="chat-details__heading">
                 <div>
                   <h2>О чате</h2>
@@ -1645,6 +1876,28 @@ export default function ChatsPage() {
               </div>
               {chatDetailsOpen && (
                 <>
+                  <section className="personal-chat-avatar" aria-label="Личная картинка чата">
+                    <ChatAvatar chat={activeChat} />
+                    <div className="personal-chat-avatar__content">
+                      <h3>Моя картинка чата</h3>
+                      <p>Видна только вам. Можно выбрать свою для любого чата.</p>
+                      <div className="personal-chat-avatar__actions">
+                        <label className={`personal-avatar-upload ${personalAvatarBusy ? "is-busy" : ""}`}>
+                          {personalAvatarBusy ? "Сохранение…" : "Выбрать картинку"}
+                          <input type="file" aria-label="Моя картинка чата" accept="image/jpeg,image/png,image/webp,image/gif" hidden disabled={personalAvatarBusy} onChange={(event) => {
+                            const file = event.target.files?.[0]; event.target.value = "";
+                            if (file) changePersonalAvatar(file);
+                          }} />
+                        </label>
+                        {activeChat.personal_avatar_url && <button type="button" disabled={personalAvatarBusy} onClick={() => changePersonalAvatar(null)}>Вернуть общую картинку</button>}
+                      </div>
+                      {personalAvatarError && <p role="alert" className="personal-avatar-error">{personalAvatarError}</p>}
+                    </div>
+                  </section>
+                  <label className="chat-avatar-upload chat-avatar-upload--shared">
+                    {uploadingChatAvatars ? "Загрузка…" : "Добавить общее фото чата"}
+                    <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden disabled={uploadingChatAvatars} onChange={handleChatAvatarSelection} />
+                  </label>
                   <div className="chat-preferences">
                     <label>Цвет чата <input type="color" value={chatPrefs.color || "#64748b"} onChange={(e) => setChatPrefs((p) => ({ ...p, color: e.target.value }))} /></label>
                     <label>Фон <input type="color" value={chatPrefs.background || "#ffffff"} onChange={(e) => setChatPrefs((p) => ({ ...p, background: e.target.value }))} /></label>
@@ -1700,18 +1953,43 @@ export default function ChatsPage() {
               )}
             </section>}
 
-            {activeChatTab === "messages" && <><div className="chat-view__messages">
-              <form className="message-search" onSubmit={runMessageSearch}>
-                <input aria-label="Поиск по сообщениям" placeholder="Поиск по переписке" value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+            {activeChatTab === "messages" && <><div className="chat-view__messages" ref={messageScrollRef} onScroll={(event) => {
+              const node = event.currentTarget;
+              followMessagesRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
+            }}>
+              {activeThread && <header className="active-thread-header"><strong>Тред: {activeThread.text || "Вложение"}</strong><button type="button" onClick={closeThread}>Вернуться в чат</button></header>}
+              {threadLoading && activeThread && <p className="chats-empty">Загрузка треда…</p>}
+              {searchOpen && <form id="chat-message-search" className="message-search" onSubmit={runMessageSearch} onKeyDown={(event) => {
+                if (event.key === "Escape") { setSearchOpen(false); if (searching) resetMessageSearch(); }
+              }}>
+                <div className="message-search__heading">
+                  <div><strong>Поиск в чате</strong><span>Сообщения, файлы и важные детали</span></div>
+                  <button type="button" className="message-search__close" aria-label="Скрыть поиск" onClick={() => { setSearchOpen(false); if (searching) resetMessageSearch(); }}>×</button>
+                </div>
+                <div className="message-search__bar">
+                  <div className="message-search__input-wrap">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="1.8" /><path d="m16 16 5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                    <input aria-label="Поиск по сообщениям" placeholder="Что ищем в переписке?" value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+                  </div>
+                  <button type="submit" className="message-search__submit" disabled={searchBusy}>{searchBusy ? "Поиск…" : "Найти"}</button>
+                </div>
+                <details className="message-search__filters">
+                  <summary>Фильтры{attachmentFilter || authorFilter || sinceFilter || untilFilter ? " •" : ""}</summary>
+                  <div className="message-search__filter-fields">
+                <label><span>Вложения</span>
                 <select aria-label="Тип вложения" value={attachmentFilter} onChange={(e) => setAttachmentFilter(e.target.value)}>
                   <option value="">Любой тип</option><option value="image">Фото</option><option value="video">Видео</option><option value="audio">Аудио</option><option value="file">Файлы</option>
                 </select>
+                </label>
+                <label><span>Кто отправил</span>
                 <select aria-label="Автор сообщения" value={authorFilter} onChange={(e) => setAuthorFilter(e.target.value)}><option value="">Все авторы</option>{chatMembers.map((member) => <option key={member.id} value={member.id}>{member.username}</option>)}</select>
-                <label>С <input type="datetime-local" value={sinceFilter} onChange={(e) => setSinceFilter(e.target.value)} /></label>
-                <label>По <input type="datetime-local" value={untilFilter} onChange={(e) => setUntilFilter(e.target.value)} /></label>
-                <button type="submit">Найти</button>
-                {searching && <button type="button" onClick={() => { setSearchText(""); setAttachmentFilter(""); setAuthorFilter(""); setSinceFilter(""); setUntilFilter(""); setSearching(false); messagesApi.listMessages(chatId).then((list) => setMessages([...list].reverse())); }}>Сбросить</button>}
-              </form>
+                </label>
+                <label><span>Начиная с</span><input type="datetime-local" aria-label="Начало периода" value={sinceFilter} onChange={(e) => setSinceFilter(e.target.value)} /></label>
+                <label><span>До</span><input type="datetime-local" aria-label="Конец периода" value={untilFilter} min={sinceFilter || undefined} onChange={(e) => setUntilFilter(e.target.value)} /></label>
+                  </div>
+                </details>
+                {searching && <div className="message-search__results" aria-live="polite"><span>Найдено сообщений: {messages.length}</span><button type="button" onClick={resetMessageSearch}>Сбросить</button></div>}
+              </form>}
               {messagesLoading && (
                 <p className="chats-empty">Загрузка сообщений…</p>
               )}
@@ -1722,7 +2000,7 @@ export default function ChatsPage() {
               )}
 
               {!messagesLoading &&
-                messages.map((m) => (
+                (activeThread ? threadMessages : messages).map((m) => (
                   <MessageItem
                     key={m.id}
                     message={m}
@@ -1734,9 +2012,6 @@ export default function ChatsPage() {
                     transcribingAttachments={transcribingAttachments}
                     onOpenMedia={openMediaViewer}
                     onReply={replyToMessage}
-                    onEdit={editMessage}
-                    onDelete={removeMessage}
-                    onPin={pinMessage}
                     onJumpTo={jumpToMessage}
                     readBy={m.user_id === me?.id && chatMembers.some((member) => member.id !== me?.id && member.last_read_message_id === m.id)}
                   />
@@ -1756,6 +2031,7 @@ export default function ChatsPage() {
               </div>}
 
               <form className="chat-view__composer" onSubmit={handleSend}>
+                {activeThread && <div className="reply-preview"><span>Ответ в треде</span><button type="button" onClick={closeThread} aria-label="Закрыть тред">×</button></div>}
                 {replyTo && <div className="reply-preview"><span>Ответ: {replyTo.text || "вложение"}</span><button type="button" onClick={() => setReplyTo(null)} aria-label="Отменить ответ">×</button></div>}
                 {recording ? (
                   <>
@@ -1826,18 +2102,46 @@ export default function ChatsPage() {
                 />
 
                 <button
-                  type="submit"
+                  type="button"
                   className="composer-btn composer-btn--send"
+                  aria-label="Отправить"
+                  aria-haspopup="dialog"
+                  aria-expanded={scheduleOpen}
+                  onPointerDown={(event) => {
+                    if (event.button !== 0) return;
+                    event.currentTarget.setPointerCapture?.(event.pointerId);
+                    sendHeldRef.current = false;
+                    clearTimeout(sendHoldTimerRef.current);
+                    sendHoldTimerRef.current = setTimeout(() => {
+                      sendHeldRef.current = true;
+                      setScheduleOpen(true);
+                    }, 600);
+                  }}
+                  onPointerUp={() => clearTimeout(sendHoldTimerRef.current)}
+                  onPointerCancel={() => { clearTimeout(sendHoldTimerRef.current); sendHeldRef.current = true; }}
+                  onKeyDown={(event) => {
+                    if (event.key === "ArrowDown") { event.preventDefault(); setScheduleOpen(true); }
+                  }}
+                  onClick={(event) => {
+                    if (sendHeldRef.current) { sendHeldRef.current = false; return; }
+                    if (!scheduleOpen) handleSend(event);
+                  }}
                   disabled={
                     sending ||
                     (!text.trim() && selectedFiles.length === 0 && !recordedAudio)
                   }
-                  title="Отправить"
+                  title="Отправить · удерживайте для выбора времени"
                 >
                   ➤
                 </button>
               </form>
-              <label className="schedule-send">Отправить позже <input type="datetime-local" value={scheduledAt} min={new Date(Date.now() + 60000).toISOString().slice(0, 16)} onChange={(e) => setScheduledAt(e.target.value)} /></label>
+              {scheduleOpen && <div className="schedule-send" role="dialog" aria-label="Отложенная отправка" onKeyDown={(event) => {
+                if (event.key === "Escape") { setScheduleOpen(false); setScheduledAt(""); }
+              }}>
+                <label>Отправить позже <input autoFocus type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} /></label>
+                <button type="button" disabled={!scheduledAt || sending} onClick={handleSend}>Запланировать</button>
+                <button type="button" onClick={() => { setScheduleOpen(false); setScheduledAt(""); }}>Отмена</button>
+              </div>}
 
               {recordingError && (
                 <p className="voice-recording__error" role="alert">
@@ -1933,12 +2237,16 @@ export default function ChatsPage() {
             }}
           />
           <div
-            className="reaction-picker"
+            ref={messageMenuRef}
+            className="reaction-picker message-context-menu"
+            role="dialog"
+            aria-label="Действия с сообщением"
             style={{
-              top: Math.max(8, reactionPicker.y - 60),
-              left: Math.min(reactionPicker.x, window.innerWidth - 340),
+              top: reactionPicker.y,
+              left: reactionPicker.x,
             }}
           >
+            <div className="message-context-menu__reactions" aria-label="Реакции">
             {EMOJI_SET.map((emoji) => (
               <button
                 key={emoji}
@@ -1949,9 +2257,34 @@ export default function ChatsPage() {
                 {emoji}
               </button>
             ))}
+            </div>
+            {menuMessage && <div className="message-context-menu__actions">
+              <button type="button" onClick={() => runMenuAction(() => replyToMessage(menuMessage))}>Ответить</button>
+              <button type="button" onClick={() => runMenuAction(() => openThread(menuMessage))}>Открыть тред</button>
+              <button type="button" onClick={() => runMenuAction(() => { setForwarding(menuMessage); setForwardTarget(""); setForwardError(""); })}>Переслать</button>
+              <button type="button" onClick={() => runMenuAction(() => pinMessage(menuMessage))}>{menuMessage.is_pinned ? "Открепить" : "Закрепить"}</button>
+              {menuMessage.user_id === me?.id && <>
+                <button type="button" onClick={() => runMenuAction(() => editMessage(menuMessage))}>Изменить</button>
+                <button type="button" className="message-context-menu__delete" onClick={() => runMenuAction(() => removeMessage(menuMessage.id))}>Удалить</button>
+              </>}
+            </div>}
           </div>
         </>
       )}
+
+      {forwarding && <div className="modal-backdrop" onClick={() => { if (!forwardBusy) setForwarding(null); }}>
+        <form className="modal forward-message-modal" role="dialog" aria-modal="true" aria-label="Переслать сообщение" onClick={(event) => event.stopPropagation()} onSubmit={handleForward} onKeyDown={(event) => { if (event.key === "Escape" && !forwardBusy) setForwarding(null); }}>
+          <h3>Переслать сообщение</h3>
+          <p>{forwarding.text || "Сообщение с вложениями"}</p>
+          <label>Куда переслать<select autoFocus value={forwardTarget} onChange={(event) => setForwardTarget(event.target.value)} disabled={forwardBusy}>
+            <option value="">Выберите чат</option>
+            {chats.map((chat) => <option key={chat.id} value={chat.id}>{chat.title}</option>)}
+          </select></label>
+          {forwardError && <p role="alert">{forwardError}</p>}
+          <button type="submit" disabled={!forwardTarget || forwardBusy}>{forwardBusy ? "Пересылка…" : "Переслать"}</button>
+          <button type="button" disabled={forwardBusy} onClick={() => setForwarding(null)}>Отмена</button>
+        </form>
+      </div>}
 
       {/* ---------- Модалка создания группы ---------- */}
       {createOpen && (
@@ -2109,6 +2442,12 @@ export default function ChatsPage() {
           </form>
         </div>
       )}
+      <CallPanel
+        chatId={chatId}
+        chatName={activeChat?.title}
+        open={callPanelOpen}
+        onClose={() => setCallPanelOpen(false)}
+      />
     </main>
   );
 }

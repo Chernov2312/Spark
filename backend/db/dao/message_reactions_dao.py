@@ -10,7 +10,7 @@ from db.models import MessageReaction
 
 class MessageReactionData(TypedDict):
     id: uuid.UUID
-    users: dict[uuid.UUID, str]
+    users: dict[str, str]
     reactions_count: dict[str, int]
 
 
@@ -38,7 +38,7 @@ class MessageReactionDao(BaseDao[MessageReaction]):
         cls,
         session: AsyncSession,
         message_reactions: list[MessageReactionData],
-    ):
+    ) -> None:
         users_data = []
         for msg in message_reactions:
             message_id = uuid.UUID(str(msg["id"]))

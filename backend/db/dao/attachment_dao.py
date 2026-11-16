@@ -29,6 +29,21 @@ class AttachmentDao(BaseDao[Attachment]):
         return list(result.scalars().all())
 
     @classmethod
+    async def get_avatar_by_url_and_user_id(
+        cls,
+        session: AsyncSession,
+        target_url: str,
+        user_id: uuid.UUID,
+    ) -> Attachment | None:
+        return await session.scalar(
+            select(cls.model).where(
+                cls.model.file_key == target_url,
+                cls.model.user_id == user_id,
+                cls.model.is_avatar.is_(True),
+            ),
+        )
+
+    @classmethod
     async def delete_attachment_by_url_and_user_id(
         cls,
         session: AsyncSession,

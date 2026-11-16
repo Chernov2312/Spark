@@ -8,7 +8,7 @@ class AvatarUrlRequest(BaseModel):
     file_extension: str
     file_content: str
     target_id: str
-    type: Literal["message", "chat_avatar", "user_avatar"]
+    type: Literal["message", "chat_avatar", "user_avatar", "personal_chat_avatar"]
 
 
 class AvatarUrlResponse(BaseModel):

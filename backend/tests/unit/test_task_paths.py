@@ -21,7 +21,7 @@ def redis_context(redis):
     return get_redis
 
 
-def test_send_verification_email_builds_and_sends_html_message(monkeypatch):
+async def test_send_verification_email_builds_and_sends_html_message(monkeypatch):
     smtp = MagicMock()
     smtp_context = MagicMock()
     smtp_context.__enter__.return_value = smtp
@@ -31,7 +31,7 @@ def test_send_verification_email_builds_and_sends_html_message(monkeypatch):
         MagicMock(return_value=smtp_context),
     )
 
-    send_email.send_verification_email(
+    await send_email.send_verification_email(
         "person@example.com",
         "person",
         "user-id",
@@ -45,7 +45,7 @@ def test_send_verification_email_builds_and_sends_html_message(monkeypatch):
     assert "https://spark.example/verify-email/" in plain_content
 
 
-def test_send_verification_email_swallows_smtp_errors(monkeypatch):
+async def test_send_verification_email_swallows_smtp_errors(monkeypatch):
     smtp_context = MagicMock()
     smtp_context.__enter__.side_effect = OSError("smtp unavailable")
     monkeypatch.setattr(
@@ -54,7 +54,7 @@ def test_send_verification_email_swallows_smtp_errors(monkeypatch):
         MagicMock(return_value=smtp_context),
     )
 
-    send_email.send_verification_email(
+    await send_email.send_verification_email(
         "person@example.com",
         "person",
         "id",
@@ -98,7 +98,7 @@ async def test_audio_task_persists_transcript_and_publishes_result(
     monkeypatch.setattr(
         audio_convert.AudioConverter,
         "get_text_from_audio",
-        MagicMock(return_value="spoken words"),
+        AsyncMock(return_value="spoken words"),
     )
 
     @asynccontextmanager

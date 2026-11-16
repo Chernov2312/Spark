@@ -2,18 +2,18 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import uuid
 
-from main import app
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from tasks import message as message_tasks
 
-from core.message_queue import enqueue_message, message_queue_key
 from db.dao.attachment_dao import AttachmentDao
 from db.dao.chat_dao import ChatDao
 from db.dao.message_dao import MessageDao
 from db.dao.user_dao import UserDao
 from db.models import Message
+from infrastructure.redis.message_queue import enqueue_message, message_queue_key
+from main import app
 from schemas.attachment import AttachmentRequest
 from schemas.message import MessageInternalDTO
 

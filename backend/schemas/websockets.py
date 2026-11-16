@@ -1,19 +1,25 @@
 from datetime import datetime
-from typing import Any, Literal, Union
+from typing import Literal, Union
 import uuid
 
 from pydantic import BaseModel, Field, model_validator
+
+from schemas.attachment import AttachmentResponse
 
 
 class UserData(BaseModel):
     id: uuid.UUID
     text: str | None = None
     chat_id: uuid.UUID
-    attachments: list[dict[str, Any]] = Field(default_factory=list)
+    attachments: list[AttachmentResponse] = Field(default_factory=list)
     user_id: uuid.UUID
     created_at: datetime | None = None
     user_reaction: str | None = None
     reactions_count: dict[str, int] = Field(default_factory=dict)
+    reply_to_id: uuid.UUID | None = None
+    reply_to_text: str | None = None
+    thread_root_id: uuid.UUID | None = None
+    thread_reply_count: int = 0
 
 
 class ChatData(BaseModel):
@@ -57,16 +63,34 @@ class MessageUpdated(UserData):
     edited_at: datetime | None = None
     reply_to_id: uuid.UUID | None = None
     reply_to_text: str | None = None
-    attachments: list[dict[str, Any]] = Field(default_factory=list)
+    attachments: list[AttachmentResponse] = Field(default_factory=list)
 
 
 class WsEvent(BaseModel):
-    event: Literal["user:typing", "user:presence", "user:read", "chat:update", "message:new", "message:updated", "message:deleted", "attachment:text"]
-    data: Union[UserData, ChatData, UserTyping, UserPresence, UserRead, AttachmentText, MessageUpdated, MessageDeleted]
+    event: Literal[
+        "user:typing",
+        "user:presence",
+        "user:read",
+        "chat:update",
+        "message:new",
+        "message:updated",
+        "message:deleted",
+        "attachment:text",
+    ]
+    data: Union[
+        UserData,
+        ChatData,
+        UserTyping,
+        UserPresence,
+        UserRead,
+        AttachmentText,
+        MessageUpdated,
+        MessageDeleted,
+    ]
 
     @model_validator(mode="before")
     @classmethod
-    def validate_and_route_data(cls, data: Any) -> Any:
+    def validate_and_route_data(cls, data: object) -> object:
         if isinstance(data, dict):
             event_type = data.get("event")
             event_data = data.get("data")

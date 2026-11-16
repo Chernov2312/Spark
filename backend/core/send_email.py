@@ -1,20 +1,33 @@
+import asyncio
 from datetime import timedelta
 from email.message import EmailMessage
 from html import escape
+import logging
 import smtplib
 from urllib.parse import quote
+import uuid
 
-from config import email
-from config.app import settings
+from config import get_email_settings, get_settings
 from core.security import create_access_token
 
+logger = logging.getLogger(__name__)
 
-def send_verification_email(
+
+def _deliver_email(message: EmailMessage) -> None:
+    email = get_email_settings()
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(email.LOGIN_EMAIL, email.PASSWORD_EMAIL.get_secret_value())
+        server.send_message(message)
+
+
+async def send_verification_email(
     user_email: str,
     user_username: str,
     user_id: str,
     base_url: str,
-):
+) -> None:
+    settings = get_settings()
+    email = get_email_settings()
     msg = EmailMessage()
     msg["Subject"] = "Подтверждение регистрации в Мессенджере"
     msg["From"] = email.FROM_EMAIL
@@ -54,9 +67,60 @@ def send_verification_email(
     msg.add_alternative(html_content, subtype="html")
 
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(email.LOGIN_EMAIL, email.PASSWORD_EMAIL)
-            server.send_message(msg)
-        print("Message was successfully sended")
-    except Exception as e:
-        print(f"Error: {e}")
+        await asyncio.to_thread(_deliver_email, msg)
+    except Exception:
+        logger.exception("Failed to send verification email")
+
+
+async def send_password_reset_email(
+    user_email: str,
+    user_username: str,
+    user_id: str,
+    base_url: str,
+) -> None:
+    settings = get_settings()
+    email = get_email_settings()
+    reset_token = create_access_token(
+        data={
+            "sub": user_email,
+            "user_id": user_id,
+            "purpose": "password_reset",
+            "jti": str(uuid.uuid4()),
+        },
+        expires_delta=timedelta(
+            minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES,
+        ),
+    )
+    reset_link = f"{base_url.rstrip('/')}/reset-password/{quote(reset_token, safe='')}"
+    safe_username = escape(user_username)
+    safe_link = escape(reset_link, quote=True)
+
+    msg = EmailMessage()
+    msg["Subject"] = "Сброс пароля Spark"
+    msg["From"] = email.FROM_EMAIL
+    msg["To"] = user_email
+    msg.set_content(
+        f"Здравствуйте, {user_username}!\n\n"
+        "Чтобы задать новый пароль Spark, откройте ссылку:\n"
+        f"{reset_link}\n\n"
+        f"Ссылка действует {settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} минут. "
+        "Если вы не запрашивали сброс пароля, просто проигнорируйте это письмо."
+    )
+    msg.add_alternative(
+        f"""
+        <html><body>
+          <h2>Сброс пароля Spark</h2>
+          <p>Здравствуйте, {safe_username}!</p>
+          <p>Чтобы задать новый пароль, нажмите на ссылку:</p>
+          <p><a href="{safe_link}">Создать новый пароль</a></p>
+          <p>Ссылка действует {settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} минут.</p>
+          <p>Если вы не запрашивали сброс пароля, проигнорируйте это письмо.</p>
+        </body></html>
+        """,
+        subtype="html",
+    )
+
+    try:
+        await asyncio.to_thread(_deliver_email, msg)
+    except Exception:
+        logger.exception("Failed to send password reset email")

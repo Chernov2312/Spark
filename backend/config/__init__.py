@@ -1,16 +1,16 @@
-from config.ai import AIPrompts, ai_settings
-from config.app import settings
-from config.email_conf import email
-from config.storage import StorageCategory, StorageClientMethod, yandex_storage
+from config.ai import AIPrompts, get_ai_settings
+from config.app import get_settings
+from config.email_conf import get_email_settings
+from config.storage import StorageCategory, StorageClientMethod, get_storage_settings
 from config.tags import RouteTags
 
 __all__ = (
-    "settings",
+    "get_settings",
     "RouteTags",
-    "yandex_storage",
-    "ai_settings",
+    "get_storage_settings",
+    "get_ai_settings",
     "AIPrompts",
     "StorageCategory",
     "StorageClientMethod",
-    "email",
+    "get_email_settings",
 )

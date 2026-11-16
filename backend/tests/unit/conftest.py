@@ -1,7 +1,6 @@
 import os
 from types import SimpleNamespace
 
-from main import app
 import pytest
 import pytest_asyncio
 from testcontainers.ollama import OllamaContainer
@@ -10,6 +9,7 @@ from api.v1.ai import get_ai_service
 from core.ai_service import AIService
 from db.dao.chat_dao import ChatDao
 from db.dao.message_dao import MessageDao
+from main import app
 
 
 @pytest_asyncio.fixture(autouse=True, scope="function", loop_scope="session")

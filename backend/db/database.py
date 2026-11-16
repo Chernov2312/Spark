@@ -16,9 +16,9 @@ from sqlalchemy.orm import (
     mapped_column,
 )
 
-from config import settings
+from config import get_settings
 
-engine = create_async_engine(url=settings.db_url)
+engine = create_async_engine(url=str(get_settings().db_url))
 async_session_maker = async_sessionmaker(engine, expire_on_commit=False)
 
 
@@ -39,7 +39,7 @@ class Base(AsyncAttrs, DeclarativeBase):
     def __tablename__(cls) -> str:
         return cls.__name__.lower() + "s"
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, object]:
         return {c.key: getattr(self, c.key) for c in inspect(self).mapper.column_attrs}
 
 
@@ -49,11 +49,11 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
             yield session
 
 
-async def create_tables():
+async def create_tables() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
 
-async def drop_tables():
+async def drop_tables() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all, checkfirst=True)

@@ -1,7 +1,7 @@
 import re
 import uuid
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only, selectinload
 
@@ -42,11 +42,49 @@ class UserDao(BaseDao[User]):
         return res.scalar_one_or_none()
 
     @classmethod
+    async def get_by_email_case_insensitive(
+        cls,
+        session: AsyncSession,
+        email: str,
+    ) -> User | None:
+        return await session.scalar(
+            select(User).where(func.lower(User.email) == email.casefold()),
+        )
+
+    @classmethod
+    async def reset_password(
+        cls,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        password_hash: str,
+    ) -> User | None:
+        user = await cls.get_by_id(session, user_id)
+        if user is None:
+            return None
+        user.password = password_hash
+        await session.flush()
+        return user
+
+    @classmethod
+    async def mark_verified(
+        cls,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+    ) -> User | None:
+        user = await cls.get_by_id(session, user_id)
+        if user is None:
+            return None
+        if not user.is_verified:
+            user.is_verified = True
+            await session.flush()
+        return user
+
+    @classmethod
     async def find_by_username(
         cls,
         session: AsyncSession,
         target: str,
-    ) -> list[User] | None:
+    ) -> list[User]:
         safe = re.escape(target)
         reg = rf"^{safe}"
         query = (
@@ -61,7 +99,7 @@ class UserDao(BaseDao[User]):
     async def get_user_with_chats(
         cls,
         session: AsyncSession,
-        target_id: str,
+        target_id: uuid.UUID,
     ) -> User | None:
         query = (
             select(User)
@@ -75,7 +113,7 @@ class UserDao(BaseDao[User]):
     async def get_user_with_avatars(
         cls,
         session: AsyncSession,
-        target_id: str,
+        target_id: uuid.UUID,
     ) -> User | None:
         query = (
             select(User).where(User.id == target_id).options(selectinload(User.avatars))
@@ -88,7 +126,7 @@ class UserDao(BaseDao[User]):
         cls,
         session: AsyncSession,
         target_id: uuid.UUID,
-        data: dict,
+        data: dict[str, object],
     ) -> User | None:
         update_data = {k: v for k, v in data.items() if k != "id" and v is not None}
         if update_data:

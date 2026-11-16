@@ -1,12 +1,13 @@
+from datetime import datetime
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from db.dao.basedao import BaseDao
-from db.models import Chat, User, user_chat
+from db.models import Chat, ChatReadState, Message, User, user_chat
 
 
 class ChatDao(BaseDao[Chat]):
@@ -50,7 +51,130 @@ class ChatDao(BaseDao[Chat]):
         session: AsyncSession,
         chat_id: uuid.UUID,
     ) -> Chat | None:
-        query = select(Chat).where(Chat.id == chat_id).options(selectinload(Chat.users))
+        query = (
+            select(Chat)
+            .where(Chat.id == chat_id)
+            .options(selectinload(Chat.users))
+            .execution_options(populate_existing=True)
+        )
         result = await session.execute(query)
 
         return result.scalar_one_or_none()
+
+    @classmethod
+    async def get_member_roles(
+        cls,
+        session: AsyncSession,
+        chat_id: uuid.UUID,
+    ) -> dict[uuid.UUID, str]:
+        result = await session.execute(
+            select(user_chat.c.user_id, user_chat.c.role).where(
+                user_chat.c.chat_id == chat_id,
+            ),
+        )
+        return dict(result.all())
+
+    @classmethod
+    async def get_read_states(
+        cls,
+        session: AsyncSession,
+        chat_id: uuid.UUID,
+    ) -> dict[uuid.UUID, uuid.UUID | None]:
+        result = await session.execute(
+            select(
+                ChatReadState.user_id,
+                ChatReadState.last_read_message_id,
+            ).where(ChatReadState.chat_id == chat_id),
+        )
+        return dict(result.all())
+
+    @classmethod
+    async def set_member_role(
+        cls,
+        session: AsyncSession,
+        chat_id: uuid.UUID,
+        member_id: uuid.UUID,
+        role: str,
+    ) -> bool:
+        result = await session.execute(
+            update(user_chat)
+            .where(
+                user_chat.c.chat_id == chat_id,
+                user_chat.c.user_id == member_id,
+            )
+            .values(role=role),
+        )
+        return result.rowcount == 1
+
+    @classmethod
+    async def is_message_in_chat(
+        cls,
+        session: AsyncSession,
+        chat_id: uuid.UUID,
+        message_id: uuid.UUID,
+    ) -> bool:
+        result = await session.scalar(
+            select(Message.id).where(
+                Message.id == message_id,
+                Message.chat_id == chat_id,
+            ),
+        )
+        return result is not None
+
+    @classmethod
+    async def mark_read(
+        cls,
+        session: AsyncSession,
+        chat_id: uuid.UUID,
+        user_id: uuid.UUID,
+        message_id: uuid.UUID | None,
+        read_at: datetime,
+    ) -> None:
+        state = await session.scalar(
+            select(ChatReadState).where(
+                ChatReadState.chat_id == chat_id,
+                ChatReadState.user_id == user_id,
+            ),
+        )
+        if state is None:
+            session.add(
+                ChatReadState(
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    last_read_message_id=message_id,
+                    last_read_at=read_at,
+                ),
+            )
+        else:
+            state.last_read_message_id = message_id
+            state.last_read_at = read_at
+        await session.flush()
+
+    @classmethod
+    async def set_owner_role(
+        cls,
+        session: AsyncSession,
+        chat_id: uuid.UUID,
+        owner_id: uuid.UUID,
+    ) -> bool:
+        return await cls.set_member_role(session, chat_id, owner_id, "owner")
+
+    @classmethod
+    async def update_chat_fields(
+        cls,
+        session: AsyncSession,
+        chat_id: uuid.UUID,
+        *,
+        title: str | None,
+        description: str | None,
+    ) -> Chat | None:
+        chat = await cls.get_by_id(session, chat_id)
+        if chat is None:
+            return None
+        if title is not None:
+            chat.title = title
+        if description is not None:
+            chat.description = description
+        await session.flush()
+        await session.refresh(chat)
+        return chat

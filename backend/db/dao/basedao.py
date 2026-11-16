@@ -1,4 +1,4 @@
-from typing import List, Type
+from typing import Type
 import uuid
 
 from sqlalchemy import delete, insert, select, update
@@ -9,7 +9,7 @@ class BaseDao[T]:
     model: Type[T]
 
     @classmethod
-    async def add(cls, session: AsyncSession, data: dict) -> T:
+    async def add(cls, session: AsyncSession, data: dict[str, object]) -> T:
         stmt = insert(cls.model).values(**data).returning(cls.model)
         result = await session.execute(stmt)
         await session.flush()
@@ -22,7 +22,7 @@ class BaseDao[T]:
         return result.scalar_one_or_none()
 
     @classmethod
-    async def get_all(cls, session: AsyncSession) -> List[T]:
+    async def get_all(cls, session: AsyncSession) -> list[T]:
         query = select(cls.model)
         res = await session.execute(query)
         return list(res.scalars().all())
@@ -32,7 +32,7 @@ class BaseDao[T]:
         cls,
         session: AsyncSession,
         target_id: uuid.UUID,
-        data: dict,
+        data: dict[str, object],
     ) -> T | None:
         update_data = {k: v for k, v in data.items() if k != "id" and v is not None}
         if not update_data:

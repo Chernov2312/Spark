@@ -26,9 +26,7 @@ class MessagePin(Base):
 
 class ChatReadState(Base):
     __tablename__ = "chat_read_states"
-    __table_args__ = (
-        UniqueConstraint("chat_id", "user_id", name="uq_chat_read_user"),
-    )
+    __table_args__ = (UniqueConstraint("chat_id", "user_id", name="uq_chat_read_user"),)
 
     chat_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("chats.id", ondelete="CASCADE"), nullable=False

@@ -1,5 +1,7 @@
 from enum import StrEnum
+from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,7 +13,7 @@ class YandexStorage(BaseSettings):
     )
 
     YANDEX_CLOUD_KEY_ID: str
-    YANDEX_CLOUD_KEY: str
+    YANDEX_CLOUD_KEY: SecretStr
     BUCKET_NAME: str
     ENDPOINT_URL: str = "https://storage.yandexcloud.net"
 
@@ -27,4 +29,6 @@ class StorageClientMethod(StrEnum):
     PUT = "put_object"
 
 
-yandex_storage = YandexStorage()
+@lru_cache
+def get_storage_settings() -> YandexStorage:
+    return YandexStorage()

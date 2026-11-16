@@ -1,4 +1,5 @@
 from enum import StrEnum
+from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -13,7 +14,9 @@ class AI(BaseSettings):
     )
 
 
-ai_settings = AI()
+@lru_cache
+def get_ai_settings() -> AI:
+    return AI()
 
 
 class AIPrompts(StrEnum):

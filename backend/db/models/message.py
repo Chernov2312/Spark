@@ -24,10 +24,14 @@ class Message(Base):
         ForeignKey("messages.id", ondelete="SET NULL"),
         nullable=True,
     )
+    thread_root_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        nullable=True,
+    )
     edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     text: Mapped[str] = mapped_column(String(1000), nullable=True)
     attachments: Mapped[list["Attachment"]] = relationship("Attachment")
-    reactions_count: Mapped[dict] = mapped_column(
+    reactions_count: Mapped[dict[str, int]] = mapped_column(
         JSONB,
         server_default="{}",
         nullable=False,
@@ -38,4 +42,5 @@ class Message(Base):
             "chat_id",
             sa_text("created_at DESC"),
         ),
+        Index("ix_messages_thread_root_id_created_at", "thread_root_id", "created_at"),
     )

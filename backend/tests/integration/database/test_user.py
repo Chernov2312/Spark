@@ -1,3 +1,5 @@
+import uuid
+
 from db.dao.chat_dao import ChatDao
 from db.dao.user_dao import UserDao
 from db.models import Chat, User
@@ -40,3 +42,26 @@ async def test_get_users_from_chat(
     db_userchat = db_userchat[0]
     chat = await ChatDao.get_chat_with_users(session=db_session, chat_id=db_userchat.id)
     assert db_user_from_chat.id == chat.users[0].id
+
+
+async def test_case_insensitive_email_password_reset_and_verification(
+    db_session,
+    db_user: User,
+):
+    assert (
+        await UserDao.get_by_email_case_insensitive(db_session, db_user.email.upper())
+    ).id == db_user.id
+    assert (
+        await UserDao.get_by_email_case_insensitive(
+            db_session,
+            "missing@example.com",
+        )
+        is None
+    )
+
+    updated = await UserDao.reset_password(db_session, db_user.id, "new-hash")
+    assert updated.password == "new-hash"
+    assert await UserDao.reset_password(db_session, uuid.uuid4(), "unused") is None
+
+    verified = await UserDao.mark_verified(db_session, db_user.id)
+    assert verified.is_verified is True

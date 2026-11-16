@@ -10,6 +10,7 @@ from schemas.attachment import AttachmentRequest, AttachmentResponse
 class MessageRequest(BaseModel):
     text: str | None = None
     reply_to_id: uuid.UUID | None = None
+    thread_root_id: uuid.UUID | None = None
     attachments: list[AttachmentRequest] = Field(default_factory=list, max_length=10)
 
     @model_validator(mode="after")
@@ -29,6 +30,8 @@ class MessageResponse(BaseModel):
     text: str | None = None
     reply_to_id: uuid.UUID | None = None
     reply_to_text: str | None = None
+    thread_root_id: uuid.UUID | None = None
+    thread_reply_count: int = 0
     edited_at: datetime | None = None
     is_pinned: bool = False
     user_reaction: str | None = None
@@ -41,6 +44,10 @@ class MessageHistory(BaseModel):
     messages: List[MessageResponse]
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MessageForwardRequest(BaseModel):
+    target_chat_id: uuid.UUID
 
 
 class MessageInternalDTO(MessageRequest):

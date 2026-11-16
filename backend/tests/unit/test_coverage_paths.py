@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 import uuid
@@ -14,6 +14,7 @@ from api.v1 import reactions as reactions_api
 from api.v1 import user as user_api
 from api.v1.websockets import chat_typing
 from core.storage import S3Storage
+from db.dao.message_dao import MessageDao
 from schemas.attachment import AttachmentRequest, AvatarUrlRequest
 from schemas.chats import ChatAddUserRequest, NewChatRequest, PatchChatRequest
 from schemas.reactions import ReactionsRequest
@@ -28,6 +29,8 @@ def mock_s3(monkeypatch, *, temporary_url="https://signed.test/file", delete=Tru
     storage.get_temporary_url = AsyncMock(return_value=temporary_url)
     storage.delete_file_by_key = AsyncMock(return_value=delete)
     monkeypatch.setattr(media_api, "S3Storage", MagicMock(return_value=storage))
+    monkeypatch.setattr(user_api, "S3Storage", MagicMock(return_value=storage))
+    monkeypatch.setattr(chats_api, "S3Storage", MagicMock(return_value=storage))
     monkeypatch.setattr(user_api, "S3Storage", MagicMock(return_value=storage))
     monkeypatch.setattr(chats_api, "S3Storage", MagicMock(return_value=storage))
     return storage
@@ -145,35 +148,29 @@ async def test_create_attachment_supports_user_and_chat_ownership(
 async def test_download_attachment_signs_filename_for_chat_member(
     monkeypatch,
     db_session,
+    chat_id,
+    id_second_user,
 ):
     storage = mock_s3(monkeypatch)
-    user_id = uuid.uuid4()
-    chat_id = uuid.uuid4()
-    attachment = SimpleNamespace(
-        id=uuid.uuid4(),
-        file_key="user_message/photo.jpg",
-        file_name="летний отпуск.jpg",
-        user_id=None,
-        chat_id=chat_id,
-    )
-    monkeypatch.setattr(
-        media_api.AttachmentDao,
-        "get_by_id",
-        AsyncMock(return_value=attachment),
-    )
-    monkeypatch.setattr(
-        media_api.ChatDao,
-        "get_chat_with_users",
-        AsyncMock(return_value=SimpleNamespace(users=[SimpleNamespace(id=user_id)])),
+    attachment = await media_api.AttachmentDao.add(
+        db_session,
+        {
+            "chat_id": chat_id,
+            "file_key": "user_message/photo.jpg",
+            "file_name": "летний отпуск.jpg",
+            "file_size": 12,
+            "mime_type": "image/jpeg",
+            "is_avatar": False,
+        },
     )
 
     response = await media_api.download_attachment(
         attachment.id,
         session=db_session,
-        user_id=user_id,
+        user_id=id_second_user,
     )
 
-    assert response["url"] == "https://signed.test/file"
+    assert response.url == "https://signed.test/file"
     storage.get_temporary_url.assert_awaited_once()
     call = storage.get_temporary_url.await_args
     assert call.args == (attachment.file_key,)
@@ -187,24 +184,19 @@ async def test_download_attachment_signs_filename_for_chat_member(
 async def test_download_attachment_hides_chat_file_from_non_member(
     monkeypatch,
     db_session,
+    chat_id,
 ):
     mock_s3(monkeypatch)
-    attachment = SimpleNamespace(
-        id=uuid.uuid4(),
-        file_key="user_message/photo.jpg",
-        file_name="photo.jpg",
-        user_id=None,
-        chat_id=uuid.uuid4(),
-    )
-    monkeypatch.setattr(
-        media_api.AttachmentDao,
-        "get_by_id",
-        AsyncMock(return_value=attachment),
-    )
-    monkeypatch.setattr(
-        media_api.ChatDao,
-        "get_chat_with_users",
-        AsyncMock(return_value=SimpleNamespace(users=[])),
+    attachment = await media_api.AttachmentDao.add(
+        db_session,
+        {
+            "chat_id": chat_id,
+            "file_key": "user_message/photo.jpg",
+            "file_name": "photo.jpg",
+            "file_size": 12,
+            "mime_type": "image/jpeg",
+            "is_avatar": False,
+        },
     )
 
     with pytest.raises(HTTPException) as exc:
@@ -239,21 +231,7 @@ async def test_auth_register_hashes_password_and_sends_verification(
     monkeypatch,
     db_session,
 ):
-    user_id = uuid.uuid4()
-    new_user = SimpleNamespace(
-        id=user_id,
-        username="new",
-        tag="new",
-        email="new@example.com",
-    )
-    add = AsyncMock(return_value=new_user)
     mail = MagicMock()
-    monkeypatch.setattr(
-        auth_api.UserDao,
-        "get_by_username_or_email",
-        AsyncMock(return_value=None),
-    )
-    monkeypatch.setattr(auth_api.UserDao, "add", add)
     monkeypatch.setattr(auth_api, "get_password_hash", MagicMock(return_value="hashed"))
     monkeypatch.setattr(auth_api.send_mail_task, "delay", mail)
 
@@ -266,53 +244,54 @@ async def test_auth_register_hashes_password_and_sends_verification(
         session=db_session,
     )
 
-    assert add.await_args.args[1]["password"] == "hashed"
+    new_user = await auth_api.UserDao.get_by_id(db_session, response.id)
+    assert new_user.password == "hashed"
     mail.assert_called_once_with(
         "new@example.com",
         "new",
-        str(user_id),
-        auth_api.settings.FRONTEND_BASE_URL,
+        str(response.id),
+        auth_api.get_settings().FRONTEND_BASE_URL,
     )
-    assert response.id == user_id
+    categories = await auth_api.SocialDao.list_friend_categories(
+        db_session,
+        response.id,
+    )
+    folders = await auth_api.SocialDao.list_chat_folders(db_session, response.id)
+    assert len(categories) == 3
+    assert len(folders) == 3
 
 
 async def test_verification_marks_user_verified_and_returns_access_token(
     monkeypatch,
     db_session,
 ):
-    user_id = uuid.uuid4()
-    current_user = SimpleNamespace(
-        id=user_id,
-        username="user",
-        tag="user",
-        email="user@example.com",
-        is_verified=False,
+    current_user = await auth_api.UserDao.add(
+        db_session,
+        {
+            "username": "verification-user",
+            "tag": "verification-user",
+            "email": "verification-user@example.com",
+            "password": "hashed",
+            "is_verified": False,
+        },
     )
-    commit = AsyncMock(wraps=db_session.commit)
-    monkeypatch.setattr(db_session, "commit", commit)
     monkeypatch.setattr(
         auth_api.jwt,
         "decode",
         MagicMock(
             return_value={
-                "sub": "user@example.com",
+                "sub": current_user.email,
                 "username": "user",
-                "user_id": str(user_id),
+                "user_id": str(current_user.id),
                 "exp": 123,
             },
         ),
-    )
-    monkeypatch.setattr(
-        auth_api.UserDao,
-        "get_by_username_or_email",
-        AsyncMock(return_value=current_user),
     )
     monkeypatch.setattr(auth_api, "create_access_token", MagicMock(return_value="access"))
 
     response = await auth_api.verification("valid-token", db_session)
 
     assert current_user.is_verified is True
-    commit.assert_awaited_once()
     assert response.access_token == "access"
 
 
@@ -355,21 +334,18 @@ async def test_login_rejects_bad_credentials_and_unverified_user(
     assert exc.value.status_code == 403
 
 
-async def test_user_get_me_signs_avatar_urls(monkeypatch, db_session):
-    user_id = uuid.uuid4()
-    created_at = datetime.now(timezone.utc)
-    user = SimpleNamespace(
-        id=user_id,
-        username="user",
-        tag="user",
-        email="user@example.com",
-        created_at=created_at,
-        avatars=[SimpleNamespace(file_key="avatar/key")],
-    )
-    monkeypatch.setattr(
-        user_api.UserDao,
-        "get_user_with_avatars",
-        AsyncMock(return_value=user),
+async def test_user_get_me_signs_avatar_urls(monkeypatch, db_session, id_first_user):
+    user_id = id_first_user
+    await media_api.AttachmentDao.add(
+        db_session,
+        {
+            "user_id": user_id,
+            "file_key": "avatar/key",
+            "file_name": "avatar.png",
+            "file_size": 12,
+            "mime_type": "image/png",
+            "is_avatar": True,
+        },
     )
     storage = mock_s3(monkeypatch)
 
@@ -385,6 +361,7 @@ async def test_user_get_me_signs_avatar_urls(monkeypatch, db_session):
 async def test_user_update_not_found_rolls_back_avatar_delete_and_search(
     monkeypatch,
     db_session,
+    id_first_user,
 ):
     user_id = uuid.uuid4()
     monkeypatch.setattr(user_api.UserDao, "update_by_id", AsyncMock(return_value=None))
@@ -396,39 +373,41 @@ async def test_user_update_not_found_rolls_back_avatar_delete_and_search(
         )
     assert exc.value.status_code == 404
 
-    monkeypatch.setattr(
-        user_api.AttachmentDao,
-        "delete_attachment_by_url_and_user_id",
-        AsyncMock(return_value=object()),
+    image = await media_api.AttachmentDao.add(
+        db_session,
+        {
+            "user_id": id_first_user,
+            "file_key": "avatar/key",
+            "file_name": "avatar.png",
+            "file_size": 12,
+            "mime_type": "image/png",
+            "is_avatar": True,
+        },
     )
-    await db_session.begin()
     mock_s3(monkeypatch, delete=False)
     with pytest.raises(HTTPException) as exc:
         await user_api.delete_avatar(
             Avatar(url="avatar/key"),
             session=db_session,
-            current_user_id=user_id,
+            current_user_id=id_first_user,
         )
     assert exc.value.status_code == 504
-    assert not db_session.in_transaction()
+    assert await user_api.AttachmentDao.get_by_id(db_session, image.id) is not None
 
-    monkeypatch.setattr(user_api.UserDao, "find_by_username", AsyncMock(return_value=[]))
     response = await user_api.get_user_by_username(
         UserQuery(username="search"),
-        user_id,
+        id_first_user,
         db_session,
     )
     assert response.users == []
 
 
-async def test_user_delete_avatar_missing_and_success(monkeypatch, db_session):
-    user_id = uuid.uuid4()
-    delete_attachment = AsyncMock(return_value=None)
-    monkeypatch.setattr(
-        user_api.AttachmentDao,
-        "delete_attachment_by_url_and_user_id",
-        delete_attachment,
-    )
+async def test_user_delete_avatar_missing_and_success(
+    monkeypatch,
+    db_session,
+    id_first_user,
+):
+    user_id = id_first_user
     with pytest.raises(HTTPException) as exc:
         await user_api.delete_avatar(
             Avatar(url="missing"),
@@ -437,7 +416,17 @@ async def test_user_delete_avatar_missing_and_success(monkeypatch, db_session):
         )
     assert exc.value.status_code == 404
 
-    delete_attachment.return_value = object()
+    image = await user_api.AttachmentDao.add(
+        db_session,
+        {
+            "user_id": user_id,
+            "file_key": "avatar/key",
+            "file_name": "avatar.png",
+            "file_size": 12,
+            "mime_type": "image/png",
+            "is_avatar": True,
+        },
+    )
     mock_s3(monkeypatch, delete=True)
     response = await user_api.delete_avatar(
         Avatar(url="avatar/key"),
@@ -446,18 +435,16 @@ async def test_user_delete_avatar_missing_and_success(monkeypatch, db_session):
     )
     assert isinstance(response, Response)
     assert response.status_code == 204
+    assert await user_api.AttachmentDao.get_by_id(db_session, image.id) is None
 
 
 async def test_reaction_routes_cover_add_change_remove_and_missing_reaction(
-    monkeypatch,
     db_session,
     test_redis_client,
 ):
     message_id, user_id, chat_id = uuid.uuid4(), uuid.uuid4(), str(uuid.uuid4())
     redis = test_redis_client
     await redis.set(f"message:chat:{message_id}", chat_id)
-    invalidate = AsyncMock()
-    monkeypatch.setattr(reactions_api, "invalidate_chat_history", invalidate)
 
     await reactions_api.post_reactions(
         message_id,
@@ -481,31 +468,33 @@ async def test_reaction_routes_cover_add_change_remove_and_missing_reaction(
 
     assert await redis.get(f"message:user_reaction:{message_id}:{user_id}") is None
     assert await redis.smembers(f"message:users:{message_id}") == set()
-    assert invalidate.await_count == 3
+    assert await redis.get(f"messages:history-version:{chat_id}") == "3"
 
 
 async def test_reaction_route_falls_back_to_database_for_chat_id(
-    monkeypatch,
     db_session,
     test_redis_client,
+    chat_id,
+    id_first_user,
 ):
-    message_id, user_id, chat_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    user_id = id_first_user
     redis = test_redis_client
-    lookup = AsyncMock(return_value=chat_id)
-    invalidate = AsyncMock()
-    monkeypatch.setattr(reactions_api.MessageDao, "get_chat_id_by_message", lookup)
-    monkeypatch.setattr(reactions_api, "invalidate_chat_history", invalidate)
+    message = await MessageDao.create_with_attachments(
+        db_session,
+        {"chat_id": chat_id, "user_id": id_first_user, "text": "reaction target"},
+        [],
+    )
 
     await reactions_api.post_reactions(
-        message_id,
+        message.id,
         ReactionsRequest(emoji="🔥"),
         user_id,
         redis,
         db_session,
     )
 
-    lookup.assert_awaited_once()
-    invalidate.assert_awaited_once_with(redis, chat_id)
+    assert await redis.get(f"message:chat:{message.id}") is None
+    assert await redis.get(f"messages:history-version:{chat_id}") == "1"
 
 
 async def test_chat_routes_cover_empty_avatar_lists_permissions_and_missing_chat(
@@ -565,74 +554,58 @@ async def test_chat_routes_cover_empty_avatar_lists_permissions_and_missing_chat
 
 
 async def test_chat_route_rejects_missing_invites_and_updates_members(
-    monkeypatch,
     db_session,
+    id_first_user,
+    id_second_user,
 ):
-    user_id, chat_id = uuid.uuid4(), uuid.uuid4()
-    missing_user_ids = AsyncMock(return_value=[uuid.uuid4()])
-    monkeypatch.setattr(chats_api.ChatDao, "get_missing_user_ids", missing_user_ids)
-    request = NewChatRequest(title="chat", description="", invited_user_ids=[])
+    owner_id = id_first_user
+    request_with_missing_invite = NewChatRequest(
+        title="chat with missing invite",
+        description="",
+        invited_user_ids=[uuid.uuid4()],
+    )
     with pytest.raises(HTTPException) as exc:
-        await chats_api.post_new_chat(request, db_session, user_id)
+        await chats_api.post_new_chat(
+            request_with_missing_invite,
+            db_session,
+            owner_id,
+        )
     assert exc.value.status_code == 404
 
-    created_at = datetime.now(timezone.utc)
-    chat = SimpleNamespace(
-        owner_id=str(user_id),
-        id=chat_id,
-        title="chat",
-        description="",
-        created_at=created_at,
+    request = NewChatRequest(
+        title="container-created-chat",
+        description="original description",
+        invited_user_ids=[id_second_user],
     )
-    monkeypatch.setattr(
-        chats_api.ChatDao,
-        "get_missing_user_ids",
-        AsyncMock(return_value=[]),
-    )
-    monkeypatch.setattr(chats_api.ChatDao, "add", AsyncMock(return_value=chat))
-    monkeypatch.setattr(chats_api.ChatDao, "add_users_to_chat", AsyncMock())
-    monkeypatch.setattr(chats_api, "S3Storage", MagicMock())
-    response = await chats_api.post_new_chat(request, db_session, user_id)
-    assert response.id == chat_id
+    created = await chats_api.post_new_chat(request, db_session, owner_id)
+    assert created.title == request.title
 
-    existing_chat = SimpleNamespace(
-        id=chat_id,
-        owner_id=str(user_id),
-        description="old",
-        title="old",
-        created_at=created_at,
-        updated_at=created_at,
-    )
-    monkeypatch.setattr(
-        chats_api.ChatDao,
-        "get_chat_with_users",
-        AsyncMock(return_value=existing_chat),
-    )
     updated = await chats_api.update_chat(
-        str(chat_id),
-        PatchChatRequest(title="new", description="changed"),
+        created.id,
+        PatchChatRequest(title="renamed-container-chat", description="changed"),
         db_session,
-        str(user_id),
+        owner_id,
     )
-    assert updated.title == "new"
+    assert updated.title == "renamed-container-chat"
     assert updated.description == "changed"
 
-    commit = AsyncMock(wraps=db_session.commit)
-    monkeypatch.setattr(db_session, "commit", commit)
-    monkeypatch.setattr(db_session, "refresh", AsyncMock())
-    monkeypatch.setattr(
-        chats_api.ChatDao,
-        "get_missing_user_ids",
-        AsyncMock(return_value=[]),
+    third_user = await chats_api.UserDao.add(
+        db_session,
+        {
+            "username": "third-chat-user",
+            "email": "third-chat-user@example.com",
+            "password": "hashed",
+        },
     )
     added = await chats_api.add_users_in_chat(
-        ChatAddUserRequest(user_ids=[uuid.uuid4()]),
-        str(chat_id),
+        ChatAddUserRequest(user_ids=[third_user.id]),
+        created.id,
         db_session,
-        str(user_id),
+        owner_id,
     )
     assert added.status == "success"
-    commit.assert_awaited_once()
+    updated_chat = await chats_api.ChatDao.get_chat_with_users(db_session, created.id)
+    assert third_user.id in {user.id for user in updated_chat.users}
 
 
 async def test_typing_websocket_closes_when_token_is_invalid(
@@ -661,37 +634,42 @@ async def test_typing_websocket_publishes_events_and_cleans_up(
     redis = test_redis_client
     pubsub = redis.pubsub()
     await pubsub.subscribe(f"chat:{chat_id}")
+
+    received = []
+    incoming_events = [
+        {
+            "event": "message:new",
+            "data": {
+                "id": str(message_id),
+                "text": "hello",
+                "chat_id": str(chat_id),
+                "user_id": str(user_id),
+            },
+        },
+        {"event": "user:typing", "data": {"chat_id": str(chat_id)}},
+    ]
+
+    async def receive_json():
+        if not incoming_events:
+            raise WebSocketDisconnect()
+        await asyncio.sleep(0.05)
+        return incoming_events.pop(0)
+
     websocket = SimpleNamespace(
         app=SimpleNamespace(state=SimpleNamespace(redis=redis)),
         accept=AsyncMock(),
         close=AsyncMock(),
-        receive_json=AsyncMock(
-            side_effect=[
-                {
-                    "event": "message:new",
-                    "data": {
-                        "id": str(message_id),
-                        "text": "hello",
-                        "chat_id": str(chat_id),
-                        "user_id": str(user_id),
-                    },
-                },
-                {"event": "user:typing", "data": {"chat_id": str(chat_id)}},
-                WebSocketDisconnect(),
-            ],
-        ),
+        receive_json=receive_json,
+        send_text=AsyncMock(side_effect=received.append),
     )
     manager = SimpleNamespace(add=AsyncMock(), remove=AsyncMock())
-    listener = AsyncMock()
     monkeypatch.setattr(
         chat_typing,
         "get_id_current_user",
         AsyncMock(return_value=user_id),
     )
     monkeypatch.setattr(chat_typing, "local_manager", manager)
-    monkeypatch.setattr(chat_typing, "redis_pubsub_listener", listener)
-
-    await chat_typing.on_message(websocket, chat_id, "token")
+    await chat_typing.on_message(websocket, chat_id, "token", False)
 
     published_events = []
     while len(published_events) < 2:
@@ -702,5 +680,6 @@ async def test_typing_websocket_publishes_events_and_cleans_up(
     assert '"event":"user:typing"' in published_events[1]
     assert str(user_id) in published_events[1]
     assert await redis.smembers(f"chat:{chat_id}:users") == set()
+    assert any('"event":"user:typing"' in payload for payload in received)
     manager.remove.assert_awaited_once_with(user_id)
     await pubsub.aclose()

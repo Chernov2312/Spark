@@ -50,6 +50,43 @@ async function mockSocialApi(page: Page) {
   });
 }
 
+test("chat history scrolls inside the viewport", async ({ page }, testInfo) => {
+  await mockSocialApi(page);
+  await page.routeWebSocket(/\/ws(?:\?|$)/, (socket) => socket.close());
+  await page.route("**/api/v1/chats", (route) => route.fulfill({ json: { chats: chatFixtures } }));
+  await page.route("**/api/v1/chats/*/threads", (route) => route.fulfill({ json: { messages: [] } }));
+  await page.route("**/api/v1/chats/*/members", (route) => route.fulfill({ json: [] }));
+  await page.route(/\/api\/v1\/chats\/[^/]+\/messages(?:\?.*)?$/, (route) => route.fulfill({ json: {
+    messages: Array.from({ length: 50 }, (_, index) => ({
+      id: `scroll-message-${index}`, chat_id: chatFixtures[0].id, user_id: user.id,
+      text: `Message ${index}`, attachments: [], created_at: "2026-01-01T12:00:00Z",
+    })),
+  } }));
+  await openAuthenticatedChat(page, chatFixtures[0].id);
+  const history = page.locator(".chat-view__messages");
+  await expect(page.locator(".msg")).toHaveCount(50);
+  expect(await history.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1)).toBe(true);
+  await history.evaluate((node) => { node.scrollTop = 0; });
+  await page.locator(".chat-view__composer textarea").fill("Draft while reading history");
+  expect(await history.evaluate((node) => node.scrollTop)).toBe(0);
+  await expect(page.getByRole("button", { name: "Отправить", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Профиль чата", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Открыть информацию о чате", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Информация о чате" })).toBeVisible();
+  await expect(page.getByLabel("Моя картинка чата", { exact: true })).toBeAttached();
+  await page.getByRole("button", { name: "← Вернуться к сообщениям" }).click();
+  await page.getByRole("button", { name: "Открыть поиск", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Поиск по сообщениям" })).toBeVisible();
+  await expect(page.getByLabel("Тип вложения", { exact: true })).toBeHidden();
+  await page.locator(".message-search__filters summary").click();
+  await expect(page.getByLabel("Тип вложения", { exact: true })).toBeVisible();
+  const bounds = await page.locator(".message-search__filter-fields").boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await page.screenshot({ path: testInfo.outputPath("chat-search.png") });
+});
+
 async function mockChatMediaApi(page: Page) {
   let uploadNumber = 0;
   let attachmentNumber = 0;

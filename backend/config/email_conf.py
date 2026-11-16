@@ -1,3 +1,6 @@
+from functools import lru_cache
+
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,7 +12,9 @@ class Email(BaseSettings):
     )
     FROM_EMAIL: str
     LOGIN_EMAIL: str
-    PASSWORD_EMAIL: str
+    PASSWORD_EMAIL: SecretStr
 
 
-email = Email()
+@lru_cache
+def get_email_settings() -> Email:
+    return Email()

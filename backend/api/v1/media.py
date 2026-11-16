@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags, StorageCategory, StorageClientMethod
 from core.security import get_id_current_user
+from core.chat_appearance import create_personal_avatar_upload
 from core.storage import S3Storage
 from db.dao.attachment_dao import AttachmentDao
 from db.dao.chat_dao import ChatDao
@@ -17,6 +18,7 @@ from schemas.attachment import (
     AvatarUrlRequest,
     AvatarUrlResponse,
 )
+from schemas.responses import AttachmentDownloadResponse
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 attachment_router = APIRouter(prefix="/api/v1/attachments", tags=[RouteTags.ATTACHMENT])
@@ -27,7 +29,7 @@ async def download_attachment(
     attachment_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     user_id: uuid.UUID = Depends(get_id_current_user),
-) -> dict[str, str]:
+) -> AttachmentDownloadResponse:
     attachment = await AttachmentDao.get_by_id(session, attachment_id)
     if attachment is None or not attachment.file_key:
         raise HTTPException(
@@ -55,14 +57,21 @@ async def download_attachment(
         attachment.file_key,
         response_content_disposition=disposition,
     )
-    return {"url": download_url}
+    return AttachmentDownloadResponse(url=download_url)
 
 
 @attachment_router.post("/temporary-url")
 async def get_temprorary_url_for_create_media(
     data: AvatarUrlRequest,
     user_id: uuid.UUID = Depends(get_id_current_user),
+    session: AsyncSession = Depends(get_session),
 ) -> AvatarUrlResponse:
+    if data.type == "personal_chat_avatar":
+        try:
+            chat_id = uuid.UUID(data.target_id)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid chat ID") from None
+        return await create_personal_avatar_upload(session, user_id, chat_id, data.file_content)
     s3 = S3Storage()
     if data.type == "message":
         file_key = s3.create_file_key(
