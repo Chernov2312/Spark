@@ -1,6 +1,6 @@
 FROM python:3.13-slim
 
-LABEL maintainer="Vladimir Max Artem"
+LABEL maintainer="Vladimir Max"
 LABEL description="Spark"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
