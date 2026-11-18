@@ -45,7 +45,9 @@ async def test_send_verification_email_builds_and_sends_html_message(monkeypatch
     assert "https://spark.example/verify-email/" in plain_content
 
 
-async def test_send_verification_email_swallows_smtp_errors(monkeypatch):
+async def test_send_verification_email_propagates_smtp_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     smtp_context = MagicMock()
     smtp_context.__enter__.side_effect = OSError("smtp unavailable")
     monkeypatch.setattr(
@@ -54,12 +56,13 @@ async def test_send_verification_email_swallows_smtp_errors(monkeypatch):
         MagicMock(return_value=smtp_context),
     )
 
-    await send_email.send_verification_email(
-        "person@example.com",
-        "person",
-        "id",
-        "https://example.com",
-    )
+    with pytest.raises(OSError, match="smtp unavailable"):
+        await send_email.send_verification_email(
+            "person@example.com",
+            "person",
+            "id",
+            "https://example.com",
+        )
 
 
 @pytest.mark.parametrize("fail_upload", [False, True])

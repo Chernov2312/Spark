@@ -2,19 +2,22 @@ import asyncio
 from contextlib import asynccontextmanager
 import uuid
 
-from sqlalchemy import select
+import pytest
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 from tasks import config_celery
 from tasks import message as message_tasks
 from tasks import message_reactions as reaction_tasks
+from testcontainers.postgres import PostgresContainer
+from testcontainers.redis import RedisContainer
 
 from db.dao.chat_dao import ChatDao
 from db.dao.message_dao import MessageDao
 from db.dao.message_reactions_dao import MessageReactionDao
 from db.dao.user_dao import UserDao
 from db.database import Base
-from db.models import MessageReaction
+from db.models import Message, MessageReaction, User
 from infrastructure.redis.client import create_redis_client
 from infrastructure.redis.message_queue import enqueue_message, message_queue_key
 from schemas.message import MessageInternalDTO
@@ -64,14 +67,16 @@ async def create_user_and_chat(session_maker):
 
 
 def test_celery_message_and_reaction_tasks_with_testcontainers(
-    postgres_container,
-    redis_container,
-    monkeypatch,
-):
+    postgres_container: PostgresContainer,
+    redis_container: RedisContainer,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
     redis_url = redis_url_for(redis_container)
     db_url = postgres_container.get_connection_url(driver="asyncpg")
     task_engine = create_async_engine(db_url, poolclass=NullPool)
     session_maker = async_sessionmaker(task_engine, expire_on_commit=False)
+    request.addfinalizer(lambda: asyncio.run(task_engine.dispose()))
 
     monkeypatch.setattr(config_celery, "engine", task_engine)
     monkeypatch.setattr(message_tasks, "async_session_maker", session_maker)
@@ -79,12 +84,18 @@ def test_celery_message_and_reaction_tasks_with_testcontainers(
     monkeypatch.setattr(message_tasks, "get_redis", task_redis_context(redis_url))
     monkeypatch.setattr(reaction_tasks, "get_redis", task_redis_context(redis_url))
 
+    async def delete_test_data(user_id: uuid.UUID, chat_id: uuid.UUID) -> None:
+        async with session_maker.begin() as session:
+            await session.execute(delete(Message).where(Message.chat_id == chat_id))
+            await session.execute(delete(User).where(User.id == user_id))
+
     async def prepare_message_task():
         async with task_engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
         redis = create_redis_client(redis_url)
         await redis.flushdb()
         user_id, chat_id = await create_user_and_chat(session_maker)
+        request.addfinalizer(lambda: asyncio.run(delete_test_data(user_id, chat_id)))
         message = MessageInternalDTO(
             id=uuid.uuid4(),
             chat_id=chat_id,
@@ -149,7 +160,4 @@ def test_celery_message_and_reaction_tasks_with_testcontainers(
         assert await redis.scard("message:reactions:dirty_set") == 0
         await redis.aclose()
 
-    try:
-        asyncio.run(verify_reaction_task())
-    finally:
-        asyncio.run(task_engine.dispose())
+    asyncio.run(verify_reaction_task())

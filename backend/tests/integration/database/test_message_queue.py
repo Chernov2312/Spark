@@ -1,21 +1,25 @@
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import uuid
 
 import pytest
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import async_sessionmaker
+import pytest_asyncio
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncEngine, AsyncSession
 from tasks import message as message_tasks
 
 from db.dao.attachment_dao import AttachmentDao
 from db.dao.chat_dao import ChatDao
 from db.dao.message_dao import MessageDao
 from db.dao.user_dao import UserDao
-from db.models import Message
+from db.models import Message, User
+from infrastructure.redis.client import Redis
 from infrastructure.redis.message_queue import enqueue_message, message_queue_key
-from main import app
 from schemas.attachment import AttachmentRequest
 from schemas.message import MessageInternalDTO
+
+PersistedChat = tuple[async_sessionmaker[AsyncSession], uuid.UUID, uuid.UUID]
 
 
 def make_message(chat_id, user_id, attachment_id=None):
@@ -41,9 +45,10 @@ def make_message(chat_id, user_id, attachment_id=None):
     )
 
 
-async def create_persisted_chat(db_engine):
+@pytest_asyncio.fixture
+async def persisted_chat(db_engine: AsyncEngine) -> AsyncIterator[PersistedChat]:
     session_factory = async_sessionmaker(db_engine, expire_on_commit=False)
-    async with session_factory() as session:
+    async with session_factory.begin() as session:
         user = await UserDao.add(
             session,
             {
@@ -62,16 +67,22 @@ async def create_persisted_chat(db_engine):
             },
         )
         await ChatDao.add_users_to_chat(session, chat.id, [user.id])
-        await session.commit()
-        return session_factory, user.id, chat.id
+        user_id, chat_id = user.id, chat.id
+
+    try:
+        yield session_factory, user_id, chat_id
+    finally:
+        async with session_factory.begin() as session:
+            await session.execute(delete(Message).where(Message.chat_id == chat_id))
+            await session.execute(delete(User).where(User.id == user_id))
 
 
 async def test_message_flush_commits_attachments_and_is_idempotent(
-    db_engine,
-    test_redis_client,
-    monkeypatch,
-):
-    session_factory, user_id, chat_id = await create_persisted_chat(db_engine)
+    persisted_chat: PersistedChat,
+    test_redis_client: Redis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory, user_id, chat_id = persisted_chat
     attachment_file_key = f"user_message/{user_id}/test.txt"
     async with session_factory() as session:
         attachment = await AttachmentDao.add(
@@ -90,7 +101,7 @@ async def test_message_flush_commits_attachments_and_is_idempotent(
     queued_message = make_message(chat_id, user_id, attachment_id)
     queued_message.attachments[0].file_key = attachment_file_key
     queued_message.attachments[0].text = "Text extracted from the uploaded document"
-    redis = app.state.redis
+    redis = test_redis_client
 
     @asynccontextmanager
     async def redis_context():
@@ -100,7 +111,7 @@ async def test_message_flush_commits_attachments_and_is_idempotent(
     monkeypatch.setattr(
         message_tasks,
         "async_session_maker",
-        async_sessionmaker(db_engine, expire_on_commit=False),
+        session_factory,
     )
     await enqueue_message(redis, queued_message)
 
@@ -137,13 +148,13 @@ async def test_message_flush_commits_attachments_and_is_idempotent(
 
 
 async def test_message_flush_keeps_redis_entry_when_database_commit_fails(
-    db_engine,
-    test_redis_client,
-    monkeypatch,
-):
-    _, user_id, chat_id = await create_persisted_chat(db_engine)
+    persisted_chat: PersistedChat,
+    test_redis_client: Redis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory, user_id, chat_id = persisted_chat
     queued_message = make_message(chat_id, user_id)
-    redis = app.state.redis
+    redis = test_redis_client
 
     @asynccontextmanager
     async def redis_context():
@@ -156,7 +167,7 @@ async def test_message_flush_keeps_redis_entry_when_database_commit_fails(
     monkeypatch.setattr(
         message_tasks,
         "async_session_maker",
-        async_sessionmaker(db_engine, expire_on_commit=False),
+        session_factory,
     )
     monkeypatch.setattr(MessageDao, "bulk_insert_messages", fail_insert)
     await enqueue_message(redis, queued_message)
