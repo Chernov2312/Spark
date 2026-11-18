@@ -7,24 +7,48 @@ from db.dao.message_dao import MessageDao
 from db.models import Attachment, Message
 
 
-async def test_latest_messages_for_chats_include_attachments_and_thread_replies(db_session, db_userchat):
+async def test_latest_messages_for_chats_include_attachments_and_thread_replies(
+    db_session, db_userchat
+):
     chat, member = db_userchat
     root = await MessageDao.create_with_attachments(
-        db_session, {"chat_id": chat.id, "user_id": member.id, "text": "first",
-                     "created_at": datetime(2026, 1, 1)}, [],
+        db_session,
+        {
+            "chat_id": chat.id,
+            "user_id": member.id,
+            "text": "first",
+            "created_at": datetime(2026, 1, 1),
+        },
+        [],
     )
     latest = await MessageDao.create_with_attachments(
-        db_session, {"chat_id": chat.id, "user_id": member.id, "text": None,
-                     "created_at": datetime(2026, 1, 2), "thread_root_id": root.id},
-        [{"chat_id": chat.id, "file_key": "voice.ogg", "file_name": "voice.ogg",
-          "file_size": 3, "mime_type": "audio/ogg"}],
+        db_session,
+        {
+            "chat_id": chat.id,
+            "user_id": member.id,
+            "text": None,
+            "created_at": datetime(2026, 1, 2),
+            "thread_root_id": root.id,
+        },
+        [
+            {
+                "chat_id": chat.id,
+                "file_key": "voice.ogg",
+                "file_name": "voice.ogg",
+                "file_size": 3,
+                "mime_type": "audio/ogg",
+            }
+        ],
     )
     messages = await MessageDao.get_latest_for_chats(db_session, {chat.id, uuid.uuid4()})
     assert [message.id for message in messages] == [latest.id]
     assert messages[0].attachments[0].mime_type == "audio/ogg"
     assert await MessageDao.get_latest_for_chats(db_session, set()) == []
     await MessageDao.delete_by_id(db_session, latest.id, member.id)
-    assert [message.id for message in await MessageDao.get_latest_for_chats(db_session, {chat.id})] == [root.id]
+    assert [
+        message.id
+        for message in await MessageDao.get_latest_for_chats(db_session, {chat.id})
+    ] == [root.id]
 
 
 async def test_get_chat_history_orders_pages_and_checks_membership(

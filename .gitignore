@@ -140,3 +140,5 @@ whisper-cache/
 celery*
 frontend/playwright-report/
 frontend/test-results/
+
+.ruff_cache
