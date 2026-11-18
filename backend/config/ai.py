@@ -1,12 +1,20 @@
 from enum import StrEnum
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class AI(BaseSettings):
-    OLLAMA_BASE_URL: str = "http://ollama:11434"
-    OLLAMA_MODEL: str = "qwen3:0.6b"
+    OPENAI_BASE_URL: str = Field(
+        default="http://ollama:11434/v1",
+        validation_alias=AliasChoices("OPENAI_BASE_URL", "OLLAMA_BASE_URL"),
+    )
+    OPENAI_MODEL: str = Field(
+        default="qwen3:0.6b",
+        validation_alias=AliasChoices("OPENAI_MODEL", "OLLAMA_MODEL"),
+    )
+    OPENAI_API_KEY: SecretStr = SecretStr("ollama")
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),
         env_file_encoding="utf-8",

@@ -44,10 +44,10 @@ class AIService:
         client: AsyncOpenAI | None = None,
     ) -> None:
         ai_settings = get_ai_settings()
-        self.model = model_name or ai_settings.OLLAMA_MODEL
-        self.base_url = (ollama_base_url or ai_settings.OLLAMA_BASE_URL).rstrip(
-            "/"
-        ) + "/v1"
+        self.model = model_name or ai_settings.OPENAI_MODEL
+        base_url = (ollama_base_url or ai_settings.OPENAI_BASE_URL).rstrip("/")
+        self.base_url = base_url if base_url.endswith("/v1") else f"{base_url}/v1"
+        self.api_key = ai_settings.OPENAI_API_KEY
         self.client = client
 
     async def ensure_chat_member(
@@ -101,7 +101,6 @@ class AIService:
             if len(messages) >= limit:
                 return messages[:limit]
             if len(messages) < cache_limit:
-                # A page shorter than its requested limit contains the full history.
                 return messages
 
         return await MessageDao.get_chat_history(
@@ -160,7 +159,7 @@ class AIService:
         else:
             async with AsyncOpenAI(
                 base_url=self.base_url,
-                api_key="ollama",
+                api_key=self.api_key.get_secret_value(),
                 timeout=180,
             ) as client:
                 response = await client.chat.completions.create(**request)

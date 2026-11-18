@@ -28,8 +28,8 @@ from infrastructure.redis.redis_dao import RedisDao
 from schemas.message import (
     AttachmentRequest,
     AttachmentResponse,
-    MessageHistory,
     MessageForwardRequest,
+    MessageHistory,
     MessageInternalDTO,
     MessageRequest,
     MessageResponse,

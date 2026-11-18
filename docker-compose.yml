@@ -23,7 +23,7 @@ services:
     environment:
       OLLAMA_HOST: http://ollama:11434
     entrypoint: ["/bin/ollama"]
-    command: ["pull", "${OLLAMA_MODEL:-qwen3:0.6b}"]
+    command: ["pull", "${OPENAI_MODEL:-${OLLAMA_MODEL:-qwen3:0.6b}}"]
     depends_on:
       ollama:
         condition: service_healthy
@@ -67,6 +67,7 @@ services:
     profiles: ["dev", "prod"]
     environment:
       POSTGRES_HOST: postgres
+      OPENAI_MODEL: ${OPENAI_MODEL:-${OLLAMA_MODEL:-qwen3:0.6b}}
     env_file:
       - .env
     command: ["sh", "-c", "bash ./entrypoint.sh >> /logs/backend.log 2>&1"]
@@ -167,29 +168,15 @@ services:
     profiles: ["prod"]
     restart: always
     ports:
-      - "81:80"
+      - "127.0.0.1:81:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - certbot-etc:/etc/letsencrypt:ro
-      - certbot-var:/var/www/certbot:ro
     depends_on:
       backend:
         condition: service_healthy
       frontend:
         condition: service_started
 
-  cloudflare-tunnel:
-    image: cloudflare/cloudflared:latest
-    profiles: ["prod"]
-    env_file:
-      - .env
-    restart: always
-    command: tunnel --no-autoupdate run --token ${TOKEN_TUNNEL}
-    depends_on:
-      - nginx
-
 volumes:
   postgres_data:
   ollama_data:
-  certbot-etc:
-  certbot-var:

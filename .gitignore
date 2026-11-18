@@ -36,7 +36,9 @@ media/
 staticfiles/
 
 .env
-.env.local
+.env.*
+!/.env.example
+!/.env.test
 
 .DS_Store
 EOF

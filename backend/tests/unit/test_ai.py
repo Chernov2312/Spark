@@ -1,16 +1,81 @@
 from datetime import datetime, timezone
+import json
 from unittest.mock import AsyncMock
 import uuid
 
 from fastapi import status
+import httpx
 from httpx2 import AsyncClient
+from openai import AsyncOpenAI
+import pytest
 
 from api.v1.ai import get_ai_service
+from config.ai import AI
+from core import ai_service
 from core.ai_service import AIService
 from db.dao.message_dao import MessageDao
 from infrastructure.redis.message_queue import history_cache_key, history_version_key
 from main import app
 from schemas.message import MessageHistory, MessageResponse
+
+
+@pytest.mark.parametrize(
+    "base_url", ["https://provider.example", "https://provider.example/v1/"]
+)
+async def test_generate_text_uses_openai_settings(
+    monkeypatch: pytest.MonkeyPatch, base_url: str
+) -> None:
+    monkeypatch.setenv("OPENAI_BASE_URL", base_url)
+    monkeypatch.setenv("OPENAI_MODEL", "configured-model")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-api-key")
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://legacy-provider.example")
+    monkeypatch.setenv("OLLAMA_MODEL", "legacy-model")
+    monkeypatch.setattr(ai_service, "get_ai_settings", AI)
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://provider.example/v1/chat/completions"
+        assert request.headers["Authorization"] == "Bearer test-api-key"
+        assert json.loads(request.content)["model"] == "configured-model"
+        return httpx.Response(
+            200,
+            json={
+                "id": "response-id",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "configured-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "stop",
+                        "message": {"role": "assistant", "content": "Ответ модели."},
+                    }
+                ],
+            },
+        )
+
+    def create_client(*, base_url: str, api_key: str, timeout: float) -> AsyncOpenAI:
+        return AsyncOpenAI(
+            base_url=base_url,
+            api_key=api_key,
+            timeout=timeout,
+            http_client=httpx.AsyncClient(transport=httpx.MockTransport(respond)),
+        )
+
+    monkeypatch.setattr(ai_service, "AsyncOpenAI", create_client)
+    assert await AIService().generate_text("Тестовый запрос") == "Ответ модели."
+
+
+def test_ai_settings_read_legacy_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("OPENAI_BASE_URL", "OPENAI_MODEL", "OPENAI_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://legacy-provider.example")
+    monkeypatch.setenv("OLLAMA_MODEL", "legacy-model")
+
+    settings = AI(_env_file=None)
+
+    assert settings.OPENAI_BASE_URL == "http://legacy-provider.example"
+    assert settings.OPENAI_MODEL == "legacy-model"
+    assert settings.OPENAI_API_KEY.get_secret_value() == "ollama"
 
 
 async def test_chat_assistant_answers_with_recent_chat_context(

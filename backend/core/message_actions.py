@@ -11,8 +11,8 @@ from db.models import Message
 from infrastructure.redis.client import Redis
 from infrastructure.redis.message_queue import message_queue_key
 from infrastructure.redis.redis_dao import RedisDao
-from schemas.message import MessageInternalDTO
 from schemas.chats import ChatMessagePreview
+from schemas.message import MessageInternalDTO
 
 
 async def get_chat_message_previews(

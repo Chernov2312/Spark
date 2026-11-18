@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags, StorageCategory, StorageClientMethod
-from core.security import get_id_current_user
 from core.chat_appearance import create_personal_avatar_upload
+from core.security import get_id_current_user
 from core.storage import S3Storage
 from db.dao.attachment_dao import AttachmentDao
 from db.dao.chat_dao import ChatDao

@@ -52,7 +52,11 @@ async function mockSocialApi(page: Page) {
 
 test("chat history scrolls inside the viewport", async ({ page }, testInfo) => {
   await mockSocialApi(page);
-  await page.routeWebSocket(/\/ws(?:\?|$)/, (socket) => socket.close());
+  let chatSocketUrl: URL | undefined;
+  await page.routeWebSocket(/\/ws(?:\?|$)/, (socket) => {
+    chatSocketUrl = new URL(socket.url());
+    socket.close();
+  });
   await page.route("**/api/v1/chats", (route) => route.fulfill({ json: { chats: chatFixtures } }));
   await page.route("**/api/v1/chats/*/threads", (route) => route.fulfill({ json: { messages: [] } }));
   await page.route("**/api/v1/chats/*/members", (route) => route.fulfill({ json: [] }));
@@ -63,6 +67,10 @@ test("chat history scrolls inside the viewport", async ({ page }, testInfo) => {
     })),
   } }));
   await openAuthenticatedChat(page, chatFixtures[0].id);
+  const expectedSocketOrigin = new URL(page.url()).origin.replace(/^http/, "ws");
+  await expect.poll(() => chatSocketUrl?.origin).toBe(expectedSocketOrigin);
+  expect(chatSocketUrl?.pathname).toBe(`/${chatFixtures[0].id}/ws`);
+  expect(chatSocketUrl?.searchParams.get("token")).toBe(user.access_token);
   const history = page.locator(".chat-view__messages");
   await expect(page.locator(".msg")).toHaveCount(50);
   expect(await history.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);

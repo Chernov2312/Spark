@@ -5,13 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags
-from core.dependencies import get_redis
 from core.chat_appearance import clear_personal_avatar, set_personal_avatar
+from core.dependencies import get_redis
 from core.message_actions import get_chat_message_previews
 from core.security import get_id_current_user
 from core.storage import S3Storage
-from db.dao.chat_dao import ChatDao
 from db.dao.chat_appearance_dao import ChatAppearanceDao
+from db.dao.chat_dao import ChatDao
 from db.dao.user_dao import UserDao
 from db.database import get_session
 from db.models import Chat
@@ -26,9 +26,9 @@ from schemas.chat_state import (
 from schemas.chats import (
     AddUserToChatResponse,
     ChatAddUserRequest,
-    ChatResponse,
     ChatPersonalAvatarRequest,
     ChatPersonalAvatarResponse,
+    ChatResponse,
     GetChatsResponse,
     NewChatRequest,
     NewChatResponse,

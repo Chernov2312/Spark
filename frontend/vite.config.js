@@ -13,11 +13,7 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     strictPort: true,
-    allowedHosts: true,
-    hmr: {
-      protocol: 'wss',
-      clientPort: 5174,
-    },
+    allowedHosts: ['sparkwork.dpdns.org'],
     proxy: {
       '/api': {
         target: 'http://backend:8000',
