@@ -174,6 +174,10 @@ export class MockApi {
     await expect(this.page.locator(".chat-view__title")).toBeVisible();
   }
 
+  socketUrl(id = chatId): string | undefined {
+    return this.sockets.get(id)?.url();
+  }
+
   async publish(event: string, data: Record<string, unknown>, id = chatId) {
     await expect.poll(() => this.sockets.has(id)).toBe(true);
     this.sockets.get(id)!.send(JSON.stringify({ event, data }));

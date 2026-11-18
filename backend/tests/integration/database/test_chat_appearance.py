@@ -6,16 +6,15 @@ from sqlalchemy import delete, func, select
 
 from api.v1.chats import get_chats
 from core.chat_appearance import (
-    clear_personal_avatar,
     create_personal_avatar_upload,
     set_personal_avatar,
 )
-from core.storage import S3Storage
 from core.security import create_access_token
-from schemas.attachment import AvatarUrlResponse
+from core.storage import S3Storage
 from db.dao.chat_appearance_dao import ChatAppearanceDao
 from db.dao.chat_dao import ChatDao
 from db.models import ChatAppearance, user_chat
+from schemas.attachment import AvatarUrlResponse
 
 
 async def test_appearance_upsert_is_private_and_clears_independently(db_session, db_userchat, db_user):

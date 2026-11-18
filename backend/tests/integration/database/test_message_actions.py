@@ -1,16 +1,19 @@
+from datetime import datetime
 import uuid
 
 from fastapi import HTTPException
 import pytest
 
-from core.message_actions import forward_message, get_chat_message_previews, list_thread_roots
+from api.v1.message import forward_chat_message, get_chat_threads
+from core.message_actions import (
+    forward_message,
+    get_chat_message_previews,
+    list_thread_roots,
+)
 from db.dao.chat_dao import ChatDao
 from db.dao.message_dao import MessageDao
 from infrastructure.redis.redis_dao import RedisDao
-from schemas.message import AttachmentRequest, MessageInternalDTO
-from schemas.message import MessageForwardRequest
-from api.v1.message import forward_chat_message, get_chat_threads
-from datetime import datetime
+from schemas.message import AttachmentRequest, MessageForwardRequest, MessageInternalDTO
 
 
 async def test_forward_copies_attachments_and_checks_both_memberships(

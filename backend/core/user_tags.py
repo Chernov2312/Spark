@@ -1,7 +1,6 @@
 import re
 import unicodedata
 
-# Make visually similar Cyrillic and Greek letters resolve to the Latin tag.
 _CONFUSABLES = str.maketrans(
     {
         "а": "a",

@@ -1,6 +1,18 @@
 import { makeMessage } from "../src/test/fixtures";
 import { test, expect, chatId, user } from "./support";
 
+test("chat WebSocket connects to the page host with the access token", async ({ page, mockApi }) => {
+  await mockApi.openChat();
+  const expectedOrigin = new URL(page.url()).origin.replace(/^http/, "ws");
+  await expect.poll(() => {
+    const url = mockApi.socketUrl();
+    return url ? new URL(url).origin : undefined;
+  }).toBe(expectedOrigin);
+  const url = new URL(mockApi.socketUrl()!);
+  expect(url.pathname).toBe(`/${chatId}/ws`);
+  expect(url.searchParams.get("token")).toBe(user.access_token);
+});
+
 test("history scrolls inside the viewport, preserves the reading position and supports search", async ({ page, mockApi }) => {
   mockApi.messages.set(chatId, Array.from({ length: 50 }, (_, index) => makeMessage({ id: `history-${index}`, chat_id: chatId, user_id: user.id, text: `Message ${index}` })));
   await mockApi.openChat();
