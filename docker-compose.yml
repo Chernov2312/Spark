@@ -2,7 +2,7 @@ name: spark
 services:
   ollama:
     image: ollama/ollama:0.34.2
-    profiles: ["dev", "prod"]
+    profiles: ["dev"]
     environment:
       OLLAMA_HOST: 0.0.0.0:11434
     ports:
@@ -19,7 +19,7 @@ services:
 
   ollama-model:
     image: ollama/ollama:0.34.2
-    profiles: ["dev", "prod"]
+    profiles: ["dev"]
     environment:
       OLLAMA_HOST: http://ollama:11434
     entrypoint: ["/bin/ollama"]
@@ -70,7 +70,7 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL:-${OLLAMA_MODEL:-qwen3:0.6b}}
     env_file:
       - .env
-    command: ["sh", "-c", "bash ./entrypoint.sh >> /logs/backend.log 2>&1"]
+    command: ["sh", "-c", "bash ./entrypoint.sh --reload >> /logs/backend.log 2>&1"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -162,20 +162,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-
-  nginx:
-    image: nginx:alpine
-    profiles: ["prod"]
-    restart: always
-    ports:
-      - "127.0.0.1:81:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      backend:
-        condition: service_healthy
-      frontend:
-        condition: service_started
 
 volumes:
   postgres_data:

@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from typing import Protocol
+from urllib.parse import urlsplit
 import uuid
 
 from fastapi import HTTPException, status
@@ -45,8 +46,10 @@ class AIService:
     ) -> None:
         ai_settings = get_ai_settings()
         self.model = model_name or ai_settings.OPENAI_MODEL
-        base_url = (ollama_base_url or ai_settings.OPENAI_BASE_URL).rstrip("/")
-        self.base_url = base_url if base_url.endswith("/v1") else f"{base_url}/v1"
+        base_url = urlsplit((ollama_base_url or ai_settings.OPENAI_BASE_URL).rstrip("/"))
+        self.base_url = (
+            base_url if base_url.path else base_url._replace(path="/v1")
+        ).geturl()
         self.api_key = ai_settings.OPENAI_API_KEY
         self.client = client
 

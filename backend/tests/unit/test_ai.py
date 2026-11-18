@@ -20,10 +20,18 @@ from schemas.message import MessageHistory, MessageResponse
 
 
 @pytest.mark.parametrize(
-    "base_url", ["https://provider.example", "https://provider.example/v1/"]
+    ("base_url", "completions_url"),
+    [
+        ("https://provider.example", "https://provider.example/v1/chat/completions"),
+        ("https://provider.example/v1/", "https://provider.example/v1/chat/completions"),
+        (
+            "https://generativelanguage.googleapis.com/v1beta/openai/",
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        ),
+    ],
 )
 async def test_generate_text_uses_openai_settings(
-    monkeypatch: pytest.MonkeyPatch, base_url: str
+    monkeypatch: pytest.MonkeyPatch, base_url: str, completions_url: str
 ) -> None:
     monkeypatch.setenv("OPENAI_BASE_URL", base_url)
     monkeypatch.setenv("OPENAI_MODEL", "configured-model")
@@ -33,7 +41,7 @@ async def test_generate_text_uses_openai_settings(
     monkeypatch.setattr(ai_service, "get_ai_settings", AI)
 
     def respond(request: httpx.Request) -> httpx.Response:
-        assert str(request.url) == "https://provider.example/v1/chat/completions"
+        assert str(request.url) == completions_url
         assert request.headers["Authorization"] == "Bearer test-api-key"
         assert json.loads(request.content)["model"] == "configured-model"
         return httpx.Response(

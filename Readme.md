@@ -16,7 +16,7 @@ Spark — веб-мессенджер с REST API и WebSocket-соединен�
 ## Требования
 
 - Docker и Docker Compose. На Windows и macOS можно использовать Docker Desktop.
-- Ollama запускается в Docker. Значение `OPENAI_API_KEY=ollama` служит заглушкой для SDK при работе с локальной Ollama.
+- Профиль `dev` запускает Ollama в Docker. Значение `OPENAI_API_KEY=ollama` служит заглушкой для SDK. Для `prod` нужен доступ к OpenAI-совместимому API.
 - Backend image использует Python 3.13 и FFmpeg для подготовки аудио к Whisper.
 
 ## Запуск через Docker Compose
@@ -61,36 +61,49 @@ Spark — веб-мессенджер с REST API и WebSocket-соединен�
 
 ### Запуск на сервере с HTTPS
 
-На сервере создайте `.env` из `.env.example` для новой установки или отредактируйте действующий `.env`. Укажите домен и относительный адрес API.
+На сервере нужен Docker Compose 2.24.4 или новее для объединения `docker-compose.yml` и `docker-compose.prod.yml`. Создайте `.env` из `.env.example` для новой установки или отредактируйте действующий файл. Для CD укажите те же настройки в секрете `ENV_SECRET`.
 
 ```dotenv
 API_BASE_URL=/api/v1
 FRONTEND_BASE_URL=https://sparkwork.dpdns.org
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=your-model-id
+OPENAI_API_KEY=example-provider-api-key
 ```
 
 Compose передаёт `API_BASE_URL` во frontend как `VITE_API_URL`. При значении `/api/v1` REST и WebSocket используют домен открытой страницы. Backend использует `FRONTEND_BASE_URL` в ссылках подтверждения почты и сброса пароля.
 
 В Git хранятся `.env.example` с примерами значений и `.env.test` с тестовыми настройками. Рабочие пароли и ключи храните в исключённом из Git файле `.env` на сервере. Для новой установки задайте отдельные значения `SECRET_KEY`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD` и `REDIS_USER_PASSWORD`. Для генерации каждого значения можно использовать `openssl rand -hex 32`. Для существующей БД укажите пароль действующей роли PostgreSQL. Изменение `POSTGRES_PASSWORD` в `.env` применяется при создании БД, а пароль существующей роли меняется в PostgreSQL отдельно.
 
-Для доставки писем заполните параметры из раздела «Настройка почты». Для вложений задайте `YANDEX_CLOUD_KEY_ID`, `YANDEX_CLOUD_KEY` и `BUCKET_NAME`. Ключ `OPENAI_API_KEY=ollama` подходит для локального сервиса Ollama из Compose.
+Замените примеры `OPENAI_*` адресом API вашего провайдера, идентификатором его модели и ключом. В `prod` backend обращается напрямую к этому API. Compose не запускает Ollama и не ждёт скачивания модели. Для доставки писем заполните параметры из раздела «Настройка почты». Для вложений задайте `YANDEX_CLOUD_KEY_ID`, `YANDEX_CLOUD_KEY` и `BUCKET_NAME`.
+
+Для Gemini укажите `OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/`, `OPENAI_MODEL=gemini-3.1-flash-lite` и ключ Gemini в `OPENAI_API_KEY`.
 
 DNS-запись домена должна указывать на публичный IP сервера. Nginx на хосте принимает HTTPS на `443`, использует сертификат для `sparkwork.dpdns.org` и проксирует запросы на `http://127.0.0.1:81`. В этом виртуальном хосте передавайте `Host`, `Upgrade` и `Connection` для WebSocket. Контейнерный Nginx направляет REST и WebSocket чата в FastAPI, а остальные запросы во frontend, который в текущем Compose запускается через Vite. Для обновления адресов контейнеров через DNS используется `resolve`, доступный в Nginx 1.27.3 и новее.
 
-Ограничьте внешний доступ к опубликованным портам frontend, backend, PostgreSQL и Ollama на внешнем сетевом экране. Для HTTPS нужен входящий `443`, а для перенаправления с HTTP и проверки Certbot через HTTP-01 — `80` хостового Nginx.
+Продовый Compose публикует только Nginx на `127.0.0.1:81`. Для HTTPS нужен входящий `443`, а для перенаправления с HTTP и проверки Certbot через HTTP-01 — `80` хостового Nginx.
 
 Из каталога проекта на сервере выполните команды запуска и проверки.
 
 ```bash
-docker compose --profile prod config --quiet
-docker compose --profile prod up -d --build
-docker compose --profile prod exec nginx nginx -t
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile prod config --quiet
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile prod up --build --wait
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile prod exec nginx nginx -t
 curl -I -H 'Host: sparkwork.dpdns.org' http://127.0.0.1:81/
 curl -I https://sparkwork.dpdns.org/
 ```
 
+При переходе со старого продового запуска после старта нового стека остановите контейнеры Ollama командой `docker compose --profile dev stop ollama-model ollama`. CD выполняет эту команду после успешного запуска.
+
+Продовые сервисы пишут в stdout и stderr. Драйвер Docker `local` ротирует журналы с лимитом в пять файлов по 20 МБ на контейнер. Посмотреть последние записи backend, воркера и PostgreSQL можно из каталога проекта.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile prod logs --tail 100 backend celery postgres
+```
+
 ### Настройка почты
 
-Почта отправляется фоновым Celery worker через SMTP с SSL: `SMTP_HOST` (по умолчанию `smtp.gmail.com`) и `SMTP_PORT` (по умолчанию `465`). `LOGIN_EMAIL` и `PASSWORD_EMAIL` задают учётные данные SMTP, `FROM_EMAIL` — адрес отправителя, разрешённый вашим провайдером. Для Gmail укажите пароль приложения в `PASSWORD_EMAIL`. Для временных сетевых и SMTP-сбоев письма подтверждения и восстановления пароля повторяются до пяти раз с увеличением задержки. После изменения `.env` пересоздайте backend и celery: `docker compose --profile dev up -d --force-recreate backend celery`. Ошибки и повторные попытки доступны в `logs/backend.log`. Успешная SMTP-отправка означает принятие письма сервером, но не гарантирует попадание во «Входящие».
+Почта отправляется фоновым Celery worker через SMTP с SSL: `SMTP_HOST` (по умолчанию `smtp.gmail.com`) и `SMTP_PORT` (по умолчанию `465`). `LOGIN_EMAIL` и `PASSWORD_EMAIL` задают учётные данные SMTP, `FROM_EMAIL` — адрес отправителя, разрешённый вашим провайдером. Для Gmail укажите пароль приложения в `PASSWORD_EMAIL`. Для временных сетевых и SMTP-сбоев письма подтверждения и восстановления пароля повторяются до пяти раз с увеличением задержки. В `dev` после изменения `.env` пересоздайте backend и celery командой `docker compose --profile dev up -d --force-recreate backend celery`. Ошибки и повторные попытки доступны в `logs/backend.log` для `dev` и в журнале контейнера `celery` для `prod`. Успешная SMTP-отправка означает принятие письма сервером, но не гарантирует попадание во «Входящие».
 
 В `.env` используйте формат `ИМЯ=значение` без аннотаций типов Python:
 

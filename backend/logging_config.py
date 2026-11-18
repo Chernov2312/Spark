@@ -2,19 +2,26 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
+import sys
 
 
 def configure_logging() -> None:
-    """Write application, database, and Redis diagnostics to separate files."""
+    """Send diagnostics to stdout or to separate local log files."""
+    log_format = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    if os.getenv("LOG_TO_STDOUT") == "1":
+        logging.basicConfig(level=log_level, format=log_format, stream=sys.stdout)
+        return
+
     log_dir = Path(os.getenv("LOG_DIR", str(Path(__file__).resolve().parent / "logs")))
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    formatter = logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    formatter = logging.Formatter(log_format)
     backend_handler = logging.FileHandler(log_dir / "backend.log", encoding="utf-8")
     backend_handler.setFormatter(formatter)
 
     root_logger = logging.getLogger()
-    root_logger.setLevel(os.getenv("LOG_LEVEL", "INFO").upper())
+    root_logger.setLevel(log_level)
     if not any(
         isinstance(handler, logging.FileHandler)
         and getattr(handler, "baseFilename", "").endswith("backend.log")
