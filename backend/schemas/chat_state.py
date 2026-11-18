@@ -1,7 +1,8 @@
+from datetime import datetime
 from typing import Literal
 import uuid
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ChatMemberResponse(BaseModel):
@@ -10,6 +11,8 @@ class ChatMemberResponse(BaseModel):
     tag: str
     role: Literal["owner", "moderator", "member"]
     last_read_message_id: uuid.UUID | None = None
+    avatar_urls: list[str] = Field(default_factory=list)
+    created_at: datetime | None = None
 
 
 class ChatMemberRoleUpdate(BaseModel):

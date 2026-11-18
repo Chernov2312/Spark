@@ -6,6 +6,7 @@ import uuid
 from fastapi import HTTPException, Response, WebSocketDisconnect
 from jwt import InvalidTokenError
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.v1 import auth as auth_api
 from api.v1 import chats as chats_api
@@ -57,27 +58,33 @@ def test_temporary_file_keys_are_unique_for_repeated_uploads():
     ],
 )
 async def test_temporary_upload_urls_cover_supported_categories(
-    monkeypatch,
-    file_type,
-    content,
-    expected_category,
-    expect_chat_id,
-):
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
+    chat_id: uuid.UUID,
+    id_first_user: uuid.UUID,
+    file_type: str,
+    content: str,
+    expected_category: str,
+    expect_chat_id: bool,
+) -> None:
     storage = mock_s3(monkeypatch)
-    user_id = uuid.uuid4()
+    user_id = id_first_user if expect_chat_id else uuid.uuid4()
     result = await media_api.get_temprorary_url_for_create_media(
         AvatarUrlRequest(
             type=file_type,
             file_extension="png",
             file_content=content,
-            target_id=str(user_id),
+            target_id=str(chat_id if expect_chat_id else user_id),
         ),
         user_id=user_id,
+        session=db_session,
     )
 
     assert result.temporary_url == "https://signed.test/file"
     assert result.file_key.startswith(f"{expected_category}/")
     assert (result.chat_id is not None) is expect_chat_id
+    if expect_chat_id:
+        assert result.chat_id == chat_id
     if not expect_chat_id:
         assert result.user_id == user_id
     storage.get_temporary_url.assert_awaited_once()

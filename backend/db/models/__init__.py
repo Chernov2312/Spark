@@ -3,6 +3,7 @@ from db.models.chat_state import ChatReadState, MessagePin
 from db.models.chat import Chat
 from db.models.chat_appearance import ChatAppearance
 from db.models.message import Message
+from db.models.poll import Poll, PollOption, PollVote
 from db.models.message_reaction import MessageReaction
 from db.models.social import (
     ChatFolder,
@@ -19,6 +20,9 @@ __all__ = (
     "ChatAppearance",
     "MessageReaction",
     "Message",
+    "Poll",
+    "PollOption",
+    "PollVote",
     "Attachment",
     "user_chat",
     "Friendship",

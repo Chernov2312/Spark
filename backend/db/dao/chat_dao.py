@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from db.dao.basedao import BaseDao
-from db.models import Chat, ChatReadState, Message, User, user_chat
+from db.models import Attachment, Chat, ChatReadState, Message, User, user_chat
 
 
 class ChatDao(BaseDao[Chat]):
@@ -50,11 +50,16 @@ class ChatDao(BaseDao[Chat]):
         cls,
         session: AsyncSession,
         chat_id: uuid.UUID,
+        *,
+        include_avatars: bool = False,
     ) -> Chat | None:
+        users = selectinload(Chat.users)
+        if include_avatars:
+            users = users.selectinload(User.avatars.and_(Attachment.chat_id.is_(None)))
         query = (
             select(Chat)
             .where(Chat.id == chat_id)
-            .options(selectinload(Chat.users))
+            .options(users)
             .execution_options(populate_existing=True)
         )
         result = await session.execute(query)

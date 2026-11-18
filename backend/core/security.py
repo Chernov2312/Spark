@@ -30,7 +30,10 @@ async def authenticate_user(
     data: UserLogin,
     session: AsyncSession,
 ) -> User | None:
-    user = await UserDao.get_by_tag(session=session, tag=data.username)
+    user = await UserDao.get_by_email_case_insensitive(
+        session=session,
+        email=data.username.strip(),
+    )
     if user is None:
         return None
     if not verify_password(data.password, user.password):

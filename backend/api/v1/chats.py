@@ -5,13 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags
-from core.dependencies import get_redis
 from core.chat_appearance import clear_personal_avatar, set_personal_avatar
+from core.chat_members import list_chat_members
+from core.dependencies import get_redis
 from core.message_actions import get_chat_message_previews
 from core.security import get_id_current_user
 from core.storage import S3Storage
-from db.dao.chat_dao import ChatDao
 from db.dao.chat_appearance_dao import ChatAppearanceDao
+from db.dao.chat_dao import ChatDao
 from db.dao.user_dao import UserDao
 from db.database import get_session
 from db.models import Chat
@@ -26,9 +27,9 @@ from schemas.chat_state import (
 from schemas.chats import (
     AddUserToChatResponse,
     ChatAddUserRequest,
-    ChatResponse,
     ChatPersonalAvatarRequest,
     ChatPersonalAvatarResponse,
+    ChatResponse,
     GetChatsResponse,
     NewChatRequest,
     NewChatResponse,
@@ -65,21 +66,7 @@ async def get_chat_members(
     session: AsyncSession = Depends(get_session),
     user_id: uuid.UUID = Depends(get_id_current_user),
 ) -> list[ChatMemberResponse]:
-    chat = await ChatDao.get_chat_with_users(session=session, chat_id=chat_id)
-    if chat is None or not any(member.id == user_id for member in chat.users):
-        raise HTTPException(status_code=404, detail="Chat not found")
-    roles = await ChatDao.get_member_roles(session, chat_id)
-    read_states = await ChatDao.get_read_states(session, chat_id)
-    return [
-        ChatMemberResponse(
-            id=member.id,
-            username=member.username,
-            tag=member.tag,
-            role=roles.get(member.id, "member"),
-            last_read_message_id=read_states.get(member.id),
-        )
-        for member in chat.users
-    ]
+    return await list_chat_members(session, chat_id, user_id)
 
 
 @chat_router.put("/chats/{chat_id}/members/{member_id}/role")
@@ -152,9 +139,13 @@ async def get_chats(
     user = await UserDao.get_user_with_chats(session=session, target_id=user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    previews = await get_chat_message_previews(session, redis, {chat.id for chat in user.chats})
+    previews = await get_chat_message_previews(
+        session, redis, {chat.id for chat in user.chats}
+    )
     personal_keys = await ChatAppearanceDao.get_avatar_keys(
-        session, user_id, {chat.id for chat in user.chats},
+        session,
+        user_id,
+        {chat.id for chat in user.chats},
     )
     chats = []
     for chat in user.chats:
@@ -165,7 +156,9 @@ async def get_chats(
         chat_model.avatar_urls = avatars.copy()
         chat_model.last_message = previews.get(chat.id)
         if chat.id in personal_keys:
-            chat_model.personal_avatar_url = await s3.get_temporary_url(personal_keys[chat.id])
+            chat_model.personal_avatar_url = await s3.get_temporary_url(
+                personal_keys[chat.id]
+            )
         chats.append(chat_model)
     return GetChatsResponse(chats=chats)
 

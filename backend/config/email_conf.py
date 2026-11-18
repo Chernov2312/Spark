@@ -13,6 +13,8 @@ class Email(BaseSettings):
     FROM_EMAIL: str
     LOGIN_EMAIL: str
     PASSWORD_EMAIL: SecretStr
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 465
 
 
 @lru_cache

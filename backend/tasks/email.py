@@ -1,10 +1,17 @@
 import asyncio
+import smtplib
 
 from core.send_email import send_password_reset_email, send_verification_email
 from tasks.config_celery import celery_app
 
 
-@celery_app.task
+@celery_app.task(
+    autoretry_for=(OSError, smtplib.SMTPException),
+    retry_backoff=30,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    max_retries=5,
+)
 def send_mail_task(
     user_email: str,
     user_username: str,
@@ -21,7 +28,13 @@ def send_mail_task(
     )
 
 
-@celery_app.task
+@celery_app.task(
+    autoretry_for=(OSError, smtplib.SMTPException),
+    retry_backoff=30,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    max_retries=5,
+)
 def send_password_reset_mail_task(
     user_email: str,
     user_username: str,

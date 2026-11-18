@@ -6,8 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags, StorageCategory, StorageClientMethod
+from core.chat_appearance import (
+    create_personal_avatar_upload,
+    ensure_shared_avatar_editor,
+)
 from core.security import get_id_current_user
-from core.chat_appearance import create_personal_avatar_upload
 from core.storage import S3Storage
 from db.dao.attachment_dao import AttachmentDao
 from db.dao.chat_dao import ChatDao
@@ -71,7 +74,9 @@ async def get_temprorary_url_for_create_media(
             chat_id = uuid.UUID(data.target_id)
         except ValueError:
             raise HTTPException(status_code=422, detail="Invalid chat ID") from None
-        return await create_personal_avatar_upload(session, user_id, chat_id, data.file_content)
+        return await create_personal_avatar_upload(
+            session, user_id, chat_id, data.file_content
+        )
     s3 = S3Storage()
     if data.type == "message":
         file_key = s3.create_file_key(
@@ -115,7 +120,11 @@ async def get_temprorary_url_for_create_media(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="incorrect file format",
             )
-        chat_id = uuid.uuid4()
+        try:
+            chat_id = uuid.UUID(data.target_id)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid chat ID") from None
+        await ensure_shared_avatar_editor(session, user_id, chat_id)
         file_key = s3.create_file_key(
             file_extension=data.file_extension,
             target_id=chat_id,
@@ -138,6 +147,8 @@ async def create_attachment(
     session: AsyncSession = Depends(get_session),
     user_id: uuid.UUID = Depends(get_id_current_user),
 ) -> AttachmentResponse:
+    if data_req.chat_id is not None and data_req.is_avatar:
+        await ensure_shared_avatar_editor(session, user_id, data_req.chat_id)
     s3 = S3Storage()
     if data_req.chat_id is None:
         data = {

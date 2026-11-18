@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { auth, translateApiError } from "../api";
 
 export default function LoginForm({ onSuccess }) {
-  const [form, setForm] = useState({ username: "", password: "" });
+  const [form, setForm] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -14,7 +14,7 @@ export default function LoginForm({ onSuccess }) {
     e.preventDefault();
     setError(null);
 
-    if (!form.username.trim() || !form.password) {
+    if (!form.email.trim() || !form.password) {
       setError("Заполните все поля");
       return;
     }
@@ -22,7 +22,7 @@ export default function LoginForm({ onSuccess }) {
     setLoading(true);
     try {
       const data = await auth.loginUser({
-        username: form.username.trim(),
+        username: form.email.trim(),
         password: form.password,
       });
       onSuccess?.(data);
@@ -41,15 +41,15 @@ export default function LoginForm({ onSuccess }) {
 
         <label className="field">
           <span className="field__label">
-            Тег пользователя <b>*</b>
+            Электронная почта <b>*</b>
           </span>
           <input
-            type="text"
-            value={form.username}
-            onChange={update("username")}
+            type="email"
+            value={form.email}
+            onChange={update("email")}
             required
             autoComplete="username"
-            placeholder="@chel"
+            placeholder="you@example.com"
           />
         </label>
 

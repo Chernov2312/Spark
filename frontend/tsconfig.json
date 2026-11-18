@@ -19,6 +19,7 @@
   },
   "include": [
     "src/**/*.test.tsx",
+    "src/**/*.test.ts",
     "src/test/**/*.ts",
     "e2e/**/*.ts",
     "playwright.config.ts"

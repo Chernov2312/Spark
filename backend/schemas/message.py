@@ -34,6 +34,7 @@ class MessageResponse(BaseModel):
     thread_reply_count: int = 0
     edited_at: datetime | None = None
     is_pinned: bool = False
+    poll_id: uuid.UUID | None = None
     user_reaction: str | None = None
     attachments: list[AttachmentResponse] = Field(default_factory=list)
     reactions_count: dict[str, int] = Field(default_factory=dict)

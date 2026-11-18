@@ -64,6 +64,11 @@ export async function togglePin(chatId, messageId) {
   return data.pinned;
 }
 
+export async function listPinnedMessages(chatId) {
+  const { data } = await api.get(`/chats/${chatId}/messages/pinned`);
+  return data.messages;
+}
+
 // POST /messages/{id}/reactions
 export async function addReaction(messageId, emoji) {
   const { data } = await api.post(`/messages/${messageId}/reactions`, { emoji });

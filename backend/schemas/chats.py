@@ -45,6 +45,7 @@ class ChatMessagePreview(BaseModel):
 
     id: uuid.UUID
     user_id: uuid.UUID
+    poll_id: uuid.UUID | None = None
     text: str | None = None
     created_at: datetime
     thread_root_id: uuid.UUID | None = None

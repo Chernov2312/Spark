@@ -1,21 +1,27 @@
 import asyncio
 from datetime import timedelta
 from email.message import EmailMessage
+from email.utils import formatdate, make_msgid
 from html import escape
-import logging
 import smtplib
+import ssl
 from urllib.parse import quote
 import uuid
 
 from config import get_email_settings, get_settings
 from core.security import create_access_token
 
-logger = logging.getLogger(__name__)
-
 
 def _deliver_email(message: EmailMessage) -> None:
     email = get_email_settings()
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+    message["Date"] = formatdate(localtime=False, usegmt=True)
+    message["Message-ID"] = make_msgid()
+    with smtplib.SMTP_SSL(
+        email.SMTP_HOST,
+        email.SMTP_PORT,
+        timeout=30,
+        context=ssl.create_default_context(),
+    ) as server:
         server.login(email.LOGIN_EMAIL, email.PASSWORD_EMAIL.get_secret_value())
         server.send_message(message)
 
@@ -66,10 +72,7 @@ async def send_verification_email(
 
     msg.add_alternative(html_content, subtype="html")
 
-    try:
-        await asyncio.to_thread(_deliver_email, msg)
-    except Exception:
-        logger.exception("Failed to send verification email")
+    await asyncio.to_thread(_deliver_email, msg)
 
 
 async def send_password_reset_email(
@@ -120,7 +123,4 @@ async def send_password_reset_email(
         subtype="html",
     )
 
-    try:
-        await asyncio.to_thread(_deliver_email, msg)
-    except Exception:
-        logger.exception("Failed to send password reset email")
+    await asyncio.to_thread(_deliver_email, msg)

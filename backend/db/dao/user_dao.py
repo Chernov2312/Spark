@@ -1,17 +1,25 @@
 import re
 import uuid
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only, selectinload
 
 from core.user_tags import normalize_user_tag
 from db.dao.basedao import BaseDao
-from db.models import Chat, User
+from db.models import Chat, Message, User
 
 
 class UserDao(BaseDao[User]):
     model = User
+
+    @classmethod
+    async def delete_all_with_messages(cls, session: AsyncSession) -> int:
+        """Clear user data; the caller owns the transaction and its commit."""
+        await session.execute(delete(Message))
+        result = await session.execute(delete(User))
+        await session.flush()
+        return result.rowcount
 
     @classmethod
     async def get_by_tag(cls, session: AsyncSession, tag: str) -> User | None:

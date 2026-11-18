@@ -10,7 +10,7 @@ from jwt import InvalidTokenError
 from sqlalchemy.ext.asyncio import AsyncSession
 from tasks.email import send_mail_task, send_password_reset_mail_task
 
-from config import RouteTags, get_settings
+from config import get_settings, RouteTags
 from core.dependencies import get_redis
 from core.security import (
     authenticate_user,
@@ -228,7 +228,7 @@ async def login_for_access_token(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not user.is_verified:

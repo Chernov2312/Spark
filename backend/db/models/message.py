@@ -1,15 +1,31 @@
 from datetime import datetime
 import uuid
 
-from sqlalchemy import DateTime, ForeignKey, Index, String
+from sqlalchemy import DateTime, ForeignKey, Index, select, String
 from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import (
+    column_property,
+    declared_attr,
+    Mapped,
+    mapped_column,
+    relationship,
+)
 
 from db.database import Base
+from db.models.poll import Poll
 
 
 class Message(Base):
+    @declared_attr
+    def poll_id(cls) -> Mapped[uuid.UUID | None]:
+        return column_property(
+            select(Poll.id)
+            .where(Poll.message_id == cls.id)
+            .correlate_except(Poll)
+            .scalar_subquery(),
+        )
+
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id"),
         nullable=False,

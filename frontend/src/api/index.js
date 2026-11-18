@@ -4,6 +4,7 @@ export * as users from "./users";
 export * as social from "./social";
 export * as chats from "./chats";
 export * as messages from "./messages";
+export * as polls from "./polls";
 export * as attachments from "./attachments";
 export * as ai from "./ai";
 export { createChatSocket } from "./ws";

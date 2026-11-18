@@ -35,6 +35,13 @@ const ERROR_MAP = {
   "You are not a member of this chat": "Вы не участник этого чата",
   "You are not the author": "Вы не автор",
   "User already in chat": "Пользователь уже в чате",
+  "Poll not found": "Опрос не найден",
+  "Option does not belong to this poll": "Этот вариант не относится к опросу",
+  "This poll does not allow changing or retracting an answer": "В этом опросе нельзя изменить или отменить ответ",
+  "Polls cannot be edited after creation": "Опубликованный опрос нельзя редактировать",
+  "Polls cannot be forwarded": "Пересылка опросов недоступна",
+  "Poll options must be unique": "Варианты ответа не должны повторяться",
+  "Choose a correct answer for the quiz": "Отметьте правильный ответ для викторины",
 
   // Сообщения
   "Message not found": "Сообщение не найдено",

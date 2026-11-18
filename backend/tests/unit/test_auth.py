@@ -1,5 +1,6 @@
 from fastapi import status
 from httpx2 import AsyncClient
+import pytest
 from unit.schemas import AuthResponse
 
 from schemas.auth import UserRegistrationResponse
@@ -72,12 +73,34 @@ async def invalid_test_login_user(api_client: AsyncClient):
     assert res.status_code == status.HTTP_403_FORBIDDEN
 
 
-async def test_login_user(api_client: AsyncClient, id_first_user):
+@pytest.mark.parametrize("email", ["alkash@mail.ru", " ALKASH@MAIL.RU "])
+async def test_login_user(api_client: AsyncClient, id_first_user, email: str) -> None:
     test_user = {
-        "username": "ivan_natanich",
+        "username": email,
         "password": "Pivo228Chel",
     }
     res = await api_client.post("api/v1/auth/login", data=test_user)
     assert res.status_code == status.HTTP_200_OK
     assert res.json().get("id") == str(id_first_user)
     assert AuthResponse.model_validate(res.json())
+
+
+@pytest.mark.parametrize("identifier", ["ivan_natanich", "@ivan_natanich"])
+async def test_login_rejects_tag(
+    api_client: AsyncClient, id_first_user, identifier: str
+) -> None:
+    res = await api_client.post(
+        "api/v1/auth/login",
+        data={"username": identifier, "password": "Pivo228Chel"},
+    )
+    assert res.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+async def test_login_rejects_unverified_email(
+    api_client: AsyncClient, id_second_user
+) -> None:
+    res = await api_client.post(
+        "api/v1/auth/login",
+        data={"username": "alkash_pivo@mail.ru", "password": "Pivo228Chel"},
+    )
+    assert res.status_code == status.HTTP_403_FORBIDDEN

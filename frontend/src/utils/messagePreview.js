@@ -8,7 +8,7 @@ export function messagePreview(message) {
   if (!message) return "Нет сообщений";
   const text = message.text?.replace(/\s+/g, " ").trim();
   const attachments = message.attachments || [];
-  let content = text;
+  let content = message.poll_id ? `Опрос: ${text || "Голосование"}` : text;
   if (!content) {
     if (attachments.length > 1) content = `Вложения: ${attachments.length}`;
     else if (attachments[0]?.mime_type?.startsWith("image/")) content = "Фото";

@@ -13,6 +13,7 @@ class UserData(BaseModel):
     chat_id: uuid.UUID
     attachments: list[AttachmentResponse] = Field(default_factory=list)
     user_id: uuid.UUID
+    poll_id: uuid.UUID | None = None
     created_at: datetime | None = None
     user_reaction: str | None = None
     reactions_count: dict[str, int] = Field(default_factory=dict)
@@ -59,7 +60,15 @@ class MessageDeleted(BaseModel):
     message_id: uuid.UUID
 
 
+class PollUpdated(BaseModel):
+    chat_id: uuid.UUID
+    poll_id: uuid.UUID
+    message_id: uuid.UUID
+    version: int
+
+
 class MessageUpdated(UserData):
+    is_pinned: bool = False
     edited_at: datetime | None = None
     reply_to_id: uuid.UUID | None = None
     reply_to_text: str | None = None
@@ -76,6 +85,7 @@ class WsEvent(BaseModel):
         "message:updated",
         "message:deleted",
         "attachment:text",
+        "poll:updated",
     ]
     data: Union[
         UserData,
@@ -86,6 +96,7 @@ class WsEvent(BaseModel):
         AttachmentText,
         MessageUpdated,
         MessageDeleted,
+        PollUpdated,
     ]
 
     @model_validator(mode="before")
@@ -103,6 +114,7 @@ class WsEvent(BaseModel):
                 "user:presence": UserPresence,
                 "user:read": UserRead,
                 "attachment:text": AttachmentText,
+                "poll:updated": PollUpdated,
             }
 
             target_model = mapping.get(event_type)

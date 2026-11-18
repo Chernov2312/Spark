@@ -1,8 +1,11 @@
 import uuid
 
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from db.dao.chat_dao import ChatDao
 from db.dao.user_dao import UserDao
-from db.models import Chat, User
+from db.models import Chat, Message, User
 
 
 async def test_create_user(db_session):
@@ -65,3 +68,23 @@ async def test_case_insensitive_email_password_reset_and_verification(
 
     verified = await UserDao.mark_verified(db_session, db_user.id)
     assert verified.is_verified is True
+
+
+async def test_delete_all_with_messages(
+    db_session: AsyncSession, db_userchat: tuple[Chat, User]
+) -> None:
+    chat, member = db_userchat
+    db_session.add(Message(user_id=member.id, chat_id=chat.id, text="test message"))
+    await db_session.flush()
+    # A caller can roll back the whole cleanup, including its dependent messages.
+    transaction = await db_session.begin_nested()
+    assert await UserDao.delete_all_with_messages(db_session) == 2
+    await transaction.rollback()
+    assert await db_session.scalar(select(func.count()).select_from(User)) == 2
+    assert await db_session.scalar(select(func.count()).select_from(Message)) == 1
+
+    assert await UserDao.delete_all_with_messages(db_session) == 2
+    assert await db_session.scalar(select(func.count()).select_from(User)) == 0
+    assert await db_session.scalar(select(func.count()).select_from(Message)) == 0
+    assert await db_session.scalar(select(func.count()).select_from(Chat)) == 0
+    assert await UserDao.delete_all_with_messages(db_session) == 0

@@ -63,7 +63,8 @@ class MessageDao(BaseDao[Message]):
         result = await session.execute(
             select(Message)
             .where(Message.id == message_id)
-            .options(selectinload(Message.attachments)),
+            .options(selectinload(Message.attachments))
+            .execution_options(populate_existing=True),
         )
         return result.scalar_one_or_none()
 
@@ -91,6 +92,21 @@ class MessageDao(BaseDao[Message]):
             select(MessagePin.message_id).where(MessagePin.chat_id == chat_id),
         )
         return set(result.all())
+
+    @classmethod
+    async def get_pinned_messages(
+        cls,
+        session: AsyncSession,
+        chat_id: uuid.UUID,
+    ) -> list[Message]:
+        result = await session.scalars(
+            select(Message)
+            .join(MessagePin, MessagePin.message_id == Message.id)
+            .where(Message.chat_id == chat_id, MessagePin.chat_id == chat_id)
+            .options(selectinload(Message.attachments))
+            .order_by(MessagePin.created_at.desc(), MessagePin.id.desc()),
+        )
+        return list(result.all())
 
     @classmethod
     async def get_message_texts(
@@ -197,7 +213,9 @@ class MessageDao(BaseDao[Message]):
                 Message.chat.has(Chat.users.any(User.id == user_id)),
             )
             .order_by(
-                Message.created_at.desc() if before is not None else Message.created_at.asc(),
+                Message.created_at.desc()
+                if before is not None
+                else Message.created_at.asc(),
             )
             .limit(min(max(limit, 1), 200))
             .options(selectinload(Message.attachments))

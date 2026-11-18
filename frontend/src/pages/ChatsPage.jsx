@@ -19,6 +19,12 @@ import FormatToolbar from "../components/FormatToolbar";
 import AIChatPanel from "../components/AIChatPanel";
 import CallPanel from "../components/CallPanel";
 import SocialSidebar from "../components/SocialSidebar";
+import ChatMemberProfile, { MemberAvatar, MemberRole } from "../components/ChatMemberProfile";
+import ChatPreferences from "../components/ChatPreferences";
+import PinnedMessages from "../components/PinnedMessages";
+import PollCard from "../components/PollCard";
+import CreatePollModal from "../components/CreatePollModal";
+import { getAvatarImageError } from "../api/imageUpload";
 import { messageTimestamp } from "../utils/messagePreview";
 
 /* ============================================================
@@ -137,13 +143,23 @@ function renderMarkdown(text) {
 
 const EMOJI_SET = ["👍", "❤️", "🔥", "😂", "😮", "😢", "🎉", "👏"];
 
-function getChatAvatarUrls(chat) {
-  if (chat?.personal_avatar_url) return [chat.personal_avatar_url];
+function mergePinnedMessage(messages, message) {
+  if (!message.is_pinned) return messages.filter((item) => item.id !== message.id && (!message.deleted || item.thread_root_id !== message.id));
+  return messages.some((item) => item.id === message.id)
+    ? messages.map((item) => item.id === message.id ? { ...item, ...message } : item)
+    : [message, ...messages];
+}
+
+function getSharedChatAvatarUrls(chat) {
   const avatarUrls = Array.isArray(chat?.avatar_urls)
     ? chat.avatar_urls.filter((url) => typeof url === "string" && url)
     : [];
   if (avatarUrls.length) return avatarUrls;
   return chat?.avatar_url ? [chat.avatar_url] : [];
+}
+
+function getChatAvatarUrls(chat) {
+  return chat?.personal_avatar_url ? [chat.personal_avatar_url] : getSharedChatAvatarUrls(chat);
 }
 
 function ChatAvatar({ chat, compact = false }) {
@@ -349,15 +365,30 @@ function MediaGrid({ attachments, onOpenMedia }) {
   );
 }
 
-function MediaViewer({ attachments, index, onClose, onChange, onDownload }) {
+function MediaViewer({ attachments, index, onClose, onChange, onDownload, label = "Просмотр вложения", previousLabel = "Предыдущее вложение", nextLabel = "Следующее вложение" }) {
   const attachment = attachments[index];
   const isVideo = attachment?.mime_type?.startsWith("video/");
+  const viewerRef = useRef(null);
+
+  useEffect(() => {
+    const previousFocus = document.activeElement;
+    viewerRef.current?.querySelector("button")?.focus();
+    return () => { if (previousFocus?.isConnected) previousFocus.focus(); };
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event) => {
+      if (["Escape", "ArrowLeft", "ArrowRight"].includes(event.key)) event.preventDefault();
       if (event.key === "Escape") onClose();
       if (event.key === "ArrowLeft") onChange(-1);
       if (event.key === "ArrowRight") onChange(1);
+      if (event.key === "Tab") {
+        const buttons = viewerRef.current?.querySelectorAll("button");
+        const first = buttons?.[0];
+        const last = buttons?.[buttons.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -373,24 +404,24 @@ function MediaViewer({ attachments, index, onClose, onChange, onDownload }) {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <section className="media-viewer" role="dialog" aria-modal="true" aria-label="Просмотр вложения">
+      <section ref={viewerRef} className="media-viewer" role="dialog" aria-modal="true" aria-label={label}>
         <header className="media-viewer__header">
           <span className="media-viewer__name">{attachment.file_name}</span>
-          <span className="media-viewer__count">{index + 1} / {attachments.length}</span>
-          <button
+          <span className="media-viewer__count" aria-live="polite">{index + 1} / {attachments.length}</span>
+          {onDownload && <button
             type="button"
             className="media-viewer__download"
             onClick={() => onDownload(attachment)}
           >
             Скачать оригинал
-          </button>
+          </button>}
           <button type="button" className="media-viewer__close" onClick={onClose} aria-label="Закрыть просмотр">
             ×
           </button>
         </header>
         <div className="media-viewer__stage">
           {attachments.length > 1 && (
-            <button type="button" className="media-viewer__nav" onClick={() => onChange(-1)} aria-label="Предыдущее вложение">
+            <button type="button" className="media-viewer__nav" onClick={() => onChange(-1)} aria-label={previousLabel}>
               ‹
             </button>
           )}
@@ -400,7 +431,7 @@ function MediaViewer({ attachments, index, onClose, onChange, onDownload }) {
             <img src={attachment.file_key} alt={attachment.file_name || "Изображение"} />
           )}
           {attachments.length > 1 && (
-            <button type="button" className="media-viewer__nav" onClick={() => onChange(1)} aria-label="Следующее вложение">
+            <button type="button" className="media-viewer__nav" onClick={() => onChange(1)} aria-label={nextLabel}>
               ›
             </button>
           )}
@@ -426,6 +457,10 @@ const MessageItem = React.memo(function MessageItem({
   onReply,
   onJumpTo,
   readBy,
+  pollVersion,
+  pollRefresh,
+  pollMenuTarget,
+  onCloseMenu,
 }) {
   const swipeStartRef = useRef(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
@@ -444,7 +479,7 @@ const MessageItem = React.memo(function MessageItem({
   return (
     <div
       id={`message-${m.id}`}
-      className={`msg ${isMe ? "msg--me" : ""}`}
+      className={`msg ${isMe ? "msg--me" : ""}${m.poll_id ? " msg--poll" : ""}`}
       onContextMenu={(e) => onContextMenu(e, m.id)}
       style={{ transform: swipeOffset ? `translateX(${swipeOffset}px)` : undefined }}
       onPointerDown={(event) => {
@@ -481,7 +516,8 @@ const MessageItem = React.memo(function MessageItem({
             {m.reply_to_text || "Исходное сообщение"}
           </button>
         )}
-        {m.text && (
+        {m.poll_id && <PollCard pollId={m.poll_id} version={pollVersion} refreshKey={pollRefresh} menuTarget={pollMenuTarget} onCloseMenu={onCloseMenu} />}
+        {m.text && !m.poll_id && (
           <div
             className="msg__text"
             dangerouslySetInnerHTML={{ __html: html }}
@@ -570,6 +606,9 @@ export default function ChatsPage() {
     } catch (error) { setMessagesError(translateApiError(error, "Не удалось обновить последнее сообщение")); }
   }, []);
   const [messages, setMessages] = useState([]);
+  const [pollComposer, setPollComposer] = useState(null);
+  const [pollVersions, setPollVersions] = useState({});
+  const [pollRefresh, refreshPolls] = useReducer((version) => version + 1, 0);
   const [activeThread, setActiveThread] = useState(null);
   const [threadMessages, setThreadMessages] = useState([]);
   const [threadLoading, setThreadLoading] = useState(false);
@@ -577,6 +616,51 @@ export default function ChatsPage() {
   const [threadsLoading, setThreadsLoading] = useState(false);
   const [threadsError, setThreadsError] = useState("");
   const [threadsVersion, refreshThreads] = useReducer((version) => version + 1, 0);
+  const [pinnedMessages, setPinnedMessages] = useState([]);
+  const pinnedMessageIds = useMemo(() => new Set(pinnedMessages.map((message) => message.id)), [pinnedMessages]);
+  const [pinsLoading, setPinsLoading] = useState(false);
+  const [pinsError, setPinsError] = useState("");
+  const [pinBusyId, setPinBusyId] = useState(null);
+  const pinBusyRef = useRef(null);
+  const [pendingJumpId, setPendingJumpId] = useState(null);
+  const activeChatIdRef = useRef(chatId);
+  activeChatIdRef.current = chatId;
+  const pinsRequestRef = useRef(0);
+  const pinsVersionRef = useRef(0);
+  const pinChangesRef = useRef(new Map());
+  const applyPinUpdate = useCallback((message) => {
+    if (message.is_pinned === undefined) return;
+    pinChangesRef.current.set(message.id, { version: ++pinsVersionRef.current, message });
+    setPinnedMessages((items) => mergePinnedMessage(items, message));
+  }, []);
+  const loadPinnedMessages = useCallback(async () => {
+    if (!chatId) return;
+    const request = ++pinsRequestRef.current;
+    const version = pinsVersionRef.current;
+    setPinsLoading(true);
+    setPinsError("");
+    try {
+      let loaded = await messagesApi.listPinnedMessages(chatId);
+      if (request !== pinsRequestRef.current || activeChatIdRef.current !== chatId) return;
+      for (const change of pinChangesRef.current.values()) {
+        if (change.version > version) loaded = mergePinnedMessage(loaded, change.message);
+      }
+      setPinnedMessages(loaded);
+    } catch (error) {
+      if (request === pinsRequestRef.current) setPinsError(translateApiError(error, "Не удалось загрузить закреплённые сообщения"));
+    } finally {
+      if (request === pinsRequestRef.current) setPinsLoading(false);
+    }
+  }, [chatId]);
+  useEffect(() => {
+    setPinnedMessages([]);
+    setPinsError("");
+    setPinsLoading(false);
+    setPendingJumpId(null);
+    pinChangesRef.current.clear();
+    loadPinnedMessages();
+    return () => { pinsRequestRef.current += 1; };
+  }, [loadPinnedMessages]);
   const [sidebarMode, setSidebarMode] = useState("chats");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [forwarding, setForwarding] = useState(null);
@@ -601,6 +685,8 @@ export default function ChatsPage() {
   const threadSeenIdsRef = useRef(new Set());
   useEffect(() => {
     setActiveThread(null);
+    setPollComposer(null);
+    setPollVersions({});
     setThreadMessages([]);
     setThreads([]);
     setThreadLoading(false);
@@ -634,7 +720,13 @@ export default function ChatsPage() {
   const sendHeldRef = useRef(false);
   const messageMenuRef = useRef(null);
   const [chatPrefs, setChatPrefs] = useState({ color: "", background: "", muted: false, sound: true, shareReads: true, sharePresence: true });
+  const [chatPrefsChatId, setChatPrefsChatId] = useState(null);
   const [chatMembers, setChatMembers] = useState([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState("");
+  const [membersReload, reloadMembers] = useReducer((value) => value + 1, 0);
+  const [profileMemberId, setProfileMemberId] = useState(null);
+  const closeMemberProfile = useCallback(() => setProfileMemberId(null), []);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [selectedPreviewUrls, setSelectedPreviewUrls] = useState([]);
   const [recording, setRecording] = useState(false);
@@ -654,6 +746,8 @@ export default function ChatsPage() {
   const [userSearchResults, setUserSearchResults] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [selectedAvatarFiles, setSelectedAvatarFiles] = useState([]);
+  const [avatarPreviews, setAvatarPreviews] = useState([]);
+  const [avatarSelectionError, setAvatarSelectionError] = useState("");
   const [userSearchLoading, setUserSearchLoading] = useState(false);
   const [userSearchError, setUserSearchError] = useState(null);
   const [creatingChat, setCreatingChat] = useState(false);
@@ -665,22 +759,29 @@ export default function ChatsPage() {
 
   const [showFormat, setShowFormat] = useState(false);
   const [reactionPicker, setReactionPicker] = useState(null);
+  const [pollMenuTarget, setPollMenuTarget] = useState(null);
   useEffect(() => {
     if (!reactionPicker) return;
     const menu = messageMenuRef.current;
     if (!menu) return;
-    const bounds = menu.getBoundingClientRect();
-    menu.style.left = `${Math.max(8, Math.min(reactionPicker.x, window.innerWidth - bounds.width - 8))}px`;
-    menu.style.top = `${Math.max(8, Math.min(reactionPicker.y, window.innerHeight - bounds.height - 8))}px`;
+    const positionMenu = () => {
+      const bounds = menu.getBoundingClientRect();
+      menu.style.left = `${Math.max(8, Math.min(reactionPicker.x, window.innerWidth - bounds.width - 8))}px`;
+      menu.style.top = `${Math.max(8, Math.min(reactionPicker.y, window.innerHeight - bounds.height - 8))}px`;
+    };
+    positionMenu();
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(positionMenu) : null;
+    observer?.observe(menu);
     menu.querySelector("button")?.focus();
     const dismiss = (event) => {
       if (event.key === "Escape") setReactionPicker(null);
     };
     window.addEventListener("keydown", dismiss);
-    return () => window.removeEventListener("keydown", dismiss);
+    return () => { observer?.disconnect(); window.removeEventListener("keydown", dismiss); };
   }, [reactionPicker]);
   useEffect(() => () => clearTimeout(sendHoldTimerRef.current), []);
   const [galleryIndex, setGalleryIndex] = useState(null);
+  const [avatarGalleryIndex, setAvatarGalleryIndex] = useState(null);
 
   const bottomRef = useRef(null);
   const messageScrollRef = useRef(null);
@@ -696,6 +797,12 @@ export default function ChatsPage() {
   const recordingStreamRef = useRef(null);
   const recordingChunksRef = useRef([]);
   const recordingTimerRef = useRef(null);
+
+  useEffect(() => {
+    const previews = createOpen ? selectedAvatarFiles.map((file) => URL.createObjectURL(file)) : [];
+    setAvatarPreviews(previews);
+    return () => previews.forEach((url) => URL.revokeObjectURL(url));
+  }, [selectedAvatarFiles, createOpen]);
 
   useEffect(() => {
     const previews = selectedFiles.map((file) =>
@@ -729,6 +836,7 @@ export default function ChatsPage() {
     try {
       setChatPrefs({ color: "", background: "", muted: false, sound: true, shareReads: true, sharePresence: true, ...JSON.parse(localStorage.getItem(`chat-prefs:${chatId}`) || "{}") });
     } catch { setChatPrefs({ color: "", background: "", muted: false, sound: true, shareReads: true, sharePresence: true }); }
+    setChatPrefsChatId(chatId);
   }, [chatId]);
 
   useEffect(() => {
@@ -736,8 +844,8 @@ export default function ChatsPage() {
   }, [chatId, text]);
 
   useEffect(() => {
-    if (chatId) localStorage.setItem(`chat-prefs:${chatId}`, JSON.stringify(chatPrefs));
-  }, [chatId, chatPrefs]);
+    if (chatId && chatPrefsChatId === chatId) localStorage.setItem(`chat-prefs:${chatId}`, JSON.stringify(chatPrefs));
+  }, [chatId, chatPrefs, chatPrefsChatId]);
 
   useEffect(() => {
     if (!chatId || !messages.length || !chatPrefs.shareReads) return;
@@ -745,9 +853,18 @@ export default function ChatsPage() {
   }, [chatId, messages, chatPrefs.shareReads]);
 
   useEffect(() => {
+    let cancelled = false;
+    setChatMembers([]);
+    setMembersError("");
+    setProfileMemberId(null);
+    setMembersLoading(Boolean(chatId));
     if (!chatId) return;
-    Promise.resolve(chatsApi.getChatMembers?.(chatId)).then((rows) => setChatMembers(rows || [])).catch(() => setChatMembers([]));
-  }, [chatId]);
+    Promise.resolve(chatsApi.getChatMembers?.(chatId))
+      .then((rows) => { if (!cancelled) setChatMembers(rows || []); })
+      .catch(() => { if (!cancelled) setMembersError("Не удалось загрузить участников"); })
+      .finally(() => { if (!cancelled) setMembersLoading(false); });
+    return () => { cancelled = true; };
+  }, [chatId, membersReload]);
 
   // Тикер для обновления относительного времени ("только что" -> "1 мин")
   const [, tick] = useReducer((x) => x + 1, 0);
@@ -838,6 +955,7 @@ export default function ChatsPage() {
     sendHeldRef.current = false;
     setRecordedAudio(null);
     setGalleryIndex(null);
+    setAvatarGalleryIndex(null);
     setRecording(false);
     recordingChunksRef.current = [];
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
@@ -898,6 +1016,8 @@ export default function ChatsPage() {
         sharePresence: chatPrefs.sharePresence,
         onOpen: () => {
           socketOpenRef.current = true;
+          refreshPolls();
+          loadPinnedMessages();
           const key = `unsent-messages:${chatId}`;
           const pending = JSON.parse(localStorage.getItem(key) || "[]");
           Promise.all(pending.map((item) => messagesApi.sendMessage(chatId, {
@@ -913,6 +1033,9 @@ export default function ChatsPage() {
           console.info("[WS] Подключён к чату", chatId);
         },
         onEvent: (event, data) => {
+          if (event === "poll:updated" && data.chat_id === chatId) {
+            setPollVersions((versions) => ({ ...versions, [data.poll_id]: Math.max(versions[data.poll_id] || 0, data.version) }));
+          }
           const mentionsMe = Boolean(me?.tag) && String(data.text || "").toLowerCase().includes(`@${me.tag.toLowerCase()}`);
           if (event === "message:new" && data.chat_id === chatId) {
             if (data.thread_root_id) {
@@ -953,11 +1076,13 @@ export default function ChatsPage() {
             new Notification("Вас упомянули", { body: data.text, tag: `mention-${chatId}` });
           }
           if (event === "message:updated" && data.chat_id === chatId) {
+            applyPinUpdate(data);
             updateChatPreview(chatId, data, true);
             setMessages((prev) => prev.map((item) => item.id === data.id ? { ...item, ...data } : item));
             setThreadMessages((prev) => prev.map((item) => item.id === data.id ? { ...item, ...data } : item));
           }
           if (event === "message:deleted" && data.chat_id === chatId) {
+            applyPinUpdate({ id: data.message_id, is_pinned: false, deleted: true });
             refreshChatPreviews();
             setMessages((prev) => prev.filter((item) => item.id !== data.message_id));
             setThreadMessages((prev) => prev.filter((item) => item.id !== data.message_id));
@@ -1058,7 +1183,7 @@ export default function ChatsPage() {
     };
     // me?.id намеренно не в зависимостях: сокет пересоздаётся только при смене чата
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId, chatPrefs.sharePresence]);
+  }, [chatId, chatPrefs.sharePresence, loadPinnedMessages, applyPinUpdate]);
 
   /* ---------- 4. Скролл вниз ---------- */
   useEffect(() => {
@@ -1498,7 +1623,7 @@ export default function ChatsPage() {
   const handleChatAvatarSelection = async (event) => {
     const files = Array.from(event.target.files || []);
     event.target.value = "";
-    if (!files.length || !chatId) return;
+    if (!files.length || !chatId || !canEditSharedAvatar) return;
 
     setChatAvatarError(null);
     setUploadingChatAvatars(true);
@@ -1574,7 +1699,7 @@ export default function ChatsPage() {
     });
   }, []);
 
-  const closeReactionPicker = () => setReactionPicker(null);
+  const closeReactionPicker = useCallback(() => setReactionPicker(null), []);
 
   const pickReaction = async (emoji) => {
     if (!reactionPicker) return;
@@ -1602,6 +1727,19 @@ export default function ChatsPage() {
     () => chats.find((c) => c.id === chatId),
     [chats, chatId],
   );
+  const canEditSharedAvatar = Boolean(me?.id && (
+    activeChat?.owner_id === me.id || chatMembers.some((member) => member.id === me.id && member.role === "moderator")
+  ));
+  const sharedChatAvatars = useMemo(() => getSharedChatAvatarUrls(activeChat).map((url, index) => ({
+    file_key: url,
+    file_name: `Аватарка группы ${index + 1}`,
+    mime_type: "image/*",
+  })).reverse(), [activeChat]);
+  const closeAvatarGallery = useCallback(() => setAvatarGalleryIndex(null), []);
+  const moveAvatarGallery = useCallback((offset) => {
+    setAvatarGalleryIndex((index) => index === null || !sharedChatAvatars.length
+      ? null : (index + offset + sharedChatAvatars.length) % sharedChatAvatars.length);
+  }, [sharedChatAvatars.length]);
   const mentionQuery = text.match(/(?:^|\s)@([^\s]*)$/)?.[1];
   const mentionSuggestions = mentionQuery === undefined ? [] : chatMembers.filter((member) => member.id !== me?.id && (member.tag || member.username).toLowerCase().startsWith(mentionQuery.toLowerCase())).slice(0, 5);
 
@@ -1652,9 +1790,11 @@ export default function ChatsPage() {
     (e, messageId) => openReactionPicker(e, messageId),
     [openReactionPicker],
   );
-  const menuMessage = reactionPicker
+  const menuMessageSource = reactionPicker
     ? [...messages, ...threadMessages].find((message) => message.id === reactionPicker.messageId)
     : null;
+  const menuMessage = menuMessageSource && !pinsLoading && !pinsError
+    ? { ...menuMessageSource, is_pinned: pinnedMessageIds.has(menuMessageSource.id) } : menuMessageSource;
   const runMenuAction = (action) => {
     setReactionPicker(null);
     action();
@@ -1711,16 +1851,18 @@ export default function ChatsPage() {
     if (nextText === null || nextText.trim() === "") return;
     try {
       const updated = await messagesApi.updateMessage(message.id, nextText.trim());
+      if (activeChatIdRef.current === updated.chat_id) applyPinUpdate(updated);
       updateChatPreview(updated.chat_id || chatId, updated, true);
       setMessages((previous) => previous.map((item) => item.id === updated.id ? { ...item, ...updated } : item));
       setThreadMessages((previous) => previous.map((item) => item.id === updated.id ? { ...item, ...updated } : item));
       refreshThreads();
     } catch (error) { setMessagesError(translateApiError(error, "Не удалось изменить сообщение")); }
-  }, [chatId, updateChatPreview]);
+  }, [chatId, updateChatPreview, applyPinUpdate]);
   const removeMessage = useCallback(async (messageId) => {
     if (!window.confirm("Удалить это сообщение?")) return;
     try {
       await messagesApi.deleteMessage(messageId);
+      applyPinUpdate({ id: messageId, is_pinned: false, deleted: true });
       refreshChatPreviews();
       setMessages((previous) => previous.filter((item) => item.id !== messageId));
       setThreadMessages((previous) => previous.filter((item) => item.id !== messageId));
@@ -1728,19 +1870,52 @@ export default function ChatsPage() {
       refreshThreads();
     }
     catch (error) { setMessagesError(translateApiError(error, "Не удалось удалить сообщение")); }
-  }, [refreshChatPreviews]);
+  }, [refreshChatPreviews, applyPinUpdate]);
   const pinMessage = useCallback(async (message) => {
+    if (pinBusyRef.current) return;
+    pinBusyRef.current = message.id;
+    setPinBusyId(message.id);
     try {
       const pinned = await messagesApi.togglePin(chatId, message.id);
+      if (activeChatIdRef.current !== chatId) return;
+      applyPinUpdate({ ...message, is_pinned: pinned });
       setMessages((previous) => previous.map((item) => item.id === message.id ? { ...item, is_pinned: pinned } : item));
       setThreadMessages((previous) => previous.map((item) => item.id === message.id ? { ...item, is_pinned: pinned } : item));
-    } catch (error) { setMessagesError(translateApiError(error, "Не удалось закрепить сообщение")); }
-  }, [chatId]);
+    } catch (error) { if (activeChatIdRef.current === chatId) setMessagesError(translateApiError(error, "Не удалось закрепить сообщение")); }
+    finally { pinBusyRef.current = null; setPinBusyId(null); }
+  }, [chatId, applyPinUpdate]);
   const jumpToMessage = useCallback((id) => {
     const node = document.getElementById(`message-${id}`);
     const container = messageScrollRef.current;
     if (node && container) container.scrollTop += node.getBoundingClientRect().top - container.getBoundingClientRect().top - container.clientHeight / 2;
   }, []);
+  const openPinnedMessage = async (message) => {
+    const targetChatId = chatId;
+    followMessagesRef.current = false;
+    setSearchOpen(false);
+    setSearching(false);
+    setActiveChatTab("messages");
+    if (message.thread_root_id) {
+      const opening = openThread(message);
+      const request = threadRequestRef.current;
+      await opening;
+      if (activeChatIdRef.current !== targetChatId || request !== threadRequestRef.current) return;
+      setThreadMessages((items) => items.some((item) => item.id === message.id) ? items : [...items, message].sort((a, b) => messageTimestamp(a.created_at) - messageTimestamp(b.created_at)));
+    } else {
+      closeThread();
+      setMessages((items) => items.some((item) => item.id === message.id) ? items : [...items, message].sort((a, b) => messageTimestamp(a.created_at) - messageTimestamp(b.created_at)));
+    }
+    followMessagesRef.current = false;
+    setPendingJumpId(message.id);
+  };
+  useEffect(() => {
+    if (!pendingJumpId || !document.getElementById(`message-${pendingJumpId}`)) return;
+    jumpToMessage(pendingJumpId);
+    document.getElementById(`message-${pendingJumpId}`).animate?.([
+      { backgroundColor: "var(--spark-dim)" }, { backgroundColor: "transparent" },
+    ], { duration: 1400 });
+    setPendingJumpId(null);
+  }, [pendingJumpId, messages, threadMessages, jumpToMessage]);
   const runMessageSearch = useCallback(async (event) => {
     event?.preventDefault();
     if (!chatId) return;
@@ -1785,6 +1960,7 @@ export default function ChatsPage() {
           setUserSearchResults([]);
           setSelectedUsers([]);
           setSelectedAvatarFiles([]);
+          setAvatarSelectionError("");
           setCreateOpen(true);
         }}
       />
@@ -1852,11 +2028,36 @@ export default function ChatsPage() {
               </button>
             </header>
 
+            <section className="chat-participants" aria-label="Участники в шапке чата" aria-busy={membersLoading}>
+              <div className="chat-participants__heading"><span>Участники</span><span className="chat-participants__count">{membersLoading ? "…" : chatMembers.length}</span></div>
+              {membersLoading ? <p className="chat-participants__hint" role="status">Загрузка участников…</p>
+                : membersError ? <div className="chat-participants__error" role="alert">{membersError}<button type="button" onClick={reloadMembers}>Повторить</button></div>
+                : chatMembers.length ? <ul className="chat-participants__list">
+                  {chatMembers.map((member) => <li key={member.id}>
+                    <button type="button" className="participant-chip" aria-label={`Открыть профиль ${member.username}`} onClick={() => setProfileMemberId(member.id)}>
+                      <MemberAvatar member={member} />
+                      <span className="participant-chip__info"><span className="participant-chip__name">{member.username}{member.id === me?.id && <small>вы</small>}</span><MemberRole role={member.role} /></span>
+                    </button>
+                  </li>)}
+                </ul> : <p className="chat-participants__hint">Участников пока нет</p>}
+            </section>
+
             {chatAvatarError && (
               <p className="chat-create-error" role="alert">
                 {chatAvatarError}
               </p>
             )}
+
+            {activeChatTab === "messages" && <PinnedMessages
+              key={`pinned-${chatId}`}
+              messages={pinnedMessages}
+              loading={pinsLoading}
+              error={pinsError}
+              onRetry={loadPinnedMessages}
+              onOpen={openPinnedMessage}
+              onUnpin={pinMessage}
+              busy={pinBusyId}
+            />}
 
             {activeChatTab === "profile" && <section className="chat-details" aria-label="Информация о чате">
               <button type="button" className="chat-profile-back" onClick={() => setActiveChatTab("messages")}>← Вернуться к сообщениям</button>
@@ -1876,6 +2077,22 @@ export default function ChatsPage() {
               </div>
               {chatDetailsOpen && (
                 <>
+                  <section className="group-avatars" aria-label="Аватарки группы">
+                    <div className="group-avatars__heading">
+                      <div><h3>Аватарки группы <span>{sharedChatAvatars.length}</span></h3><p>Общие фотографии чата</p></div>
+                      {sharedChatAvatars.length > 0 && <button type="button" className="group-avatars__view-all" onClick={() => setAvatarGalleryIndex(0)}>Смотреть все <span aria-hidden="true">↗</span></button>}
+                    </div>
+                    {sharedChatAvatars.length > 0 ? <div className="group-avatars__list">
+                      {sharedChatAvatars.map((avatar, index) => <button type="button" className="group-avatars__photo" key={`${avatar.file_key}-${index}`} aria-label={`Открыть аватарку группы ${index + 1}`} onClick={() => setAvatarGalleryIndex(index)}>
+                        <img src={avatar.file_key} alt="" loading="lazy" />
+                        {index === 0 && <span>Текущая</span>}
+                      </button>)}
+                    </div> : <p className="group-avatars__empty">У группы пока нет общих аватарок.</p>}
+                    {canEditSharedAvatar && <label className="chat-avatar-upload chat-avatar-upload--shared">
+                      {uploadingChatAvatars ? "Загрузка…" : "Добавить общее фото чата"}
+                      <input type="file" aria-label="Добавить общее фото чата" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden disabled={uploadingChatAvatars} onChange={handleChatAvatarSelection} />
+                    </label>}
+                  </section>
                   <section className="personal-chat-avatar" aria-label="Личная картинка чата">
                     <ChatAvatar chat={activeChat} />
                     <div className="personal-chat-avatar__content">
@@ -1894,25 +2111,18 @@ export default function ChatsPage() {
                       {personalAvatarError && <p role="alert" className="personal-avatar-error">{personalAvatarError}</p>}
                     </div>
                   </section>
-                  <label className="chat-avatar-upload chat-avatar-upload--shared">
-                    {uploadingChatAvatars ? "Загрузка…" : "Добавить общее фото чата"}
-                    <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden disabled={uploadingChatAvatars} onChange={handleChatAvatarSelection} />
-                  </label>
-                  <div className="chat-preferences">
-                    <label>Цвет чата <input type="color" value={chatPrefs.color || "#64748b"} onChange={(e) => setChatPrefs((p) => ({ ...p, color: e.target.value }))} /></label>
-                    <label>Фон <input type="color" value={chatPrefs.background || "#ffffff"} onChange={(e) => setChatPrefs((p) => ({ ...p, background: e.target.value }))} /></label>
-                    <label><input type="checkbox" checked={chatPrefs.muted} onChange={(e) => setChatPrefs((p) => ({ ...p, muted: e.target.checked }))} /> Без уведомлений</label>
-                    <label><input type="checkbox" checked={chatPrefs.sound} onChange={(e) => setChatPrefs((p) => ({ ...p, sound: e.target.checked }))} /> Звук</label>
-                    <label><input type="checkbox" checked={chatPrefs.shareReads} onChange={(e) => setChatPrefs((p) => ({ ...p, shareReads: e.target.checked }))} /> Показывать прочтение</label>
-                    <label><input type="checkbox" checked={chatPrefs.sharePresence} onChange={(e) => setChatPrefs((p) => ({ ...p, sharePresence: e.target.checked }))} /> Показывать статус в сети</label>
-                    <button type="button" onClick={() => { if (typeof Notification !== "undefined") Notification.requestPermission(); }}>Включить уведомления</button>
-                  </div>
+                  <ChatPreferences key={chatId} preferences={chatPrefs} onChange={setChatPrefs} />
                   <section className="chat-members" aria-label="Участники чата">
                     <h3>Участники</h3>
                     {chatMembers.map((member) => <div key={member.id} className="chat-member">
-                      <span>@{member.tag || member.username} · {member.role}</span>
+                      <button type="button" className="chat-member__profile" aria-label={`Открыть профиль ${member.username}`} onClick={() => setProfileMemberId(member.id)}>
+                        <MemberAvatar member={member} />
+                        <span><strong>{member.username}</strong><small>@{member.tag || member.username}</small></span>
+                        <MemberRole role={member.role} />
+                      </button>
                       {activeChat.owner_id === me?.id && member.id !== me?.id && <select aria-label={`Роль ${member.username}`} value={member.role} onChange={async (event) => {
-                        try { await chatsApi.updateMemberRole(chatId, member.id, event.target.value); setChatMembers((current) => current.map((item) => item.id === member.id ? { ...item, role: event.target.value } : item)); }
+                        const role = event.target.value;
+                        try { await chatsApi.updateMemberRole(chatId, member.id, role); setChatMembers((current) => current.map((item) => item.id === member.id ? { ...item, role } : item)); }
                         catch (error) { setMessagesError(translateApiError(error, "Не удалось изменить роль")); }
                       }}><option value="member">Участник</option><option value="moderator">Модератор</option></select>}
                     </div>)}
@@ -2003,7 +2213,7 @@ export default function ChatsPage() {
                 (activeThread ? threadMessages : messages).map((m) => (
                   <MessageItem
                     key={m.id}
-                    message={m}
+                    message={pinsLoading || pinsError ? m : { ...m, is_pinned: pinnedMessageIds.has(m.id) }}
                     isMe={m.user_id === me?.id}
                     onReaction={handleReaction}
                     onContextMenu={handleContextMenuMessage}
@@ -2013,6 +2223,10 @@ export default function ChatsPage() {
                     onOpenMedia={openMediaViewer}
                     onReply={replyToMessage}
                     onJumpTo={jumpToMessage}
+                    pollVersion={pollVersions[m.poll_id] || 0}
+                    pollRefresh={pollRefresh}
+                    pollMenuTarget={reactionPicker?.messageId === m.id ? pollMenuTarget : null}
+                    onCloseMenu={closeReactionPicker}
                     readBy={m.user_id === me?.id && chatMembers.some((member) => member.id !== me?.id && member.last_read_message_id === m.id)}
                   />
                 ))}
@@ -2080,6 +2294,9 @@ export default function ChatsPage() {
                     onChange={handleFileSelection}
                   />
                 </label>
+                <button type="button" className="composer-btn composer-btn--poll" aria-label="Создать опрос" title="Опрос или викторина" disabled={sending || recording} onClick={() => setPollComposer({ chatId, threadRootId: activeThread?.id || null })}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M4 20V10m8 10V4m8 16v-7M2 20h20" /></svg>
+                </button>
 
                 <textarea
                   ref={textareaRef}
@@ -2224,6 +2441,15 @@ export default function ChatsPage() {
           onDownload={downloadMedia}
         />
       )}
+      {avatarGalleryIndex !== null && sharedChatAvatars[avatarGalleryIndex] && <MediaViewer
+        attachments={sharedChatAvatars}
+        index={avatarGalleryIndex}
+        onClose={closeAvatarGallery}
+        onChange={moveAvatarGallery}
+        label="Просмотр аватарок группы"
+        previousLabel="Предыдущая аватарка"
+        nextLabel="Следующая аватарка"
+      />}
 
       {/* ---------- Пикер реакций ---------- */}
       {reactionPicker && (
@@ -2261,10 +2487,11 @@ export default function ChatsPage() {
             {menuMessage && <div className="message-context-menu__actions">
               <button type="button" onClick={() => runMenuAction(() => replyToMessage(menuMessage))}>Ответить</button>
               <button type="button" onClick={() => runMenuAction(() => openThread(menuMessage))}>Открыть тред</button>
-              <button type="button" onClick={() => runMenuAction(() => { setForwarding(menuMessage); setForwardTarget(""); setForwardError(""); })}>Переслать</button>
-              <button type="button" onClick={() => runMenuAction(() => pinMessage(menuMessage))}>{menuMessage.is_pinned ? "Открепить" : "Закрепить"}</button>
+              {!menuMessage.poll_id && <button type="button" onClick={() => runMenuAction(() => { setForwarding(menuMessage); setForwardTarget(""); setForwardError(""); })}>Переслать</button>}
+              <button type="button" disabled={Boolean(pinBusyId)} onClick={() => runMenuAction(() => pinMessage(menuMessage))}>{menuMessage.is_pinned ? "Открепить" : "Закрепить"}</button>
+              <div ref={setPollMenuTarget} className="message-context-menu__poll-actions" />
               {menuMessage.user_id === me?.id && <>
-                <button type="button" onClick={() => runMenuAction(() => editMessage(menuMessage))}>Изменить</button>
+                {!menuMessage.poll_id && <button type="button" onClick={() => runMenuAction(() => editMessage(menuMessage))}>Изменить</button>}
                 <button type="button" className="message-context-menu__delete" onClick={() => runMenuAction(() => removeMessage(menuMessage.id))}>Удалить</button>
               </>}
             </div>}
@@ -2296,10 +2523,20 @@ export default function ChatsPage() {
         >
           <form
             className="modal chat-create-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-chat-title"
             onClick={(e) => e.stopPropagation()}
             onSubmit={handleCreateChat}
+            onKeyDown={(event) => { if (event.key === "Escape" && !creatingChat) setCreateOpen(false); }}
           >
-            <h3>Новая группа</h3>
+            <h3 id="create-chat-title">Новая группа</h3>
+            <div className="chat-create-identity">
+              <div className="chat-create-identity__avatar">
+                {avatarPreviews.length ? <img src={avatarPreviews.at(-1)} alt="Превью аватарки группы" /> : (newChat.title.trim()[0] || "+").toUpperCase()}
+              </div>
+              <div><strong>{newChat.title.trim() || "Ваша новая группа"}</strong><p>{selectedAvatarFiles.length ? "Так будет выглядеть аватарка чата" : "Добавьте фото, чтобы чат было легче найти"}</p></div>
+            </div>
             <label className="vk-field">
               <span className="vk-field__label">Название</span>
               <input
@@ -2382,28 +2619,38 @@ export default function ChatsPage() {
                 ))}
               </ul>
             )}
-            <label className="vk-field">
+            <label className="vk-field chat-avatar-picker">
               <span className="vk-field__label">Аватарки группы</span>
+              <span className="chat-avatar-picker__button"><span aria-hidden="true">＋</span> Выбрать фотографии</span>
               <input
                 type="file"
+                className="chat-avatar-picker__input"
+                aria-label="Аватарки группы"
+                aria-describedby="chat-avatar-picker-hint"
                 accept="image/jpeg,image/png,image/webp,image/gif"
                 multiple
+                disabled={creatingChat}
                 onChange={(event) => {
                   const files = Array.from(event.target.files || []);
                   event.target.value = "";
-                  if (files.length) {
-                    setSelectedAvatarFiles((current) => [...current, ...files]);
-                  }
+                  if (!files.length) return;
+                  const error = files.map(getAvatarImageError).find(Boolean);
+                  setAvatarSelectionError(error || "");
+                  if (!error) setSelectedAvatarFiles((current) => [...current, ...files]);
                 }}
               />
             </label>
+            <p id="chat-avatar-picker-hint" className="chat-create-hint">JPEG, PNG, WebP или GIF. Последнее фото станет аватаркой.</p>
+            {avatarSelectionError && <p className="chat-create-error" role="alert">{avatarSelectionError}</p>}
             {selectedAvatarFiles.length > 0 && (
-              <ul className="chat-selected-avatars">
+              <ul className="chat-selected-avatars" aria-label="Выбранные аватарки">
                 {selectedAvatarFiles.map((file, index) => (
                   <li key={`${file.name}-${file.lastModified}-${index}`}>
-                    <span>{file.name}</span>
+                    {avatarPreviews[index] && <img src={avatarPreviews[index]} alt={`Превью ${file.name}`} />}
+                    <span title={file.name}>{file.name}</span>
                     <button
                       type="button"
+                      disabled={creatingChat}
                       aria-label={`Убрать ${file.name}`}
                       onClick={() =>
                         setSelectedAvatarFiles((current) =>
@@ -2442,6 +2689,29 @@ export default function ChatsPage() {
           </form>
         </div>
       )}
+      {chatMembers.some((member) => member.id === profileMemberId) && <ChatMemberProfile
+        key={profileMemberId}
+        member={chatMembers.find((member) => member.id === profileMemberId)}
+        chatTitle={activeChat?.title}
+        isMe={profileMemberId === me?.id}
+        online={onlineUsers.has(profileMemberId)}
+        onClose={closeMemberProfile}
+      />}
+      {pollComposer && <CreatePollModal
+        key={pollComposer.chatId}
+        chatId={pollComposer.chatId}
+        threadRootId={pollComposer.threadRootId}
+        onClose={() => setPollComposer(null)}
+        onCreated={(message) => {
+          setPollComposer(null);
+          updateChatPreview(message.chat_id, message);
+          if (activeChatIdRef.current !== message.chat_id) return;
+          if (message.thread_root_id) {
+            if (activeThreadRef.current?.id === message.thread_root_id) setThreadMessages((items) => items.some((item) => item.id === message.id) ? items : [...items, message]);
+            refreshThreads();
+          } else setMessages((items) => items.some((item) => item.id === message.id) ? items : [...items, message]);
+        }}
+      />}
       <CallPanel
         chatId={chatId}
         chatName={activeChat?.title}
