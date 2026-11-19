@@ -1713,9 +1713,15 @@
   border: 1px solid var(--border, #d7dce2);
   border-radius: 0.5rem;
   padding: 0.3rem 0.55rem;
-  background: var(--surface, #fff);
-  color: inherit;
+  background: var(--bg-elevated);
+  color: var(--text);
   cursor: pointer;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+.msg__actions button:hover, .msg__actions button:focus-visible,
+.message-search button:hover, .message-search button:focus-visible {
+  border-color: var(--border-focus);
+  background: var(--bg-hover);
 }
 .msg__reply-quote, .reply-preview {
   display: block;
@@ -1728,7 +1734,7 @@
   text-align: left;
 }
 .schedule-send { display: inline-flex; align-items: center; gap: 0.4rem; }
-.message-search { position: sticky; top: 0; z-index: 2; padding: 0.45rem; background: var(--surface, #fff); }
+.message-search { position: sticky; top: 0; z-index: 2; padding: 0.45rem; background: var(--bg-elevated); }
 .message-search input { flex: 1; min-width: 8rem; }
 .reply-preview { display: flex; justify-content: space-between; }
 .schedule-send { font-size: 0.85rem; padding: 0.35rem 0; }
