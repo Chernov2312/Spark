@@ -2,7 +2,7 @@ name: spark
 services:
   ollama:
     image: ollama/ollama:0.34.2
-    profiles: ["dev"]
+    profiles: ["local-ai"]
     environment:
       OLLAMA_HOST: 0.0.0.0:11434
     ports:
@@ -19,7 +19,7 @@ services:
 
   ollama-model:
     image: ollama/ollama:0.34.2
-    profiles: ["dev"]
+    profiles: ["local-ai"]
     environment:
       OLLAMA_HOST: http://ollama:11434
     entrypoint: ["/bin/ollama"]
@@ -35,7 +35,7 @@ services:
     env_file:
       - .env
     ports:
-      - "5433:5432"
+      - "5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./logs/database:/var/log/postgresql
@@ -76,8 +76,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      ollama-model:
-        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; exit(0) if urllib.request.urlopen('http://backend:8000/health').getcode() == 200 else exit(1)"]
       interval: 10s
@@ -91,8 +89,25 @@ services:
       - ./backend:/app
       - ./logs:/logs
 
+  calls:
+    build: ./calls
+    profiles: ["dev", "prod"]
+    environment:
+      CALLS_PYTHON_API_URL: http://backend:8000/api/v1
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:5174}
+      CALLS_ALLOWED_ORIGINS: ${CALLS_ALLOWED_ORIGINS:-}
+      CALLS_STUN_URLS: ${CALLS_STUN_URLS:-stun:stun.l.google.com:19302}
+      CALLS_TURN_URLS: ${CALLS_TURN_URLS:-}
+      CALLS_TURN_SECRET: ${CALLS_TURN_SECRET:-}
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      target: development
     profiles: ["dev", "prod"]
     container_name: frontend
     ports:
@@ -101,13 +116,16 @@ services:
       - ./frontend:/app
       - /app/node_modules
       - ./logs:/logs
-    command: ["sh", "-c", "npm install --include=dev --prefer-offline --no-audit --no-fund && npm run dev -- --host 0.0.0.0 --port 5173 >> /logs/frontend.log 2>&1"]
+    command: ["sh", "-c", "npm ci --include=dev --prefer-offline --no-audit --no-fund && exec npm run dev -- --host 0.0.0.0 --port 5173 >> /logs/frontend.log 2>&1"]
     environment:
       CHOKIDAR_USEPOLLING: true
       VITE_API_URL: ${API_BASE_URL:-http://localhost:8001}
+      VITE_CALLS_WS_URL: ${VITE_CALLS_WS_URL:-/v1/calls/ws}
     depends_on:
       backend:
         condition: service_healthy
+      calls:
+        condition: service_started
   redis:
     image: redis:latest
     profiles: ["dev", "prod"]
@@ -136,6 +154,7 @@ services:
   celery:
     build: ./backend
     profiles: ["dev", "prod"]
+    cpus: 0.5
     environment:
       POSTGRES_HOST: postgres
     env_file:

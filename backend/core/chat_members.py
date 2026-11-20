@@ -1,11 +1,49 @@
+from datetime import datetime, timezone
 import uuid
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.message_actions import ensure_read_target
 from core.storage import S3Storage
 from db.dao.chat_dao import ChatDao
-from schemas.chat_state import ChatMemberResponse
+from infrastructure.redis.client import Redis
+from infrastructure.redis.redis_dao import RedisDao
+from schemas.chat_state import ChatMemberResponse, MarkChatReadResponse
+from schemas.websockets import WsEvent
+
+
+async def mark_chat_read(
+    session: AsyncSession,
+    redis: Redis,
+    chat_id: uuid.UUID,
+    user_id: uuid.UUID,
+    message_id: uuid.UUID | None,
+) -> MarkChatReadResponse:
+    chat = await ChatDao.get_chat_with_users(session, chat_id)
+    if chat is None or not any(member.id == user_id for member in chat.users):
+        raise HTTPException(status_code=404, detail="Chat not found")
+    if message_id is not None and not await ensure_read_target(
+        session, redis, chat_id, message_id
+    ):
+        raise HTTPException(
+            status_code=422, detail="Message does not belong to this chat"
+        )
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    await ChatDao.mark_read(session, chat_id, user_id, message_id, now)
+    await RedisDao.publish_chat_event(
+        redis,
+        chat_id,
+        WsEvent(
+            event="user:read",
+            data={
+                "chat_id": chat_id,
+                "user_id": user_id,
+                "last_read_message_id": message_id,
+            },
+        ).model_dump_json(),
+    )
+    return MarkChatReadResponse(last_read_message_id=message_id)
 
 
 async def list_chat_members(

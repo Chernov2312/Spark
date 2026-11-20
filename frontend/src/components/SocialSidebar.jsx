@@ -1,10 +1,12 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { chats as chatsApi, social as socialApi } from "../api";
 import "../styles/social-sidebar.css";
-import { messagePreview, messageTimestamp } from "../utils/messagePreview";
+import { messagePreview, messageTimestamp, summarizeMessageText } from "../utils/messagePreview";
 
 export default function SocialSidebar({
   chats,
+  friends,
+  setFriends,
   chatsLoading,
   chatsError,
   chatId,
@@ -22,7 +24,6 @@ export default function SocialSidebar({
 }) {
   const [tab, setTab] = useState("chats");
   const [search, setSearch] = useState("");
-  const [friends, setFriends] = useState([]);
   const [requests, setRequests] = useState([]);
   const [sentRequests, setSentRequests] = useState([]);
   const [friendCategories, setFriendCategories] = useState([]);
@@ -38,29 +39,23 @@ export default function SocialSidebar({
   const [groupFormOpen, setGroupFormOpen] = useState(false);
   const [groupError, setGroupError] = useState("");
 
-  async function refresh() {
-    const [friendData, folders] = await Promise.all([
-      socialApi.listFriends(),
-      socialApi.listChatFolders(),
-    ]);
+  const applyFriends = useCallback((friendData) => {
     setFriends(friendData.friends);
     setRequests(friendData.requests);
     setSentRequests(friendData.sentRequests);
     setFriendCategories(friendData.categories);
-    setChatFolders(folders);
+  }, [setFriends]);
+
+  async function refresh() {
+    applyFriends(await socialApi.listFriends());
   }
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([socialApi.listFriends(), socialApi.listChatFolders()])
-      .then(([friendData, folders]) => {
-        if (cancelled) return;
-        setFriends(friendData.friends);
-        setRequests(friendData.requests);
-        setSentRequests(friendData.sentRequests);
-        setFriendCategories(friendData.categories);
-        setChatFolders(folders);
-      })
+    Promise.all([
+      socialApi.listFriends().then((data) => { if (!cancelled) applyFriends(data); }),
+      socialApi.listChatFolders().then((folders) => { if (!cancelled) setChatFolders(folders); }),
+    ])
       .catch((cause) => {
         if (!cancelled) {
           setError(cause.response?.data?.detail || "Не удалось загрузить друзей и группы");
@@ -70,7 +65,7 @@ export default function SocialSidebar({
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [applyFriends]);
 
   useEffect(() => {
     const query = friendQuery.trim();
@@ -250,7 +245,7 @@ export default function SocialSidebar({
         <ul className="chats-list sidebar-threads">
           {threads.map((thread) => <li key={thread.id}>
             <button type="button" className={activeThreadId === thread.id ? "is-active" : ""} onClick={() => { onOpenThread(thread); onCloseMobile?.(); }}>
-              <span>{thread.text || "Тред с вложением"}</span>
+              <span>{summarizeMessageText(thread.text) || "Тред с вложением"}</span>
               <small>{thread.thread_reply_count || 0} ответов</small>
             </button>
           </li>)}

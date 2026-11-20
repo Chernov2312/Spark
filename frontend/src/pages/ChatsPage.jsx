@@ -1,4 +1,6 @@
 import React, {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -25,7 +27,13 @@ import PinnedMessages from "../components/PinnedMessages";
 import PollCard from "../components/PollCard";
 import CreatePollModal from "../components/CreatePollModal";
 import { getAvatarImageError } from "../api/imageUpload";
-import { messageTimestamp } from "../utils/messagePreview";
+import { isWebPushEnabled } from "../api/push";
+import { formatMessageSelection } from "../utils/messageFormatting";
+import { parseMessageMarkdown } from "../utils/messageMarkdown";
+import { messageContentPreview, messageTimestamp, summarizeMessageText } from "../utils/messagePreview";
+
+const MarkdownAttachmentPreview = lazy(() => import("../components/MarkdownAttachmentPreview"));
+const MARKDOWN_EXTENSION = /\.(?:md|markdown)$/i;
 
 /* ============================================================
    Утилиты времени
@@ -37,104 +45,6 @@ function msgTime(iso) {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-/* ============================================================
-   Рендер markdown (безопасный мини-парсер, без ссылок)
-   ============================================================ */
-
-function renderMarkdown(text) {
-  if (!text) return "";
-  const escapeHtml = (value) =>
-    String(value)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  const inline = (value) => {
-    let html = escapeHtml(value);
-    html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
-    html = html.replace(
-      /\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+|#[^\s)]*)\)/g,
-      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
-    );
-    return html
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/__(.+?)__/g, "<strong>$1</strong>")
-      .replace(/~~(.+?)~~/g, "<del>$1</del>")
-      .replace(/(^|[\s(])\*([^*\n]+?)\*(?=[\s).,!?]|$)/g, "$1<em>$2</em>")
-      .replace(/(^|[\s(])_([^_\n]+?)_(?=[\s).,!?]|$)/g, "$1<em>$2</em>");
-  };
-
-  const lines = String(text).replace(/\r\n?/g, "\n").split("\n");
-  const blocks = [];
-  let paragraph = [];
-  let list = null;
-  let code = null;
-  const flushParagraph = () => {
-    if (paragraph.length) blocks.push(`<p>${inline(paragraph.join(" "))}</p>`);
-    paragraph = [];
-  };
-  const flushList = () => {
-    if (!list) return;
-    blocks.push(`<${list.type}>${list.items.map((item) => `<li>${inline(item)}</li>`).join("")}</${list.type}>`);
-    list = null;
-  };
-
-  for (const line of lines) {
-    const fence = line.match(/^\s*```([\w-]*)\s*$/);
-    if (fence) {
-      flushParagraph();
-      flushList();
-      if (code === null) code = [];
-      else {
-        blocks.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
-        code = null;
-      }
-      continue;
-    }
-    if (code !== null) {
-      code.push(line);
-      continue;
-    }
-    if (!line.trim()) {
-      flushParagraph();
-      flushList();
-      continue;
-    }
-
-    const heading = line.match(/^\s*(#{1,6})\s+(.+?)\s*#*\s*$/);
-    const item = line.match(/^\s*(?:[-+*])\s+(.+)$/) || line.match(/^\s*\d+[.)]\s+(.+)$/);
-    const quote = line.match(/^\s*>\s?(.*)$/);
-    if (heading) {
-      flushParagraph();
-      flushList();
-      const level = heading[1].length;
-      blocks.push(`<h${level}>${inline(heading[2])}</h${level}>`);
-    } else if (item) {
-      flushParagraph();
-      const type = /^\s*\d+[.)]\s+/.test(line) ? "ol" : "ul";
-      if (list && list.type !== type) flushList();
-      if (!list) list = { type, items: [] };
-      list.items.push(item[1]);
-    } else if (quote) {
-      flushParagraph();
-      flushList();
-      blocks.push(`<blockquote>${inline(quote[1])}</blockquote>`);
-    } else if (/^\s*(---+|___+|\*\*\*+)\s*$/.test(line)) {
-      flushParagraph();
-      flushList();
-      blocks.push("<hr>");
-    } else {
-      flushList();
-      paragraph.push(line.trim());
-    }
-  }
-  flushParagraph();
-  flushList();
-  if (code !== null) blocks.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
-  return blocks.join("");
 }
 
 /* ============================================================
@@ -251,7 +161,8 @@ const AttachmentItem = React.memo(function AttachmentItem({
   const isText =
     (typeof mime_type === "string" && mime_type.startsWith("text/")) ||
     /\.(txt|md|csv|json|xml|log)$/i.test(file_name || "");
-  const isMarkdown = /\.md$/i.test(file_name || "") || mime_type === "text/markdown";
+  const isMarkdown = MARKDOWN_EXTENSION.test(file_name || "") ||
+    /^(?:text\/markdown|text\/x-markdown)(?:\s*;|$)/i.test(mime_type || "");
   const fileName = file_name || "Вложение";
 
   if (!file_key) return null;
@@ -303,16 +214,9 @@ const AttachmentItem = React.memo(function AttachmentItem({
             {markdownOpen ? "Скрыть Markdown" : "Просмотреть Markdown"}
           </button>
           {markdownOpen && (
-            attachmentText ? (
-              <div
-                className="markdown-attachment__content markdown-body"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(attachmentText) }}
-              />
-            ) : (
-              <div className="markdown-attachment__content markdown-attachment__empty">
-                Предпросмотр недоступен. Скачайте файл, чтобы открыть его содержимое.
-              </div>
-            )
+            <Suspense fallback={<div className="markdown-attachment__content markdown-attachment__status" role="status">Загрузка Markdown…</div>}>
+              <MarkdownAttachmentPreview id={id} text={attachmentText} fileName={fileName} />
+            </Suspense>
           )}
         </div>
       )}
@@ -445,6 +349,10 @@ function MediaViewer({ attachments, index, onClose, onChange, onDownload, label 
    Компонент одного сообщения
    ============================================================ */
 
+const MESSAGE_GESTURE_SLOP = 12;
+const MESSAGE_SWIPE_DISTANCE = 60;
+const MESSAGE_HOLD_MS = 550;
+
 const MessageItem = React.memo(function MessageItem({
   message: m,
   isMe,
@@ -456,15 +364,71 @@ const MessageItem = React.memo(function MessageItem({
   onOpenMedia,
   onReply,
   onJumpTo,
+  replySource,
+  replyAuthor,
   readBy,
   pollVersion,
   pollRefresh,
   pollMenuTarget,
   onCloseMenu,
+  liveLinkPreviews,
 }) {
-  const swipeStartRef = useRef(null);
+  const gestureRef = useRef(null);
+  const holdTimerRef = useRef(null);
+  const suppressClickRef = useRef(false);
   const [swipeOffset, setSwipeOffset] = useState(0);
-  const html = useMemo(() => renderMarkdown(m.text), [m.text]);
+  useEffect(() => () => clearTimeout(holdTimerRef.current), []);
+
+  const resetGesture = () => {
+    clearTimeout(holdTimerRef.current);
+    gestureRef.current = null;
+    setSwipeOffset(0);
+  };
+  const startGesture = (event) => {
+    if (event.isPrimary === false) return;
+    suppressClickRef.current = false;
+    if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+    if (event.button !== 0 || event.target.closest("input, textarea, select, video, audio, [contenteditable], .markdown-attachment__content")) return;
+
+    const start = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    gestureRef.current = start;
+    event.target.setPointerCapture?.(event.pointerId);
+    holdTimerRef.current = setTimeout(() => {
+      suppressClickRef.current = true;
+      resetGesture();
+      onContextMenu(m.id, start.x, start.y);
+    }, MESSAGE_HOLD_MS);
+  };
+  const moveGesture = (event) => {
+    const start = gestureRef.current;
+    if (!start || start.id !== event.pointerId) return;
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    if (!start.swiping && Math.max(Math.abs(dx), Math.abs(dy)) < MESSAGE_GESTURE_SLOP) return;
+
+    clearTimeout(holdTimerRef.current);
+    if (!start.swiping && Math.abs(dy) >= Math.abs(dx)) {
+      resetGesture();
+      return;
+    }
+    start.swiping = true;
+    suppressClickRef.current = true;
+    setSwipeOffset(Math.max(-72, Math.min(72, dx)));
+  };
+  const finishGesture = (event) => {
+    const start = gestureRef.current;
+    if (!start || start.id !== event.pointerId) return;
+    resetGesture();
+    const dx = Math.abs(event.clientX - start.x);
+    const dy = Math.abs(event.clientY - start.y);
+    if (dx >= MESSAGE_SWIPE_DISTANCE && dx > dy * 1.5) {
+      suppressClickRef.current = true;
+      onReply(m);
+    }
+  };
+  const { html, previewUrl } = useMemo(() => parseMessageMarkdown(m.text), [m.text]);
+  const linkPreview = liveLinkPreviews?.[previewUrl] ||
+    (m.link_preview?.url === previewUrl ? m.link_preview : null);
   const attachments = Array.isArray(m.attachments) ? m.attachments : [];
   const attachmentGroups = attachments.reduce((groups, attachment) => {
     const media = isVisualMedia(attachment);
@@ -475,34 +439,45 @@ const MessageItem = React.memo(function MessageItem({
   }, []);
   const reactions = m.reactions_count || {};
   const hasReactions = Object.keys(reactions).length > 0;
+  const replyText = replySource
+    ? messageContentPreview(replySource)
+    : summarizeMessageText(m.reply_to_text);
 
   return (
     <div
       id={`message-${m.id}`}
       className={`msg ${isMe ? "msg--me" : ""}${m.poll_id ? " msg--poll" : ""}`}
-      onContextMenu={(e) => onContextMenu(e, m.id)}
-      style={{ transform: swipeOffset ? `translateX(${swipeOffset}px)` : undefined }}
-      onPointerDown={(event) => {
-        if (event.pointerType === "mouse" || event.target.closest("button, a, input, video, audio")) return;
-        swipeStartRef.current = { x: event.clientX, y: event.clientY };
+      tabIndex={0}
+      aria-haspopup="dialog"
+      onContextMenu={(event) => {
+        event.preventDefault();
+        if (suppressClickRef.current) return;
+        suppressClickRef.current = Boolean(gestureRef.current);
+        resetGesture();
+        onContextMenu(m.id, event.clientX, event.clientY);
       }}
-      onPointerMove={(event) => {
-        const start = swipeStartRef.current;
-        if (!start) return;
-        const dx = event.clientX - start.x;
-        const dy = event.clientY - start.y;
-        if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 12) {
-          swipeStartRef.current = null;
-          setSwipeOffset(0);
-        } else if (Math.abs(dx) > 12) setSwipeOffset(Math.max(-80, Math.min(80, dx)));
+      onKeyDown={(event) => {
+        if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+        event.preventDefault();
+        const bounds = event.currentTarget.getBoundingClientRect();
+        onContextMenu(m.id, bounds.left, bounds.bottom, event.target);
       }}
-      onPointerUp={(event) => {
-        const start = swipeStartRef.current;
-        if (start && Math.abs(event.clientX - start.x) >= 60 && Math.abs(event.clientY - start.y) < 35) onReply(m);
-        swipeStartRef.current = null;
-        setSwipeOffset(0);
+      style={{ translate: swipeOffset ? `${swipeOffset}px` : undefined }}
+      onPointerDown={startGesture}
+      onPointerMove={moveGesture}
+      onPointerUp={finishGesture}
+      onPointerCancel={(event) => {
+        if (gestureRef.current?.id === event.pointerId) resetGesture();
       }}
-      onPointerCancel={() => { swipeStartRef.current = null; setSwipeOffset(0); }}
+      onLostPointerCapture={(event) => {
+        if (gestureRef.current?.id === event.pointerId) resetGesture();
+      }}
+      onClickCapture={(event) => {
+        if (!suppressClickRef.current || event.detail === 0) return;
+        suppressClickRef.current = false;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
       title="Правый клик — действия с сообщением"
     >
       {!isMe && (
@@ -511,9 +486,16 @@ const MessageItem = React.memo(function MessageItem({
         </div>
       )}
       <div className="msg__bubble">
+        {m.is_forwarded && (
+          <div className="msg__forwarded">
+            <span aria-hidden="true">↪</span> Пересланное сообщение
+          </div>
+        )}
+        {m.is_pinned && <span className="msg__pin-label">Закреплено</span>}
         {m.reply_to_id && (
           <button type="button" className="msg__reply-quote" onClick={() => onJumpTo(m.reply_to_id)}>
-            {m.reply_to_text || "Исходное сообщение"}
+            <span className="msg__reply-author">{replyAuthor || "Исходное сообщение"}</span>{" "}
+            {replyText && <span className="msg__reply-text">{replyText}</span>}
           </button>
         )}
         {m.poll_id && <PollCard pollId={m.poll_id} version={pollVersion} refreshKey={pollRefresh} menuTarget={pollMenuTarget} onCloseMenu={onCloseMenu} />}
@@ -521,7 +503,24 @@ const MessageItem = React.memo(function MessageItem({
           <div
             className="msg__text"
             dangerouslySetInnerHTML={{ __html: html }}
+            onClick={(event) => {
+              const button = event.target.closest(".message-spoiler__toggle");
+              if (!button) return;
+              const content = button.nextElementSibling;
+              const revealed = content.hidden;
+              content.hidden = !revealed;
+              button.setAttribute("aria-expanded", String(revealed));
+              button.textContent = revealed ? "Скрыть" : "Спойлер";
+            }}
           />
+        )}
+
+        {linkPreview && !m.poll_id && (
+          <a className="msg__link-preview" href={linkPreview.url} target="_blank" rel="noopener noreferrer">
+            <span className="msg__link-preview-host">{new URL(linkPreview.url).hostname}</span>
+            <strong>{linkPreview.title}</strong>
+            {linkPreview.description && <span>{linkPreview.description}</span>}
+          </a>
         )}
 
         {attachmentGroups.map((group, groupIndex) =>
@@ -544,32 +543,22 @@ const MessageItem = React.memo(function MessageItem({
           ),
         )}
 
-        <span className="msg__time">{msgTime(m.created_at)}{m.edited_at ? " · изменено" : ""}{readBy ? " · прочитано" : ""}</span>
+        {hasReactions && (
+          <div className="msg__reactions">
+            {Object.entries(reactions).map(([emoji, count]) => (
+              <button
+                key={emoji}
+                type="button"
+                className={`reaction ${m.user_reaction === emoji ? "reaction--active" : ""}`}
+                onClick={() => onReaction(m.id, emoji)}
+              >
+                {emoji} {count}
+              </button>
+            ))}
+          </div>
+        )}
+        <span className="msg__time">{msgTime(m.created_at)}{m.edited_at ? " · изменено" : ""}{isMe && readBy ? " · прочитано" : ""}</span>
       </div>
-
-      <div className="msg__actions">
-        <button type="button" onClick={() => onReply(m)} aria-label="Ответить">↩</button>
-        {m.is_pinned && <span className="msg__pin-label">Закреплено</span>}
-        <button type="button" aria-label="Действия с сообщением" onClick={(event) => {
-          const bounds = event.currentTarget.getBoundingClientRect();
-          onContextMenu({ preventDefault() {}, clientX: bounds.left, clientY: bounds.bottom }, m.id);
-        }}>⋯</button>
-      </div>
-
-      {hasReactions && (
-        <div className="msg__reactions">
-          {Object.entries(reactions).map(([emoji, count]) => (
-            <button
-              key={emoji}
-              type="button"
-              className={`reaction ${m.user_reaction === emoji ? "reaction--active" : ""}`}
-              onClick={() => onReaction(m.id, emoji)}
-            >
-              {emoji} {count}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 });
@@ -582,8 +571,10 @@ export default function ChatsPage() {
   const navigate = useNavigate();
   const { chatId } = useParams();
   const me = auth.getCurrentUser();
+  const isOwnMessage = (message) => Boolean(me?.id) && message.user_id === me.id;
 
   const [chats, setChats] = useState([]);
+  const [friends, setFriends] = useState(null);
   const [chatsLoading, setChatsLoading] = useState(true);
   const [chatsError, setChatsError] = useState(null);
   const chatPreviewRevisionRef = useRef(0);
@@ -606,6 +597,7 @@ export default function ChatsPage() {
     } catch (error) { setMessagesError(translateApiError(error, "Не удалось обновить последнее сообщение")); }
   }, []);
   const [messages, setMessages] = useState([]);
+  const [liveLinkPreviews, setLiveLinkPreviews] = useState({});
   const [pollComposer, setPollComposer] = useState(null);
   const [pollVersions, setPollVersions] = useState({});
   const [pollRefresh, refreshPolls] = useReducer((version) => version + 1, 0);
@@ -721,6 +713,8 @@ export default function ChatsPage() {
   const messageMenuRef = useRef(null);
   const [chatPrefs, setChatPrefs] = useState({ color: "", background: "", muted: false, sound: true, shareReads: true, sharePresence: true });
   const [chatPrefsChatId, setChatPrefsChatId] = useState(null);
+  const chatPrefsRef = useRef(chatPrefs);
+  chatPrefsRef.current = chatPrefs;
   const [chatMembers, setChatMembers] = useState([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [membersError, setMembersError] = useState("");
@@ -774,7 +768,10 @@ export default function ChatsPage() {
     observer?.observe(menu);
     menu.querySelector("button")?.focus();
     const dismiss = (event) => {
-      if (event.key === "Escape") setReactionPicker(null);
+      if (event.key === "Escape") {
+        setReactionPicker(null);
+        reactionPicker.trigger?.focus();
+      }
     };
     window.addEventListener("keydown", dismiss);
     return () => { observer?.disconnect(); window.removeEventListener("keydown", dismiss); };
@@ -792,7 +789,6 @@ export default function ChatsPage() {
   const typingUsersTimeoutsRef = useRef(new Map());
   const textareaRef = useRef(null);
   const sendingRef = useRef(false);
-  const blurTimeoutRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const recordingStreamRef = useRef(null);
   const recordingChunksRef = useRef([]);
@@ -847,10 +843,12 @@ export default function ChatsPage() {
     if (chatId && chatPrefsChatId === chatId) localStorage.setItem(`chat-prefs:${chatId}`, JSON.stringify(chatPrefs));
   }, [chatId, chatPrefs, chatPrefsChatId]);
 
+  const lastMessage = messages.at(-1);
+  const readMessageId = lastMessage?.chat_id === chatId ? lastMessage?.id : null;
   useEffect(() => {
-    if (!chatId || !messages.length || !chatPrefs.shareReads) return;
-    chatsApi.markChatRead?.(chatId, messages.at(-1)?.id)?.catch(() => {});
-  }, [chatId, messages, chatPrefs.shareReads]);
+    if (!chatId || chatPrefsChatId !== chatId || !readMessageId || !chatPrefs.shareReads) return;
+    chatsApi.markChatRead(chatId, readMessageId).catch(() => {});
+  }, [chatId, chatPrefsChatId, readMessageId, chatPrefs.shareReads]);
 
   useEffect(() => {
     let cancelled = false;
@@ -942,6 +940,7 @@ export default function ChatsPage() {
     // Сбрасываем состояние композера при переходе между чатами
     setText(chatId ? localStorage.getItem(`chat-draft:${chatId}`) || "" : "");
     setReplyTo(null);
+    setLiveLinkPreviews({});
     setSelectedFiles([]);
     setAIPanelOpen(false);
     setActiveChatTab("messages");
@@ -1036,7 +1035,6 @@ export default function ChatsPage() {
           if (event === "poll:updated" && data.chat_id === chatId) {
             setPollVersions((versions) => ({ ...versions, [data.poll_id]: Math.max(versions[data.poll_id] || 0, data.version) }));
           }
-          const mentionsMe = Boolean(me?.tag) && String(data.text || "").toLowerCase().includes(`@${me.tag.toLowerCase()}`);
           if (event === "message:new" && data.chat_id === chatId) {
             if (data.thread_root_id) {
               const isNewThreadReply = !threadSeenIdsRef.current.has(data.id);
@@ -1056,7 +1054,9 @@ export default function ChatsPage() {
               });
             }
             updateChatPreview(chatId, data);
-            if (!chatPrefs.muted && data.user_id !== me?.id && chatPrefs.sound && typeof AudioContext !== "undefined") {
+            const { muted, sound } = chatPrefsRef.current;
+            const localNotification = !muted && data.user_id !== me?.id && !isWebPushEnabled(me?.id);
+            if (localNotification && sound && typeof AudioContext !== "undefined") {
               try {
                 const audio = new AudioContext();
                 const tone = audio.createOscillator();
@@ -1067,13 +1067,22 @@ export default function ChatsPage() {
                 tone.onended = () => audio.close();
               } catch {}
             }
-            if (!chatPrefs.muted && data.user_id !== me?.id && !mentionsMe && typeof Notification !== "undefined" && Notification.permission === "granted") {
-              new Notification("Новое сообщение", { body: data.text || "Вложение", tag: `chat-${chatId}` });
+            if (localNotification && typeof Notification !== "undefined" && Notification.permission === "granted") {
+              const preview = summarizeMessageText(data.text) || "Вложение";
+              const mentionsMe = Boolean(me?.tag) && preview.toLowerCase().includes(`@${me.tag.toLowerCase()}`);
+              try {
+                new Notification(mentionsMe ? "Вас упомянули" : "Новое сообщение", {
+                  body: preview, tag: `chat-${chatId}`, silent: !sound,
+                });
+              } catch {}
             }
           }
-
-          if (mentionsMe && !chatPrefs.muted && typeof Notification !== "undefined" && Notification.permission === "granted") {
-            new Notification("Вас упомянули", { body: data.text, tag: `mention-${chatId}` });
+          if (event === "message:link-preview" && data.chat_id === chatId) {
+            const { message_id: messageId, preview } = data;
+            setLiveLinkPreviews((previous) => ({
+              ...previous,
+              [messageId]: { ...previous[messageId], [preview.url]: preview },
+            }));
           }
           if (event === "message:updated" && data.chat_id === chatId) {
             applyPinUpdate(data);
@@ -1189,7 +1198,7 @@ export default function ChatsPage() {
   useEffect(() => {
     const container = messageScrollRef.current;
     if (container && followMessagesRef.current) container.scrollTop = container.scrollHeight;
-  }, [messages, threadMessages, activeThread]);
+  }, [messages, threadMessages, activeThread, replyTo, showFormat]);
 
   const startVoiceRecording = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
@@ -1328,7 +1337,8 @@ export default function ChatsPage() {
           filesToSend.map(async (file) => {
             const isText =
               file.type.startsWith("text/") ||
-              /\.(txt|md|csv|json|xml|log)$/i.test(file.name);
+              MARKDOWN_EXTENSION.test(file.name) ||
+              /\.(txt|csv|json|xml|log)$/i.test(file.name);
             const fileText = isText ? await file.text() : null;
             return {
               ...(await attachmentsApi.uploadAttachment(file, chatId, {
@@ -1464,6 +1474,7 @@ export default function ChatsPage() {
   /* ---------- 6. Ввод текста + typing (с дебаунсом) ---------- */
   const handleTextChange = (e) => {
     setText(e.target.value);
+    if (e.target.selectionStart === e.target.selectionEnd) setShowFormat(false);
 
     e.target.style.height = "auto";
     e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
@@ -1482,45 +1493,35 @@ export default function ChatsPage() {
   };
 
   /* ---------- 7. Форматирование ---------- */
-  const applyFormat = (openMark, closeMark) => {
+  const applyFormat = (format) => {
     const el = textareaRef.current;
-    if (!el) return;
-
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const value = el.value;
-
-    const selected = value.slice(start, end);
-    const before = value.slice(0, start);
-    const after = value.slice(end);
-
-    const inner = selected || "";
-    const newText = `${before}${openMark}${inner}${closeMark}${after}`;
-
-    setText(newText);
+    if (!el || el.disabled) return;
+    const formatted = formatMessageSelection(el.value, el.selectionStart, el.selectionEnd, format);
+    setText(formatted.text);
 
     requestAnimationFrame(() => {
+      if (textareaRef.current !== el || el.disabled) return;
       el.focus();
-      if (selected) {
-        el.setSelectionRange(
-          start + openMark.length,
-          start + openMark.length + inner.length,
-        );
-      } else {
-        el.setSelectionRange(start + openMark.length, start + openMark.length);
-      }
+      el.setSelectionRange(formatted.start, formatted.end);
+      setShowFormat(formatted.start !== formatted.end);
     });
   };
 
-  const updateFormatVisibility = () => {
+  const updateFormatVisibility = useCallback(() => {
     const el = textareaRef.current;
-    if (!el) return;
-    const hasSelection = el.selectionEnd - el.selectionStart > 0;
-    setShowFormat(hasSelection && !sending);
-  };
+    if (el && document.activeElement === el) {
+      setShowFormat(el.selectionStart !== el.selectionEnd);
+    }
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener("selectionchange", updateFormatVisibility);
+    return () => document.removeEventListener("selectionchange", updateFormatVisibility);
+  }, [updateFormatVisibility]);
 
   /* ---------- 8. Клавиатура ---------- */
   const handleKeyDown = (e) => {
+    if (e.nativeEvent.isComposing) return;
     const isCtrl = e.ctrlKey || e.metaKey;
 
     if (e.key === "Enter" && isCtrl) {
@@ -1538,15 +1539,15 @@ export default function ChatsPage() {
     }
 
     if (isCtrl) {
-      if (e.key === "b" || e.key === "B") {
+      if (e.code === "KeyB" || e.key.toLowerCase() === "b") {
         e.preventDefault();
-        applyFormat("**", "**");
-      } else if (e.key === "i" || e.key === "I") {
+        applyFormat("bold");
+      } else if (e.code === "KeyI" || e.key.toLowerCase() === "i") {
         e.preventDefault();
-        applyFormat("*", "*");
-      } else if (e.key === "u" || e.key === "U") {
+        applyFormat("italic");
+      } else if (e.code === "KeyU" || e.key.toLowerCase() === "u") {
         e.preventDefault();
-        applyFormat("`", "`");
+        applyFormat("code");
       }
       return;
     }
@@ -1690,13 +1691,8 @@ export default function ChatsPage() {
     }
   }, []);
 
-  const openReactionPicker = useCallback((e, messageId) => {
-    e.preventDefault();
-    setReactionPicker({
-      messageId,
-      x: e.clientX,
-      y: e.clientY,
-    });
+  const openReactionPicker = useCallback((messageId, x, y, trigger) => {
+    setReactionPicker({ messageId, x, y, trigger });
   }, []);
 
   const closeReactionPicker = useCallback(() => setReactionPicker(null), []);
@@ -1730,6 +1726,15 @@ export default function ChatsPage() {
   const canEditSharedAvatar = Boolean(me?.id && (
     activeChat?.owner_id === me.id || chatMembers.some((member) => member.id === me.id && member.role === "moderator")
   ));
+  const messagesById = useMemo(
+    () => new Map([...messages, ...threadMessages].map((message) => [message.id, message])),
+    [messages, threadMessages],
+  );
+  const getMessageAuthor = (message) => message && (
+    chatMembers.find((member) => member.id === message.user_id)?.username ||
+    message.user_name || (isOwnMessage(message) ? me.username : "")
+  );
+  const replyAuthor = getMessageAuthor(replyTo);
   const sharedChatAvatars = useMemo(() => getSharedChatAvatarUrls(activeChat).map((url, index) => ({
     file_key: url,
     file_name: `Аватарка группы ${index + 1}`,
@@ -1786,10 +1791,6 @@ export default function ChatsPage() {
     [galleryAttachments.length],
   );
 
-  const handleContextMenuMessage = useCallback(
-    (e, messageId) => openReactionPicker(e, messageId),
-    [openReactionPicker],
-  );
   const menuMessageSource = reactionPicker
     ? [...messages, ...threadMessages].find((message) => message.id === reactionPicker.messageId)
     : null;
@@ -1839,7 +1840,7 @@ export default function ChatsPage() {
     setForwardBusy(true);
     setForwardError("");
     try {
-      const created = await messagesApi.forwardMessage(chatId, forwarding.id, forwardTarget);
+      const created = await messagesApi.forwardMessage(chatId, forwarding.id, forwardTarget, forwarding.text);
       if (forwardTarget === chatId) setMessages((items) => items.some((item) => item.id === created.id) ? items : [...items, created]);
       updateChatPreview(forwardTarget, created);
       setForwarding(null);
@@ -1940,6 +1941,8 @@ export default function ChatsPage() {
     <main className="chats-page">
       {/* ---------- Левая колонка ---------- */}
       <SocialSidebar
+        friends={friends ?? []}
+        setFriends={setFriends}
         threads={activeThread && !threads.some((thread) => thread.id === activeThread.id) ? [activeThread, ...threads] : threads}
         threadsLoading={threadsLoading}
         threadsError={threadsError}
@@ -2042,6 +2045,13 @@ export default function ChatsPage() {
                 </ul> : <p className="chat-participants__hint">Участников пока нет</p>}
             </section>
 
+            {me?.id && activeChat.owner_id && activeChat.owner_id !== me.id &&
+              friends && !friends.some((friend) => friend.id === activeChat.owner_id) && (
+                <p className="chat-view__creator-notice">
+                  Этот чат создал пользователь, которого нет в ваших друзьях.
+                </p>
+              )}
+
             {chatAvatarError && (
               <p className="chat-create-error" role="alert">
                 {chatAvatarError}
@@ -2111,7 +2121,7 @@ export default function ChatsPage() {
                       {personalAvatarError && <p role="alert" className="personal-avatar-error">{personalAvatarError}</p>}
                     </div>
                   </section>
-                  <ChatPreferences key={chatId} preferences={chatPrefs} onChange={setChatPrefs} />
+                  <ChatPreferences key={chatId} chatId={chatId} userId={me?.id} preferences={chatPrefs} onChange={setChatPrefs} />
                   <section className="chat-members" aria-label="Участники чата">
                     <h3>Участники</h3>
                     {chatMembers.map((member) => <div key={member.id} className="chat-member">
@@ -2167,7 +2177,7 @@ export default function ChatsPage() {
               const node = event.currentTarget;
               followMessagesRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
             }}>
-              {activeThread && <header className="active-thread-header"><strong>Тред: {activeThread.text || "Вложение"}</strong><button type="button" onClick={closeThread}>Вернуться в чат</button></header>}
+              {activeThread && <header className="active-thread-header"><strong>Тред: {summarizeMessageText(activeThread.text) || "Вложение"}</strong><button type="button" onClick={closeThread}>Вернуться в чат</button></header>}
               {threadLoading && activeThread && <p className="chats-empty">Загрузка треда…</p>}
               {searchOpen && <form id="chat-message-search" className="message-search" onSubmit={runMessageSearch} onKeyDown={(event) => {
                 if (event.key === "Escape") { setSearchOpen(false); if (searching) resetMessageSearch(); }
@@ -2210,32 +2220,35 @@ export default function ChatsPage() {
               )}
 
               {!messagesLoading &&
-                (activeThread ? threadMessages : messages).map((m) => (
-                  <MessageItem
+                (activeThread ? threadMessages : messages).map((m) => {
+                  const replySource = messagesById.get(m.reply_to_id);
+                  return <MessageItem
                     key={m.id}
                     message={pinsLoading || pinsError ? m : { ...m, is_pinned: pinnedMessageIds.has(m.id) }}
-                    isMe={m.user_id === me?.id}
+                    isMe={isOwnMessage(m)}
                     onReaction={handleReaction}
-                    onContextMenu={handleContextMenuMessage}
+                    onContextMenu={openReactionPicker}
                     onTranscribe={(attachment) => handleTranscribe(m, attachment)}
                     onDownload={downloadMedia}
                     transcribingAttachments={transcribingAttachments}
                     onOpenMedia={openMediaViewer}
                     onReply={replyToMessage}
                     onJumpTo={jumpToMessage}
+                    replySource={replySource}
+                    replyAuthor={getMessageAuthor(replySource)}
                     pollVersion={pollVersions[m.poll_id] || 0}
                     pollRefresh={pollRefresh}
                     pollMenuTarget={reactionPicker?.messageId === m.id ? pollMenuTarget : null}
                     onCloseMenu={closeReactionPicker}
-                    readBy={m.user_id === me?.id && chatMembers.some((member) => member.id !== me?.id && member.last_read_message_id === m.id)}
-                  />
-                ))}
+                    liveLinkPreviews={liveLinkPreviews[m.id]}
+                    readBy={chatMembers.some((member) => member.id !== me?.id && member.last_read_message_id === m.id)}
+                  />;
+                })}
               <div ref={bottomRef} />
             </div>
 
             {/* ---------- Composer ---------- */}
             <div className="chat-view__composer-wrapper">
-              <FormatToolbar onFormat={applyFormat} visible={showFormat} />
               {mentionSuggestions.length > 0 && <div className="mention-suggestions" role="listbox" aria-label="Упоминания">
                 {mentionSuggestions.map((member) => <button key={member.id} type="button" role="option" onClick={() => {
                   const tag = member.tag || member.username;
@@ -2244,9 +2257,33 @@ export default function ChatsPage() {
                 }}>@{member.tag || member.username}</button>)}
               </div>}
 
-              <form className="chat-view__composer" onSubmit={handleSend}>
-                {activeThread && <div className="reply-preview"><span>Ответ в треде</span><button type="button" onClick={closeThread} aria-label="Закрыть тред">×</button></div>}
-                {replyTo && <div className="reply-preview"><span>Ответ: {replyTo.text || "вложение"}</span><button type="button" onClick={() => setReplyTo(null)} aria-label="Отменить ответ">×</button></div>}
+              {replyTo && (
+                <div className="reply-preview">
+                  <button type="button" className="reply-preview__message" onClick={() => jumpToMessage(replyTo.id)}>
+                    <span className="reply-preview__icon" aria-hidden="true">↩︎</span>
+                    <span className="reply-preview__content">
+                      <span className="reply-preview__author">{replyAuthor ? `В ответ ${replyAuthor}` : "В ответ на сообщение"}</span>{" "}
+                      <span className="reply-preview__text">{messageContentPreview(replyTo)}</span>
+                    </span>
+                  </button>
+                  <button type="button" className="reply-preview__close" aria-label="Отменить ответ" onClick={() => {
+                    setReplyTo(null);
+                    textareaRef.current?.focus();
+                  }}>×</button>
+                </div>
+              )}
+
+              <form className="chat-view__composer" onSubmit={handleSend} onBlur={(event) => {
+                const next = event.relatedTarget;
+                if (next !== textareaRef.current && !next?.closest?.(".format-toolbar")) setShowFormat(false);
+              }} onKeyDown={(event) => {
+                if (event.key !== "Escape" || !showFormat) return;
+                const el = textareaRef.current;
+                el.focus();
+                el.setSelectionRange(el.selectionEnd, el.selectionEnd);
+                setShowFormat(false);
+              }}>
+                {activeThread && <div className="thread-composer-label"><span>Ответ в треде</span><button type="button" onClick={closeThread} aria-label="Закрыть тред">×</button></div>}
                 {recording ? (
                   <>
                     <span className="voice-recording__timer" aria-live="polite">
@@ -2306,17 +2343,13 @@ export default function ChatsPage() {
                   rows={1}
                   onChange={handleTextChange}
                   onSelect={updateFormatVisibility}
-                  onMouseUp={updateFormatVisibility}
-                  onKeyUp={updateFormatVisibility}
+                  onPointerUp={updateFormatVisibility}
+                  onFocus={updateFormatVisibility}
                   onKeyDown={handleKeyDown}
-                  onBlur={() => {
-                    blurTimeoutRef.current = setTimeout(
-                      () => setShowFormat(false),
-                      150,
-                    );
-                  }}
+                  onKeyUp={updateFormatVisibility}
                   disabled={sending}
                 />
+                {showFormat && text && !sending && <FormatToolbar onFormat={applyFormat} />}
 
                 <button
                   type="button"
@@ -2456,11 +2489,8 @@ export default function ChatsPage() {
         <>
           <div
             className="reaction-picker__backdrop"
-            onClick={closeReactionPicker}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              closeReactionPicker();
-            }}
+            onPointerDown={closeReactionPicker}
+            onContextMenu={(event) => event.preventDefault()}
           />
           <div
             ref={messageMenuRef}
@@ -2490,7 +2520,7 @@ export default function ChatsPage() {
               {!menuMessage.poll_id && <button type="button" onClick={() => runMenuAction(() => { setForwarding(menuMessage); setForwardTarget(""); setForwardError(""); })}>Переслать</button>}
               <button type="button" disabled={Boolean(pinBusyId)} onClick={() => runMenuAction(() => pinMessage(menuMessage))}>{menuMessage.is_pinned ? "Открепить" : "Закрепить"}</button>
               <div ref={setPollMenuTarget} className="message-context-menu__poll-actions" />
-              {menuMessage.user_id === me?.id && <>
+              {isOwnMessage(menuMessage) && <>
                 {!menuMessage.poll_id && <button type="button" onClick={() => runMenuAction(() => editMessage(menuMessage))}>Изменить</button>}
                 <button type="button" className="message-context-menu__delete" onClick={() => runMenuAction(() => removeMessage(menuMessage.id))}>Удалить</button>
               </>}
@@ -2715,6 +2745,7 @@ export default function ChatsPage() {
       <CallPanel
         chatId={chatId}
         chatName={activeChat?.title}
+        canInvite={canEditSharedAvatar}
         open={callPanelOpen}
         onClose={() => setCallPanelOpen(false)}
       />

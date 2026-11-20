@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { disableWebPush, enableWebPush, isWebPushEnabled, supportsWebPush, syncWebPushPreferences } from "../api/push";
 
 function PreferenceSwitch({ label, description, checked, onChange }) {
   return (
@@ -11,17 +12,27 @@ function PreferenceSwitch({ label, description, checked, onChange }) {
   );
 }
 
-export default function ChatPreferences({ preferences, onChange }) {
+export default function ChatPreferences({ chatId, userId, preferences, onChange }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({});
   const [permission, setPermission] = useState(() => typeof Notification === "undefined" ? "unsupported" : Notification.permission);
   const [permissionBusy, setPermissionBusy] = useState(false);
   const [permissionError, setPermissionError] = useState("");
+  const [pushEnabled, setPushEnabled] = useState(() => isWebPushEnabled(userId));
+  const pushSupported = supportsWebPush();
   const triggerRef = useRef(null);
   const panelRef = useRef(null);
   const panelId = useId();
   const close = () => { setOpen(false); triggerRef.current?.focus(); };
-  const update = (field, value) => onChange((current) => ({ ...current, [field]: value }));
+  const update = (field, value) => {
+    onChange((current) => ({ ...current, [field]: value }));
+    if (field === "muted" || field === "sound") {
+      setPermissionError("");
+      syncWebPushPreferences(userId, chatId, { ...preferences, [field]: value }).catch(() => {
+        setPermissionError("Не удалось синхронизировать настройки фоновых уведомлений.");
+      });
+    }
+  };
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -79,13 +90,31 @@ export default function ChatPreferences({ preferences, onChange }) {
     setPermissionBusy(true);
     setPermissionError("");
     try {
-      setPermission(await Notification.requestPermission());
-    } catch {
-      setPermissionError("Не удалось включить уведомления. Проверьте настройки браузера.");
+      const granted = permission === "default" ? await Notification.requestPermission() : permission;
+      setPermission(granted);
+      if (granted !== "granted" || !pushSupported) return;
+      if (pushEnabled) await disableWebPush(userId);
+      else await enableWebPush(userId);
+      setPushEnabled(isWebPushEnabled(userId));
+    } catch (error) {
+      setPermissionError(error.message === "Фоновые уведомления временно недоступны."
+        ? error.message
+        : "Не удалось изменить настройки уведомлений. Попробуйте ещё раз.");
     } finally {
       setPermissionBusy(false);
     }
   };
+  let notificationLabel = "Включить уведомления";
+  if (permissionBusy) notificationLabel = "Обновление уведомлений…";
+  else if (permission === "denied") notificationLabel = "Уведомления заблокированы";
+  else if (permission === "unsupported") notificationLabel = "Уведомления недоступны";
+  else if (permission === "granted") {
+    notificationLabel = pushSupported
+      ? (pushEnabled ? "Отключить фоновые уведомления" : "Включить фоновые уведомления")
+      : "Уведомления разрешены";
+  }
+  const notificationsLocked = permissionBusy || permission === "denied" || permission === "unsupported" ||
+    (permission === "granted" && !pushSupported);
 
   return (
     <div className="chat-settings">
@@ -118,10 +147,10 @@ export default function ChatPreferences({ preferences, onChange }) {
             <PreferenceSwitch label="Показывать статус в сети" description="Делиться своим присутствием в чате" checked={preferences.sharePresence} onChange={(value) => update("sharePresence", value)} />
           </div>
           <div className="chat-settings__footer">
-            <button type="button" className="chat-settings__notifications" disabled={permissionBusy || permission !== "default"} onClick={requestNotifications}>
-              {permissionBusy ? "Запрос разрешения…" : permission === "granted" ? "Уведомления разрешены" : permission === "denied" ? "Уведомления заблокированы" : permission === "unsupported" ? "Уведомления недоступны" : "Включить уведомления"}
+            <button type="button" className="chat-settings__notifications" disabled={notificationsLocked} onClick={requestNotifications}>
+              {notificationLabel}
             </button>
-            <p>{permission === "denied" ? "Разрешите их в настройках сайта в браузере." : "Сохраняется автоматически на этом устройстве."}</p>
+            <p>{permission === "denied" ? "Разрешите их в настройках сайта в браузере." : "Настройки действуют в этом браузере."}</p>
             {permissionError && <p className="chat-settings__error" role="alert">{permissionError}</p>}
           </div>
         </section>, document.body,

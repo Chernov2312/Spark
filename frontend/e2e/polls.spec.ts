@@ -26,7 +26,7 @@ test("anonymous poll creation, vote and retraction survive history reload", asyn
   await expect(actions).toBeHidden();
   await expect(card).toContainText("0 голосов");
   await expect(card.getByRole("button", { name: /В парк/ })).toHaveAttribute("aria-pressed", "false");
-  await page.locator(".msg--poll").getByRole("button", { name: "Действия с сообщением" }).click();
+  await card.getByRole("heading").click({ button: "right" });
   await expect(actions.getByRole("button", { name: "Отменить голос" })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(actions).toBeHidden();

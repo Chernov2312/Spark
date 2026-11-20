@@ -1,13 +1,15 @@
 import { api } from "./client";
+import { parseMessageMarkdown } from "../utils/messageMarkdown";
 
 export async function listThreads(chatId) {
   const { data } = await api.get(`/chats/${chatId}/threads`);
   return data.messages;
 }
 
-export async function forwardMessage(chatId, messageId, targetChatId) {
+export async function forwardMessage(chatId, messageId, targetChatId, text) {
   const { data } = await api.post(`/chats/${chatId}/messages/${messageId}/forward`, {
     target_chat_id: targetChatId,
+    link_preview_url: parseMessageMarkdown(text).previewUrl,
   });
   return data;
 }
@@ -32,7 +34,10 @@ export async function listThreadMessages(chatId, rootMessageId, { limit = 100, b
 
 // POST /chats/{id}/messages
 export async function sendMessage(chatId, body) {
-  const { data } = await api.post(`/chats/${chatId}/messages`, body);
+  const { data } = await api.post(`/chats/${chatId}/messages`, {
+    ...body,
+    link_preview_url: parseMessageMarkdown(body.text).previewUrl,
+  });
   return data;
 }
 
@@ -45,7 +50,10 @@ export async function transcribeAttachment(chatId, messageId, attachmentId) {
 
 // PUT /messages/{id}
 export async function updateMessage(messageId, text) {
-  const { data } = await api.put(`/messages/${messageId}`, { text });
+  const { data } = await api.put(`/messages/${messageId}`, {
+    text,
+    link_preview_url: parseMessageMarkdown(text).previewUrl,
+  });
   return data;
 }
 

@@ -1,0 +1,24 @@
+package main
+
+import (
+	"context"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"spark/calls/internal/config"
+	"spark/calls/internal/signaling"
+)
+
+func main() {
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := signaling.Run(ctx, cfg); err != nil {
+		log.Fatal(err)
+	}
+}

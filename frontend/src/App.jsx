@@ -7,6 +7,7 @@ import LoginPage from "./pages/LoginPage";
 import ProfilePage from "./pages/ProfilePage";
 import FaqPage from "./pages/FaqPage";
 import ChatsPage from "./pages/ChatsPage";
+import GuestCallPage from "./pages/GuestCallPage";
 import EmailVerificationPage from "./pages/EmailVerificationPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
         <Route path="/faq" element={<FaqPage />} />
+        <Route path="/call/join" element={<GuestCallPage />} />
         <Route
           path="/chats"
           element={

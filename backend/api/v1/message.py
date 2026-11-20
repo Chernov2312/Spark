@@ -6,14 +6,18 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from tasks.config_celery import celery_app
+from tasks.link_preview import enqueue_link_preview
+from tasks.push import enqueue_message_push
 
 from config import RouteTags
 from core.dependencies import get_redis
 from core.message_actions import (
+    count_thread_replies,
     forward_message,
     list_pinned_messages,
     list_thread_roots,
     queued_messages,
+    validate_message_preview_url,
 )
 from core.polls import ensure_not_poll_edit
 from core.security import get_id_current_user
@@ -57,23 +61,20 @@ async def get_chat_threads(
     redis: Redis = Depends(get_redis),
 ) -> MessageHistory:
     roots = await list_thread_roots(session, redis, chat_id, user_id)
-    counts = await MessageDao.get_thread_reply_counts(
-        session, {root.id for root in roots}
-    )
     pending = await queued_messages(redis, chat_id)
+    counts = await count_thread_replies(session, {root.id for root in roots}, pending)
     pinned_ids = await MessageDao.get_pinned_message_ids(session, chat_id)
-    persisted = await MessageDao.get_message_texts(session, {item.id for item in pending})
-    for item in pending:
-        if item.thread_root_id is not None and item.id not in persisted:
-            counts[item.thread_root_id] = counts.get(item.thread_root_id, 0) + 1
     return MessageHistory(
         messages=[
             await _build_message_response(
+                redis=redis,
                 message_id=root.id,
                 poll_id=root.poll_id if isinstance(root, Message) else None,
+                is_forwarded=isinstance(root, Message) and root.is_forwarded,
                 chat_id=root.chat_id,
                 user_id=root.user_id,
                 text=root.text,
+                link_preview_url=root.link_preview_url,
                 created_at=root.created_at,
                 attachments=root.attachments,
                 thread_reply_count=counts.get(root.id, 0),
@@ -94,13 +95,22 @@ async def forward_chat_message(
     redis: Redis = Depends(get_redis),
 ) -> MessageResponse:
     message = await forward_message(
-        session, redis, chat_id, message_id, data.target_chat_id, user_id
+        session,
+        redis,
+        chat_id,
+        message_id,
+        data.target_chat_id,
+        user_id,
+        data.link_preview_url,
     )
     response = await _build_message_response(
+        redis=redis,
         message_id=message.id,
         chat_id=message.chat_id,
+        is_forwarded=message.is_forwarded,
         user_id=message.user_id,
         text=message.text,
+        link_preview_url=message.link_preview_url,
         created_at=message.created_at,
         attachments=message.attachments,
     )
@@ -110,6 +120,8 @@ async def forward_chat_message(
         message.chat_id,
         json.dumps({"event": "message:new", "data": response.model_dump(mode="json")}),
     )
+    await enqueue_link_preview(message.chat_id, message.id, message.link_preview_url)
+    await enqueue_message_push(message.chat_id, message.user_id, message.id)
     return response
 
 
@@ -130,12 +142,14 @@ def _is_before_cursor(created_at: datetime, before: datetime) -> bool:
 
 async def _build_message_response(
     *,
+    redis: Redis,
     message_id: uuid.UUID,
     chat_id: uuid.UUID,
     user_id: uuid.UUID,
     text: str | None,
     created_at: datetime,
     attachments: list[Attachment | AttachmentRequest],
+    link_preview_url: str | None = None,
     reactions_count: dict[str, int] | None = None,
     user_reaction: str | None = None,
     reply_to_id: uuid.UUID | None = None,
@@ -144,6 +158,7 @@ async def _build_message_response(
     thread_reply_count: int = 0,
     edited_at: datetime | None = None,
     is_pinned: bool = False,
+    is_forwarded: bool = False,
     poll_id: uuid.UUID | None = None,
 ) -> MessageResponse:
     s3 = S3Storage()
@@ -163,6 +178,11 @@ async def _build_message_response(
                 text=attachment.text,
             ),
         )
+    link_preview = (
+        await RedisDao.get_link_preview(redis, chat_id, message_id, link_preview_url)
+        if link_preview_url
+        else None
+    )
     return MessageResponse(
         id=message_id,
         chat_id=chat_id,
@@ -174,7 +194,9 @@ async def _build_message_response(
         thread_reply_count=thread_reply_count,
         edited_at=edited_at,
         is_pinned=is_pinned,
+        is_forwarded=is_forwarded,
         poll_id=poll_id,
+        link_preview=link_preview,
         user_reaction=user_reaction,
         attachments=signed_attachments,
         reactions_count=reactions_count or {},
@@ -212,6 +234,7 @@ async def get_messages_history(
             detail="You are not a member of this chat",
         )
 
+    pending_messages = await queued_messages(redis, chat_id)
     db_messages: List[Message] = await MessageDao.get_chat_history(
         session=session,
         chat_id=chat_id,
@@ -229,31 +252,38 @@ async def get_messages_history(
         reaction.message_id: reaction.emoji for reaction in user_reactions
     }
     pinned_ids = await MessageDao.get_pinned_message_ids(session, chat_id)
-    reply_ids = {message.reply_to_id for message in db_messages if message.reply_to_id}
-    reply_texts = await MessageDao.get_message_texts(session, reply_ids)
-    thread_counts = await MessageDao.get_thread_reply_counts(
+    thread_counts = await count_thread_replies(
         session,
-        {message.id for message in db_messages},
+        {
+            message.id
+            for message in [*db_messages, *pending_messages]
+            if message.thread_root_id is None
+        },
+        pending_messages,
     )
-    pending_entries = await RedisDao.get_stream_entries(
-        redis,
-        message_queue_key(chat_id),
-    )
-    for _, fields in pending_entries:
-        queued = MessageInternalDTO.model_validate_json(fields["payload"])
-        if queued.thread_root_id in thread_counts:
-            thread_counts[queued.thread_root_id] += 1
-        elif queued.thread_root_id in {message.id for message in db_messages}:
-            thread_counts[queued.thread_root_id] = 1
+    reply_ids = {
+        message.reply_to_id
+        for message in [*db_messages, *pending_messages]
+        if message.reply_to_id
+    }
+    reply_texts = {
+        message.id: message.text
+        for message in pending_messages
+        if message.id in reply_ids
+    }
+    reply_texts.update(await MessageDao.get_message_texts(session, reply_ids))
 
     merged: dict[uuid.UUID, MessageResponse] = {}
     for message in db_messages:
         merged[message.id] = await _build_message_response(
+            redis=redis,
             message_id=message.id,
             poll_id=message.poll_id,
+            is_forwarded=message.is_forwarded,
             chat_id=message.chat_id,
             user_id=message.user_id,
             text=message.text,
+            link_preview_url=message.link_preview_url,
             created_at=message.created_at,
             attachments=message.attachments,
             reactions_count=message.reactions_count,
@@ -266,8 +296,7 @@ async def get_messages_history(
             is_pinned=message.id in pinned_ids,
         )
 
-    for _, fields in pending_entries:
-        queued_message = MessageInternalDTO.model_validate_json(fields["payload"])
+    for queued_message in pending_messages:
         if queued_message.thread_root_id is not None:
             continue
         if before is not None and not _is_before_cursor(
@@ -278,12 +307,17 @@ async def get_messages_history(
         if queued_message.id in merged:
             continue
         merged[queued_message.id] = await _build_message_response(
+            redis=redis,
             message_id=queued_message.id,
             chat_id=queued_message.chat_id,
-            user_id=user_id,
+            user_id=queued_message.user_id,
             text=queued_message.text,
+            link_preview_url=queued_message.link_preview_url,
             created_at=queued_message.created_at,
             attachments=queued_message.attachments,
+            reply_to_id=queued_message.reply_to_id,
+            reply_to_text=reply_texts.get(queued_message.reply_to_id),
+            thread_reply_count=thread_counts.get(queued_message.id, 0),
         )
 
     sorted_messages = sorted(
@@ -321,17 +355,13 @@ async def get_message_thread(
         raise HTTPException(status_code=404, detail="Chat not found")
     if not any(member.id == user_id for member in chat.users):
         raise HTTPException(status_code=403, detail="You are not a member of this chat")
+    pending = await queued_messages(redis, chat_id)
     root = await MessageDao.get_with_attachments(session, root_message_id)
-    queued_root = None
-    if root is None:
-        for _, fields in await RedisDao.get_stream_entries(
-            redis,
-            message_queue_key(chat_id),
-        ):
-            candidate = MessageInternalDTO.model_validate_json(fields["payload"])
-            if candidate.id == root_message_id:
-                queued_root = candidate
-                break
+    queued_root = (
+        next((item for item in pending if item.id == root_message_id), None)
+        if root is None
+        else None
+    )
     if (
         (root is None and queued_root is None)
         or (root is not None and root.chat_id != chat_id)
@@ -349,27 +379,29 @@ async def get_message_thread(
         before,
     )
     # Include queued replies so a newly sent thread message is immediately visible.
-    queued_replies: list[MessageInternalDTO] = []
-    for _, fields in await RedisDao.get_stream_entries(redis, message_queue_key(chat_id)):
-        queued = MessageInternalDTO.model_validate_json(fields["payload"])
-        if queued.thread_root_id == root_message_id and (
-            before is None or _is_before_cursor(queued.created_at, before)
-        ):
-            queued_replies.append(queued)
+    queued_replies = [
+        queued
+        for queued in pending
+        if queued.thread_root_id == root_message_id
+        and (before is None or _is_before_cursor(queued.created_at, before))
+    ]
 
     pinned_ids = await MessageDao.get_pinned_message_ids(session, chat_id)
     items: list[MessageResponse] = []
     if before is None:
-        root_thread_counts = await MessageDao.get_thread_reply_counts(
-            session, {root_message_id}
+        root_thread_counts = await count_thread_replies(
+            session, {root_message_id}, pending
         )
         items.append(
             await _build_message_response(
+                redis=redis,
                 message_id=root.id if root is not None else queued_root.id,
                 poll_id=root.poll_id if root is not None else None,
+                is_forwarded=root is not None and root.is_forwarded,
                 chat_id=chat_id,
                 user_id=root.user_id if root is not None else queued_root.user_id,
                 text=root.text if root is not None else queued_root.text,
+                link_preview_url=(root or queued_root).link_preview_url,
                 created_at=root.created_at
                 if root is not None
                 else queued_root.created_at,
@@ -377,24 +409,20 @@ async def get_message_thread(
                 if root is not None
                 else queued_root.attachments,
                 is_pinned=root_message_id in pinned_ids,
-                thread_reply_count=(
-                    root_thread_counts.get(root_message_id, 0)
-                    + sum(
-                        item.thread_root_id == root_message_id
-                        and all(reply.id != item.id for reply in replies)
-                        for item in queued_replies
-                    )
-                ),
+                thread_reply_count=root_thread_counts.get(root_message_id, 0),
             )
         )
     for reply in replies:
         items.append(
             await _build_message_response(
+                redis=redis,
                 message_id=reply.id,
                 poll_id=reply.poll_id,
+                is_forwarded=reply.is_forwarded,
                 chat_id=reply.chat_id,
                 user_id=reply.user_id,
                 text=reply.text,
+                link_preview_url=reply.link_preview_url,
                 created_at=reply.created_at,
                 attachments=reply.attachments,
                 reply_to_id=reply.reply_to_id,
@@ -406,10 +434,12 @@ async def get_message_thread(
         if all(item.id != queued.id for item in items):
             items.append(
                 await _build_message_response(
+                    redis=redis,
                     message_id=queued.id,
                     chat_id=queued.chat_id,
                     user_id=queued.user_id,
                     text=queued.text,
+                    link_preview_url=queued.link_preview_url,
                     created_at=queued.created_at,
                     attachments=queued.attachments,
                     reply_to_id=queued.reply_to_id,
@@ -439,6 +469,7 @@ async def create_message(
             detail="You are not a member of this chat",
         )
 
+    validate_message_preview_url(message.text, message.link_preview_url)
     requested_file_keys = [attachment.file_key for attachment in message.attachments]
     if len(set(requested_file_keys)) != len(requested_file_keys):
         raise HTTPException(
@@ -527,12 +558,14 @@ async def create_message(
         chat_id=chat_id,
         user_id=user_id,
         text=message.text,
+        link_preview_url=message.link_preview_url,
         reply_to_id=message.reply_to_id,
         thread_root_id=message.thread_root_id,
         attachments=queued_attachments,
         created_at=now,
     )
     valid = await _build_message_response(
+        redis=redis,
         message_id=queued_message.id,
         chat_id=chat_id,
         user_id=user_id,
@@ -549,6 +582,8 @@ async def create_message(
         chat_id,
         json.dumps({"event": "message:new", "data": valid.model_dump(mode="json")}),
     )
+    await enqueue_link_preview(chat_id, valid.id, queued_message.link_preview_url)
+    await enqueue_message_push(chat_id, user_id, valid.id)
     return valid
 
 
@@ -563,6 +598,7 @@ async def search_messages(
     limit: int = 100,
     session: AsyncSession = Depends(get_session),
     user_id: uuid.UUID = Depends(get_id_current_user),
+    redis: Redis = Depends(get_redis),
 ) -> MessageHistory:
     chat = await ChatDao.get_chat_with_users(session=session, chat_id=chat_id)
     if chat is None:
@@ -584,11 +620,14 @@ async def search_messages(
     return MessageHistory(
         messages=[
             await _build_message_response(
+                redis=redis,
                 message_id=row.id,
                 poll_id=row.poll_id,
+                is_forwarded=row.is_forwarded,
                 chat_id=row.chat_id,
                 user_id=row.user_id,
                 text=row.text,
+                link_preview_url=row.link_preview_url,
                 created_at=row.created_at,
                 attachments=row.attachments,
                 reply_to_id=row.reply_to_id,
@@ -606,6 +645,7 @@ async def get_pinned_messages(
     chat_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     user_id: uuid.UUID = Depends(get_id_current_user),
+    redis: Redis = Depends(get_redis),
 ) -> MessageHistory:
     rows = await list_pinned_messages(session, chat_id, user_id)
     counts = await MessageDao.get_thread_reply_counts(session, {row.id for row in rows})
@@ -615,11 +655,14 @@ async def get_pinned_messages(
     return MessageHistory(
         messages=[
             await _build_message_response(
+                redis=redis,
                 message_id=row.id,
                 poll_id=row.poll_id,
+                is_forwarded=row.is_forwarded,
                 chat_id=row.chat_id,
                 user_id=row.user_id,
                 text=row.text,
+                link_preview_url=row.link_preview_url,
                 created_at=row.created_at,
                 attachments=row.attachments,
                 reply_to_id=row.reply_to_id,
@@ -662,11 +705,14 @@ async def toggle_message_pin(
         session, {message.reply_to_id} if message.reply_to_id else set()
     )
     response = await _build_message_response(
+        redis=redis,
         message_id=message.id,
         poll_id=message.poll_id,
+        is_forwarded=message.is_forwarded,
         chat_id=message.chat_id,
         user_id=message.user_id,
         text=message.text,
+        link_preview_url=message.link_preview_url,
         created_at=message.created_at,
         attachments=message.attachments,
         reply_to_id=message.reply_to_id,
@@ -769,11 +815,13 @@ async def update_message(
     redis: Redis = Depends(get_redis),
 ) -> MessageResponse:
     await ensure_not_poll_edit(session, message_id, user_id)
+    validate_message_preview_url(message.text, message.link_preview_url)
     res = await MessageDao.update_by_id(
         session=session,
         target_id=message_id,
         user_id=user_id,
         text=message.text,
+        link_preview_url=message.link_preview_url,
     )
     if res is None:
         raise HTTPException(
@@ -785,11 +833,14 @@ async def update_message(
         raise HTTPException(status_code=404, detail="Message not found")
     pinned_ids = await MessageDao.get_pinned_message_ids(session, updated.chat_id)
     response = await _build_message_response(
+        redis=redis,
         message_id=updated.id,
         poll_id=updated.poll_id,
+        is_forwarded=updated.is_forwarded,
         chat_id=updated.chat_id,
         user_id=updated.user_id,
         text=updated.text,
+        link_preview_url=updated.link_preview_url,
         created_at=updated.created_at,
         attachments=updated.attachments,
         reactions_count=updated.reactions_count,
@@ -806,6 +857,7 @@ async def update_message(
             {"event": "message:updated", "data": response.model_dump(mode="json")}
         ),
     )
+    await enqueue_link_preview(updated.chat_id, updated.id, updated.link_preview_url)
     return response
 
 

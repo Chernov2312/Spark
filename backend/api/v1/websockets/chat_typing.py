@@ -58,7 +58,8 @@ async def on_message(
             )
         while True:
             msg = WsEvent.model_validate(await websocket.receive_json())
-            if msg.event == "message:new" or msg.event == "chat:updated":
+            if msg.event == "message:new":
+                msg.data.is_forwarded = False
                 await RedisDao.publish_chat_event(redis, chat_id, msg.model_dump_json())
             elif msg.event == "user:typing":
                 msg.data.user_id = user_id

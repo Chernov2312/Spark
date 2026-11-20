@@ -5,10 +5,12 @@ import uuid
 from pydantic import BaseModel, Field, model_validator
 
 from schemas.attachment import AttachmentResponse
+from schemas.message import LinkPreview
 
 
 class UserData(BaseModel):
     id: uuid.UUID
+    is_forwarded: bool = False
     text: str | None = None
     chat_id: uuid.UUID
     attachments: list[AttachmentResponse] = Field(default_factory=list)
@@ -68,11 +70,18 @@ class PollUpdated(BaseModel):
 
 
 class MessageUpdated(UserData):
+    link_preview: LinkPreview | None = None
     is_pinned: bool = False
     edited_at: datetime | None = None
     reply_to_id: uuid.UUID | None = None
     reply_to_text: str | None = None
     attachments: list[AttachmentResponse] = Field(default_factory=list)
+
+
+class MessageLinkPreview(BaseModel):
+    chat_id: uuid.UUID
+    message_id: uuid.UUID
+    preview: LinkPreview
 
 
 class WsEvent(BaseModel):
@@ -84,6 +93,7 @@ class WsEvent(BaseModel):
         "message:new",
         "message:updated",
         "message:deleted",
+        "message:link-preview",
         "attachment:text",
         "poll:updated",
     ]
@@ -96,6 +106,7 @@ class WsEvent(BaseModel):
         AttachmentText,
         MessageUpdated,
         MessageDeleted,
+        MessageLinkPreview,
         PollUpdated,
     ]
 
@@ -109,6 +120,7 @@ class WsEvent(BaseModel):
                 "message:new": UserData,
                 "message:updated": MessageUpdated,
                 "message:deleted": MessageDeleted,
+                "message:link-preview": MessageLinkPreview,
                 "chat:update": ChatData,
                 "user:typing": UserTyping,
                 "user:presence": UserPresence,

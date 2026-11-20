@@ -1,7 +1,7 @@
 from datetime import datetime
 import uuid
 
-from sqlalchemy import DateTime, ForeignKey, Index, select, String
+from sqlalchemy import Boolean, DateTime, false, ForeignKey, Index, select, String
 from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import (
@@ -46,6 +46,8 @@ class Message(Base):
     )
     edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     text: Mapped[str] = mapped_column(String(1000), nullable=True)
+    link_preview_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    is_forwarded: Mapped[bool] = mapped_column(Boolean, server_default=false())
     attachments: Mapped[list["Attachment"]] = relationship("Attachment")
     reactions_count: Mapped[dict[str, int]] = mapped_column(
         JSONB,

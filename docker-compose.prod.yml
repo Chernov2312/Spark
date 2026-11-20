@@ -34,11 +34,25 @@ services:
     logging: *prod-logging
 
   frontend:
+    image: spark-frontend-production
+    build:
+      target: production
+      args:
+        VITE_API_URL: ${API_BASE_URL:-/api/v1}
+        VITE_CALLS_WS_URL: ${VITE_CALLS_WS_URL:-/v1/calls/ws}
     ports: !reset []
     volumes: !reset []
     command: null
-    environment:
-      VITE_API_URL: ${API_BASE_URL:-/api/v1}
+    environment: !reset {}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5173/index.html"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 2s
+    logging: *prod-logging
+
+  calls:
     logging: *prod-logging
 
   celery:
@@ -64,5 +78,7 @@ services:
       backend:
         condition: service_healthy
       frontend:
+        condition: service_healthy
+      calls:
         condition: service_started
     logging: *prod-logging
