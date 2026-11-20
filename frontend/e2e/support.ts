@@ -55,7 +55,15 @@ export class MockApi {
         : null;
       this.requests.push({ method, path, body, authorization: request.headers().authorization });
       const respond = (json: unknown, status = 200) => route.fulfill({ status, json });
-      if (method === "POST" && path === "/auth/login") return respond(user);
+      if (method === "POST" && (path === "/auth/login" || path === "/auth/logout")) {
+        const origin = request.headers().origin;
+        const headers = origin ? {
+          "access-control-allow-origin": origin,
+          "access-control-allow-credentials": "true",
+        } : undefined;
+        if (path === "/auth/login") return route.fulfill({ status: 200, json: user, headers });
+        return route.fulfill({ status: 204, headers });
+      }
       if (method === "POST" && path === "/auth/register") {
         const input = body as { email: string; tag: string };
         return respond({ verification_required: true, email: input.email, tag: input.tag }, 201);

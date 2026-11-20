@@ -30,8 +30,8 @@ def ffmpeg_tools_work():
     not ffmpeg_tools_work(),
     reason="working FFmpeg and ffprobe executables are required for audio conversion",
 )
-async def test_convert():
-    res = AudioConverter.get_text_from_audio(
+async def test_convert() -> None:
+    res = await AudioConverter.get_text_from_audio(
         str(Path(__file__).resolve().with_name("audio.ogg")),
     )
     assert res is not None

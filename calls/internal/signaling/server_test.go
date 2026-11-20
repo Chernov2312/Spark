@@ -52,6 +52,8 @@ func testServer(t *testing.T) *httptest.Server {
 		"Bearer member":   {ID: memberID, Username: "Участник", Role: "member"},
 		"Bearer outsider": {ID: outsiderID, Username: "Другой"},
 	}
+	users["Bearer owner-renewed"] = users["Bearer owner"]
+	users["Bearer member-renewed"] = users["Bearer member"]
 	python := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, ok := users[r.Header.Get("Authorization")]
 		if !ok {
@@ -120,6 +122,24 @@ func start(t *testing.T, service *httptest.Server) (*websocket.Conn, string) {
 	receive(t, owner, "auth:ok")
 	send(t, owner, "call:start", fields{"chat_id": chatID, "media": "video"})
 	return owner, receive(t, owner, "call:started")["call_id"].(string)
+}
+
+func TestCallActionsAcceptRenewedTokensForSameUser(t *testing.T) {
+	service := testServer(t)
+	owner := dial(t, service, fields{"access_token": "owner"})
+	member := dial(t, service, fields{"access_token": "member"})
+	receive(t, owner, "auth:ok")
+	receive(t, member, "auth:ok")
+
+	send(t, owner, "call:start", fields{"chat_id": chatID, "media": "audio", "access_token": "member-renewed"})
+	if problem := receive(t, owner, "call:error"); problem["code"] != "forbidden" {
+		t.Fatalf("call start accepted an account change: %v", problem)
+	}
+	send(t, owner, "call:start", fields{"chat_id": chatID, "media": "audio", "access_token": "owner-renewed"})
+	callID := receive(t, owner, "call:started")["call_id"]
+	receive(t, member, "call:incoming")
+	send(t, member, "call:accept", fields{"call_id": callID, "access_token": "member-renewed"})
+	receive(t, member, "call:accepted")
 }
 
 func TestMemberCallRelaysSignalsAndDisconnects(t *testing.T) {

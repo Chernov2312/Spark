@@ -165,6 +165,8 @@ async def _build_message_response(
     signed_attachments = []
     for attachment in attachments:
         file_key = attachment.file_key
+        if not file_key:
+            continue
         url = await s3.get_temporary_url(file_key)
         signed_attachments.append(
             AttachmentResponse(

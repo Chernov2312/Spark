@@ -35,13 +35,16 @@ class UserRegistrationResponse(BaseModel):
     verification_required: bool = True
 
 
-class UserResponse(BaseModel):
+class AccessTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class UserResponse(AccessTokenResponse):
     id: uuid.UUID = Field(...)
     username: str = Field(..., min_length=3, max_length=50)
     tag: str = Field(..., min_length=3, max_length=32)
     email: EmailStr = Field(..., max_length=100)
-    access_token: str = Field(..., max_length=250)
-    token_type: str = "bearer"
 
 
 class PasswordResetRequest(BaseModel):

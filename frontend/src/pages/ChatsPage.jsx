@@ -2031,20 +2031,6 @@ export default function ChatsPage() {
               </button>
             </header>
 
-            <section className="chat-participants" aria-label="Участники в шапке чата" aria-busy={membersLoading}>
-              <div className="chat-participants__heading"><span>Участники</span><span className="chat-participants__count">{membersLoading ? "…" : chatMembers.length}</span></div>
-              {membersLoading ? <p className="chat-participants__hint" role="status">Загрузка участников…</p>
-                : membersError ? <div className="chat-participants__error" role="alert">{membersError}<button type="button" onClick={reloadMembers}>Повторить</button></div>
-                : chatMembers.length ? <ul className="chat-participants__list">
-                  {chatMembers.map((member) => <li key={member.id}>
-                    <button type="button" className="participant-chip" aria-label={`Открыть профиль ${member.username}`} onClick={() => setProfileMemberId(member.id)}>
-                      <MemberAvatar member={member} />
-                      <span className="participant-chip__info"><span className="participant-chip__name">{member.username}{member.id === me?.id && <small>вы</small>}</span><MemberRole role={member.role} /></span>
-                    </button>
-                  </li>)}
-                </ul> : <p className="chat-participants__hint">Участников пока нет</p>}
-            </section>
-
             {me?.id && activeChat.owner_id && activeChat.owner_id !== me.id &&
               friends && !friends.some((friend) => friend.id === activeChat.owner_id) && (
                 <p className="chat-view__creator-notice">
@@ -2122,8 +2108,18 @@ export default function ChatsPage() {
                     </div>
                   </section>
                   <ChatPreferences key={chatId} chatId={chatId} userId={me?.id} preferences={chatPrefs} onChange={setChatPrefs} />
-                  <section className="chat-members" aria-label="Участники чата">
+                  <section className="chat-members" aria-label="Участники чата" aria-busy={membersLoading}>
                     <h3>Участники</h3>
+                    {membersLoading && <p className="chat-members__hint" role="status">Загрузка участников…</p>}
+                    {membersError && (
+                      <div className="chat-members__error" role="alert">
+                        {membersError}
+                        <button type="button" onClick={reloadMembers}>Повторить</button>
+                      </div>
+                    )}
+                    {!membersLoading && !membersError && chatMembers.length === 0 && (
+                      <p className="chat-members__hint">Участников пока нет</p>
+                    )}
                     {chatMembers.map((member) => <div key={member.id} className="chat-member">
                       <button type="button" className="chat-member__profile" aria-label={`Открыть профиль ${member.username}`} onClick={() => setProfileMemberId(member.id)}>
                         <MemberAvatar member={member} />
@@ -2719,7 +2715,7 @@ export default function ChatsPage() {
           </form>
         </div>
       )}
-      {chatMembers.some((member) => member.id === profileMemberId) && <ChatMemberProfile
+      {activeChatTab === "profile" && chatDetailsOpen && chatMembers.some((member) => member.id === profileMemberId) && <ChatMemberProfile
         key={profileMemberId}
         member={chatMembers.find((member) => member.id === profileMemberId)}
         chatTitle={activeChat?.title}

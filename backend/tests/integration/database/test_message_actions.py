@@ -2,7 +2,9 @@ from datetime import datetime
 import uuid
 
 from fastapi import HTTPException
+from httpx2 import AsyncClient
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.v1.message import forward_chat_message, get_chat_threads, get_messages_history
 from core.message_actions import (
@@ -10,11 +12,55 @@ from core.message_actions import (
     get_chat_message_previews,
     list_thread_roots,
 )
+from core.security import create_access_token
 from db.dao.chat_dao import ChatDao
 from db.dao.message_dao import MessageDao
+from db.models import Chat, User
 from infrastructure.redis.redis_dao import RedisDao
 from schemas.message import AttachmentRequest, MessageForwardRequest, MessageInternalDTO
 from schemas.websockets import WsEvent
+
+
+async def test_history_keeps_message_when_an_attachment_has_no_storage_key(
+    db_session: AsyncSession,
+    db_userchat: tuple[Chat, User],
+    minio_s3_storage: dict[str, str],
+    api_client: AsyncClient,
+) -> None:
+    chat, member = db_userchat
+    message = await MessageDao.create_with_attachments(
+        db_session,
+        {"chat_id": chat.id, "user_id": member.id, "text": "Message with attachments"},
+        [
+            {
+                "chat_id": chat.id,
+                "file_key": None,
+                "file_name": "legacy.txt",
+                "file_size": 3,
+                "mime_type": "text/plain",
+            },
+            {
+                "chat_id": chat.id,
+                "file_key": "uploads/current.txt",
+                "file_name": "current.txt",
+                "file_size": 4,
+                "mime_type": "text/plain",
+            },
+        ],
+    )
+    token = create_access_token({"sub": str(member.id)})
+    response = await api_client.get(
+        f"/api/v1/chats/{chat.id}/messages?limit=50",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    (history_message,) = response.json()["messages"]
+    assert history_message["id"] == str(message.id)
+    assert history_message["text"] == "Message with attachments"
+    (attachment,) = history_message["attachments"]
+    assert attachment["file_name"] == "current.txt"
+    assert attachment["file_key"].startswith(minio_s3_storage["endpoint"])
 
 
 async def test_forward_copies_attachments_and_checks_both_memberships(

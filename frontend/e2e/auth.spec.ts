@@ -46,5 +46,38 @@ test("email login submits OAuth credentials and logout clears the session", asyn
   expect(Object.fromEntries(new URLSearchParams(String(login?.body)))).toMatchObject({ username: user.email, password: "ValidPassword123" });
   await page.getByRole("button", { name: "Выйти" }).click();
   await expect(page).toHaveURL(/\/login$/);
+  expect(mockApi.requests.some(({ method, path }) => method === "POST" && path === "/auth/logout")).toBe(true);
   expect(await page.evaluate(() => [localStorage.getItem("access_token"), localStorage.getItem("user")])).toEqual([null, null]);
+});
+
+test("renews the browser session and retries a request with the new access token", async ({ page, context, baseURL, mockApi }) => {
+  const origin = new URL(baseURL!);
+  await context.addCookies([{
+    name: "spark_refresh_token", value: "test-refresh-token", domain: origin.hostname,
+    path: "/api/v1/auth", httpOnly: true, sameSite: "Lax",
+  }]);
+  let refreshes = 0;
+  let expiredRequests = 0;
+  await page.route("**/api/v1/auth/refresh", async (route) => {
+    refreshes += 1;
+    expect((await route.request().allHeaders()).cookie).toContain("spark_refresh_token=test-refresh-token");
+    await route.fulfill({
+      json: { access_token: "renewed-playwright-token", token_type: "bearer" },
+      headers: {
+        "access-control-allow-origin": origin.origin,
+        "access-control-allow-credentials": "true",
+      },
+    });
+  });
+  await page.route("**/api/v1/chats", async (route) => {
+    if (route.request().headers().authorization === "Bearer renewed-playwright-token") return route.fallback();
+    expiredRequests += 1;
+    await route.fulfill({ status: 401, json: { detail: "Expired access token" } });
+  });
+
+  await mockApi.openChat();
+  await expect(page.locator(".chat-view__title")).toHaveText(mockApi.chats[0].title);
+  expect(expiredRequests).toBeGreaterThan(0);
+  expect(refreshes).toBe(1);
+  expect(await page.evaluate(() => localStorage.getItem("access_token"))).toBe("renewed-playwright-token");
 });

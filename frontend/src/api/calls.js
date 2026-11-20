@@ -1,4 +1,4 @@
-import { getToken } from "./client";
+import { getToken, getValidAccessToken, refreshAccessToken } from "./client";
 
 const CALLS_WS_URL = import.meta.env.VITE_CALLS_WS_URL?.trim();
 
@@ -8,16 +8,17 @@ export function createCallSocket({ onEvent, onStatus, inviteToken } = {}) {
     return {
       available: false,
       send: () => false,
+      sendAuthorized: async () => false,
       close() {},
     };
   }
 
-  const token = getToken();
-  if (!token && !inviteToken) {
+  if (!getToken() && !inviteToken) {
     onStatus?.("unauthorized");
     return {
       available: false,
       send: () => false,
+      sendAuthorized: async () => false,
       close() {},
     };
   }
@@ -28,8 +29,29 @@ export function createCallSocket({ onEvent, onStatus, inviteToken } = {}) {
   let reconnectTimer;
   let attempts = 0;
   let socket;
-  const connect = () => {
+  let connectedToken;
+  const reconnect = () => {
+    reconnectTimer = setTimeout(connect, Math.min(500 * 2 ** attempts++, 15000));
+  };
+  const connect = async () => {
     if (closedByClient) return;
+    let token;
+    if (!inviteToken) {
+      try {
+        token = await getValidAccessToken();
+      } catch {
+        if (!closedByClient) {
+          onStatus?.("error");
+          reconnect();
+        }
+        return;
+      }
+      if (closedByClient) return;
+      if (!token) {
+        onStatus?.("unauthorized");
+        return;
+      }
+    }
     try {
       const url = new URL(CALLS_WS_URL, window.location.href);
       if (url.protocol === "http:") url.protocol = "ws:";
@@ -37,6 +59,7 @@ export function createCallSocket({ onEvent, onStatus, inviteToken } = {}) {
       socket = new WebSocket(url);
     } catch { onStatus?.("error"); return; }
     socket.onopen = () => {
+      connectedToken = token;
       onStatus?.("authenticating");
       socket.send(JSON.stringify({
         event: "auth",
@@ -62,7 +85,7 @@ export function createCallSocket({ onEvent, onStatus, inviteToken } = {}) {
       authenticated = false;
       if (closedByClient || authRejected) return;
       onStatus?.("disconnected");
-      if (!inviteToken) reconnectTimer = setTimeout(connect, Math.min(500 * 2 ** attempts++, 15000));
+      if (!inviteToken) reconnect();
     };
   };
   queueMicrotask(connect);
@@ -73,6 +96,12 @@ export function createCallSocket({ onEvent, onStatus, inviteToken } = {}) {
       if (!authenticated || socket?.readyState !== WebSocket.OPEN) return false;
       socket.send(JSON.stringify({ event, data }));
       return true;
+    },
+    async sendAuthorized(event, data) {
+      if (inviteToken) return this.send(event, data);
+      const token = await getValidAccessToken();
+      if (!token) return false;
+      return this.send(event, token === connectedToken ? data : { ...data, access_token: token });
     },
     close() {
       closedByClient = true;
@@ -86,11 +115,18 @@ async function callRequest(path, method, body) {
   const url = new URL(CALLS_WS_URL, window.location.href);
   if (url.protocol === "ws:") url.protocol = "http:";
   if (url.protocol === "wss:") url.protocol = "https:";
-  const response = await fetch(new URL("/v1/calls/" + path, url.origin), {
+  const send = (token) => fetch(new URL("/v1/calls/" + path, url.origin), {
     method,
-    headers: { Authorization: "Bearer " + getToken(), "Content-Type": "application/json" },
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
+  const token = await getValidAccessToken();
+  if (!token) throw new Error("Войдите в Spark.");
+  let response = await send(token);
+  if (response.status === 401) {
+    const refreshedToken = await refreshAccessToken(token);
+    if (refreshedToken) response = await send(refreshedToken);
+  }
   if (response.status === 204) return null;
   const data = await response.json();
   if (!response.ok) throw new Error(data.message || "Не удалось изменить приглашение.");

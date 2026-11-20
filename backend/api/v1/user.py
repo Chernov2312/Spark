@@ -10,6 +10,7 @@ from core.user_tags import normalize_user_tag
 from db.dao.attachment_dao import AttachmentDao
 from db.dao.user_dao import UserDao
 from db.database import get_session
+from db.models import User
 from schemas.user import (
     Avatar,
     UserListResponse,
@@ -21,23 +22,20 @@ from schemas.user import (
 user_router = APIRouter(prefix="/api/v1/users", tags=[RouteTags.USERS])
 
 
-@user_router.get("/me", status_code=status.HTTP_200_OK)
-async def get_me(
-    session: AsyncSession = Depends(get_session),
-    user_id: uuid.UUID = Depends(get_id_current_user),
-) -> UserRead:
-    user = await UserDao.get_user_with_avatars(session=session, target_id=user_id)
+async def _profile_response(user: User | None) -> UserRead:
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    avatar_urls = []
+    avatar_urls: list[str] = []
     s3 = S3Storage()
-    for i in user.avatars:
-        avatar_urls.append(
-            await s3.get_temporary_url(
-                file_key=i.file_key,
-                client_method=StorageClientMethod.GET.value,
-            ),
+    for avatar in user.avatars:
+        if not avatar.file_key:
+            continue
+        url = await s3.get_temporary_url(
+            file_key=avatar.file_key,
+            client_method=StorageClientMethod.GET.value,
         )
+        if url is not None:
+            avatar_urls.append(url)
     return UserRead(
         id=user.id,
         username=user.username,
@@ -46,6 +44,15 @@ async def get_me(
         avatar_urls=avatar_urls,
         created_at=user.created_at,
     )
+
+
+@user_router.get("/me", status_code=status.HTTP_200_OK)
+async def get_me(
+    session: AsyncSession = Depends(get_session),
+    user_id: uuid.UUID = Depends(get_id_current_user),
+) -> UserRead:
+    user = await UserDao.get_user_with_avatars(session=session, target_id=user_id)
+    return await _profile_response(user)
 
 
 @user_router.patch("/me", status_code=status.HTTP_200_OK)
@@ -71,20 +78,7 @@ async def update_me(
         data=update_data,
     )
 
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    avatar_urls = []
-    s3 = S3Storage()
-    for i in user.avatars:
-        avatar_urls.append(await s3.get_temporary_url(i.file_key))
-    return UserRead(
-        id=user.id,
-        username=user.username,
-        tag=user.tag,
-        email=user.email,
-        avatar_urls=avatar_urls,
-        created_at=user.created_at,
-    )
+    return await _profile_response(user)
 
 
 @user_router.post("/me/delete/avatar", status_code=status.HTTP_204_NO_CONTENT)
