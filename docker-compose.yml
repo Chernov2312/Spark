@@ -115,8 +115,7 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
-      - ./logs:/logs
-    command: ["sh", "-c", "npm ci --include=dev --prefer-offline --no-audit --no-fund && exec npm run dev -- --host 0.0.0.0 --port 5173 >> /logs/frontend.log 2>&1"]
+    command: ["sh", "-c", "npm ci --include=dev --prefer-offline --no-audit --no-fund && exec npm run dev -- --host 0.0.0.0 --port 5173"]
     environment:
       CHOKIDAR_USEPOLLING: true
       VITE_API_URL: ${API_BASE_URL:-http://localhost:8001}

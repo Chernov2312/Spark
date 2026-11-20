@@ -169,6 +169,24 @@ func apiFailure(err error) *failure {
 	return &failure{"api_unavailable", "Сервис проверки доступа временно недоступен."}
 }
 
+func (s *server) refreshClientToken(r *http.Request, c *client, token string) *failure {
+	if token == "" || token == c.token {
+		return nil
+	}
+	if len(token) > 8192 {
+		return denied
+	}
+	user, err := s.python.Identity(r.Context(), token)
+	if err != nil {
+		return apiFailure(err)
+	}
+	if user.ID != c.user.ID {
+		return denied
+	}
+	c.token = token
+	return nil
+}
+
 func (s *server) handle(r *http.Request, c *client, request requestEvent) *failure {
 	data := request.Data
 	switch request.Event {
@@ -179,6 +197,9 @@ func (s *server) handle(r *http.Request, c *client, request requestEvent) *failu
 		if !sparkapi.ValidID(data.ChatID) || (data.Media != "audio" && data.Media != "video") {
 			return &failure{"invalid_call", "Некорректные параметры звонка."}
 		}
+		if problem := s.refreshClientToken(r, c, data.AccessToken); problem != nil {
+			return problem
+		}
 		members, _, err := s.python.Members(r.Context(), data.ChatID, c.token, c.user.ID)
 		if err != nil {
 			return apiFailure(err)
@@ -186,6 +207,9 @@ func (s *server) handle(r *http.Request, c *client, request requestEvent) *failu
 		return s.hub.start(c, data.ChatID, data.Media, members)
 	case "call:accept":
 		if !c.guest {
+			if problem := s.refreshClientToken(r, c, data.AccessToken); problem != nil {
+				return problem
+			}
 			chatID := s.hub.chatID(data.CallID)
 			if chatID == "" {
 				return unavailable

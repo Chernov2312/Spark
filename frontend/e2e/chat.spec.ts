@@ -211,6 +211,9 @@ test("history scrolls inside the viewport, preserves the reading position and su
 test("participant profile and dropdown settings work with keyboard and persist preferences", async ({ page, mockApi }) => {
   await mockApi.openChat();
   const participant = page.getByRole("button", { name: `Открыть профиль ${user.username}`, exact: true });
+  await expect(page.getByText("Участники", { exact: true })).toHaveCount(0);
+  await expect(participant).toHaveCount(0);
+  await page.getByRole("button", { name: "Открыть информацию о чате", exact: true }).click();
   await expect(participant).toContainText("Владелец");
   await participant.click();
   const profile = page.getByRole("dialog", { name: user.username });
@@ -220,7 +223,6 @@ test("participant profile and dropdown settings work with keyboard and persist p
   await expect(profile).toBeHidden();
   await expect(participant).toBeFocused();
 
-  await page.getByRole("button", { name: "Открыть информацию о чате", exact: true }).click();
   const trigger = page.getByRole("button", { name: "Настройки чата", exact: true });
   await expect(page.getByRole("dialog", { name: "Настройки чата" })).toHaveCount(0);
   await trigger.click();

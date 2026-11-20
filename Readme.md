@@ -48,7 +48,15 @@ Spark — веб-мессенджер с REST API и WebSocket-соединен�
 
    Compose запускает PostgreSQL, Redis, FastAPI, Celery, сервис звонков и frontend. Backend применяет миграции Alembic. Повторите команду с `--build` после изменений `backend/requirements/prod.txt`, чтобы установить новые зависимости в образы FastAPI и Celery.
 
-   После изменения `frontend/package-lock.json` перезапустите frontend командой `docker compose --profile dev restart frontend`. При старте контейнер устанавливает зависимости из lock-файла и затем запускает Vite.
+   После обновления с refresh-сессиями перезапустите backend для применения миграции и пересоберите сервис звонков. Следующий вход создаст refresh-сессию сроком `REFRESH_TOKEN_EXPIRE_DAYS` дней. Для браузерной авторизации укажите фактический адрес фронтенда в `FRONTEND_BASE_URL`.
+
+   После изменения `frontend/package-lock.json` перезапустите frontend командой `docker compose --profile dev restart frontend`. При старте контейнер устанавливает зависимости из lock-файла и затем запускает Vite. Журнал доступен через `docker compose --profile dev logs frontend`.
+
+   Если после обновления образа `npm ci` завершается с `EACCES` в `/app/node_modules`, пересоздайте контейнер frontend с новым анонимным томом зависимостей:
+
+   ```bash
+   docker compose --profile dev up -d --no-deps --force-recreate --renew-anon-volumes frontend
+   ```
 
 4. Если нужен локальный ИИ, задайте `OPENAI_BASE_URL=http://ollama:11434/v1` и имя локальной модели в `OPENAI_MODEL`, например `qwen3:0.6b`. Запустите Ollama и загрузку модели отдельно. Чаты доступны во время загрузки.
 
@@ -190,7 +198,7 @@ docker compose --profile dev run --rm --no-deps backend python cleardb.py
 
 ### Go-сервис звонков
 
-Образы backend, frontend и сервиса звонков запускают приложение с UID и GID `65532:65532`. На Linux предоставьте этому UID запись в примонтированные `logs/` и `whisper-cache/`. При переходе со старого dev-образа пересоздайте анонимный том `frontend`, если `npm ci` получает `EACCES` в `node_modules`.
+Образы backend, frontend и сервиса звонков запускают приложение с UID и GID `65532:65532`. На Linux предоставьте этому UID запись в примонтированные `logs/` и `whisper-cache/`.
 
 Точка входа — `calls/main.go`. Пакет `internal/config` читает настройки окружения и формирует параметры STUN/TURN. Клиент FastAPI в `internal/sparkapi` получает профиль пользователя и состав чата. В `internal/signaling` находятся маршруты HTTP, обработчики WebSocket и состояние активных звонков и приглашений. Тесты каждого пакета лежат рядом с его кодом.
 

@@ -366,7 +366,7 @@ export default function CallPanel({ chatId, chatName, open, onClose, canInvite, 
       setCallChatId(chatId);
       setCallerName(chatName || "Звонок в чате");
       setPhase("outgoing");
-      if (!socketRef.current?.send("call:start", { chat_id: chatId, media })) {
+      if (!await socketRef.current?.sendAuthorized("call:start", { chat_id: chatId, media })) {
         throw new Error("Сервис звонков недоступен. Попробуйте подключиться снова.");
       }
     } catch (error) {
@@ -391,7 +391,7 @@ export default function CallPanel({ chatId, chatName, open, onClose, canInvite, 
         chatId: incoming.chat_id,
         media: incoming.media || "audio",
       };
-      if (!socketRef.current?.send("call:accept", { call_id: incoming.call_id })) {
+      if (!await socketRef.current?.sendAuthorized("call:accept", { call_id: incoming.call_id })) {
         throw new Error("Соединение с сервисом звонков потеряно. Попробуйте принять вызов ещё раз.");
       }
     } catch (error) {

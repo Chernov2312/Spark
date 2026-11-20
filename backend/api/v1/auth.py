@@ -1,9 +1,9 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import hashlib
 from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 import jwt
 from jwt import InvalidTokenError
@@ -11,10 +11,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tasks.email import send_mail_task, send_password_reset_mail_task
 
 from config import get_settings, RouteTags
+from core.auth_sessions import (
+    revoke_session,
+    revoke_user_sessions,
+    rotate_session,
+    SessionTokens,
+    start_session,
+)
 from core.dependencies import get_redis
 from core.security import (
     authenticate_user,
-    create_access_token,
     get_password_hash,
 )
 from core.user_tags import normalize_user_tag
@@ -25,6 +31,7 @@ from db.models import User
 from infrastructure.redis.client import Redis
 from infrastructure.redis.redis_dao import RedisDao
 from schemas.auth import (
+    AccessTokenResponse,
     PasswordResetConfirm,
     PasswordResetRequest,
     UserLogin,
@@ -35,6 +42,43 @@ from schemas.auth import (
 from schemas.responses import PasswordResetMessageResponse
 
 auth_router = APIRouter(prefix="/api/v1/auth", tags=[RouteTags.AUTH])
+REFRESH_COOKIE_NAME = "spark_refresh_token"
+REFRESH_COOKIE_PATH = "/api/v1/auth"
+RefreshCookie = Annotated[str | None, Cookie(alias=REFRESH_COOKIE_NAME)]
+AuthSession = Annotated[AsyncSession, Depends(get_session, scope="function")]
+
+
+def require_frontend_origin(request: Request) -> None:
+    origin = request.headers.get("origin")
+    if origin is not None and origin not in get_settings().frontend_origins:
+        raise HTTPException(status_code=403, detail="Origin not allowed")
+
+
+def _set_session_cookie(response: Response, tokens: SessionTokens) -> None:
+    response.headers["Cache-Control"] = "no-store"
+    response.set_cookie(
+        REFRESH_COOKIE_NAME,
+        tokens.refresh_token,
+        expires=tokens.expires_at,
+        path=REFRESH_COOKIE_PATH,
+        secure=get_settings().FRONTEND_BASE_URL.startswith("https://"),
+        httponly=True,
+        samesite="lax",
+    )
+
+
+async def _sign_in(
+    session: AsyncSession, response: Response, user: User, refresh_token: str | None
+) -> UserResponse:
+    tokens = await start_session(session, user.id, refresh_token)
+    _set_session_cookie(response, tokens)
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        tag=user.tag,
+        email=user.email,
+        access_token=tokens.access_token,
+    )
 
 
 @auth_router.post("/password/forgot", status_code=status.HTTP_202_ACCEPTED)
@@ -68,7 +112,7 @@ async def request_password_reset(
 @auth_router.post("/password/reset")
 async def reset_password(
     data: PasswordResetConfirm,
-    session: AsyncSession = Depends(get_session),
+    session: AuthSession,
     redis: Redis = Depends(get_redis),
 ) -> PasswordResetMessageResponse:
     invalid_link = HTTPException(
@@ -114,15 +158,21 @@ async def reset_password(
         user_id,
         get_password_hash(data.password),
     )
+    await revoke_user_sessions(session, user_id)
     return PasswordResetMessageResponse(
         message="Password has been reset. You can sign in with the new password.",
     )
 
 
-@auth_router.get("/verification/{verification_token}")
+@auth_router.get(
+    "/verification/{verification_token}",
+    dependencies=[Depends(require_frontend_origin)],
+)
 async def verification(
     verification_token: str,
-    session: AsyncSession = Depends(get_session),
+    session: AuthSession,
+    response: Response,
+    refresh_token: RefreshCookie = None,
 ) -> UserResponse:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -138,7 +188,7 @@ async def verification(
         email = payload.get("sub")
         user_id = payload.get("user_id")
         exp = payload.get("exp")
-        if email is None or exp is None or user_id is None:
+        if email is None or exp is None or user_id is None or payload.get("purpose"):
             raise credentials_exception
         cur_user: User | None = await UserDao.get_by_username_or_email(
             session=session,
@@ -150,20 +200,7 @@ async def verification(
             cur_user = await UserDao.mark_verified(session, cur_user.id)
     except (InvalidTokenError, KeyError, TypeError):
         raise credentials_exception from None
-    access_token_expires = timedelta(
-        minutes=get_settings().ACCESS_TOKEN_EXPIRE_MINUTES,
-    )
-    access_token = create_access_token(
-        data={"sub": str(cur_user.id)},
-        expires_delta=access_token_expires,
-    )
-    return UserResponse(
-        id=cur_user.id,
-        username=cur_user.username,
-        tag=cur_user.tag,
-        email=email,
-        access_token=access_token,
-    )
+    return await _sign_in(session, response, cur_user, refresh_token)
 
 
 @auth_router.post("/register", status_code=status.HTTP_201_CREATED)
@@ -216,10 +253,16 @@ async def register(
     )
 
 
-@auth_router.post("/login", status_code=status.HTTP_200_OK)
+@auth_router.post(
+    "/login",
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_frontend_origin)],
+)
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: AuthSession,
+    response: Response,
+    refresh_token: RefreshCookie = None,
 ) -> UserResponse:
     user: User | None = await authenticate_user(
         UserLogin(password=form_data.password, username=form_data.username),
@@ -237,17 +280,35 @@ async def login_for_access_token(
             detail="Unverifeied email adress",
         )
 
-    access_token_expires = timedelta(
-        minutes=get_settings().ACCESS_TOKEN_EXPIRE_MINUTES,
+    return await _sign_in(session, response, user, refresh_token)
+
+
+@auth_router.post("/refresh", dependencies=[Depends(require_frontend_origin)])
+async def refresh_access_token(
+    session: AuthSession,
+    response: Response,
+    refresh_token: RefreshCookie = None,
+) -> AccessTokenResponse:
+    tokens = await rotate_session(session, refresh_token)
+    if tokens is None:
+        raise HTTPException(status_code=401, detail="Refresh session invalid or expired")
+    _set_session_cookie(response, tokens)
+    return AccessTokenResponse(access_token=tokens.access_token)
+
+
+@auth_router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_frontend_origin)],
+)
+async def logout(session: AuthSession, refresh_token: RefreshCookie = None) -> Response:
+    await revoke_session(session, refresh_token)
+    response = Response(status_code=status.HTTP_204_NO_CONTENT)
+    response.delete_cookie(
+        REFRESH_COOKIE_NAME,
+        path=REFRESH_COOKIE_PATH,
+        secure=get_settings().FRONTEND_BASE_URL.startswith("https://"),
+        httponly=True,
+        samesite="lax",
     )
-    access_token = create_access_token(
-        data={"sub": str(user.id)},
-        expires_delta=access_token_expires,
-    )
-    return UserResponse(
-        id=user.id,
-        username=user.username,
-        tag=user.tag,
-        email=user.email,
-        access_token=access_token,
-    )
+    return response

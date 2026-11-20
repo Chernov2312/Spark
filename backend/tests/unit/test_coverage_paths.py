@@ -294,12 +294,12 @@ async def test_verification_marks_user_verified_and_returns_access_token(
             },
         ),
     )
-    monkeypatch.setattr(auth_api, "create_access_token", MagicMock(return_value="access"))
-
-    response = await auth_api.verification("valid-token", db_session)
+    http_response = Response()
+    response = await auth_api.verification("valid-token", db_session, http_response)
 
     assert current_user.is_verified is True
-    assert response.access_token == "access"
+    assert response.access_token
+    assert "spark_refresh_token=" in http_response.headers["set-cookie"]
 
 
 @pytest.mark.parametrize(
@@ -320,7 +320,7 @@ async def test_verification_rejects_missing_claims_and_bad_tokens(
         decode = MagicMock(return_value=decode_result)
     monkeypatch.setattr(auth_api.jwt, "decode", decode)
     with pytest.raises(HTTPException) as exc:
-        await auth_api.verification("invalid-token", db_session)
+        await auth_api.verification("invalid-token", db_session, Response())
     assert exc.value.status_code == 401
 
 
@@ -331,13 +331,13 @@ async def test_login_rejects_bad_credentials_and_unverified_user(
     form = SimpleNamespace(username="user", password="ValidPassword123")
     monkeypatch.setattr(auth_api, "authenticate_user", AsyncMock(return_value=None))
     with pytest.raises(HTTPException) as exc:
-        await auth_api.login_for_access_token(form, db_session)
+        await auth_api.login_for_access_token(form, db_session, Response())
     assert exc.value.status_code == 401
 
     unverified = SimpleNamespace(is_verified=False)
     monkeypatch.setattr(auth_api, "authenticate_user", AsyncMock(return_value=unverified))
     with pytest.raises(HTTPException) as exc:
-        await auth_api.login_for_access_token(form, db_session)
+        await auth_api.login_for_access_token(form, db_session, Response())
     assert exc.value.status_code == 403
 
 

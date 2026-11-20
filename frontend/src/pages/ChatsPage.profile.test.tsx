@@ -97,8 +97,8 @@ describe("ChatsPage: profile", () => {
     apiMocks.getChatMembers.mockResolvedValue([{ id: "user-1", username: "tester", role }]);
     apiMocks.uploadChatAvatars.mockResolvedValue([]);
     renderChat();
+    fireEvent.click(await screen.findByRole("button", { name: "Открыть информацию о чате" }));
     await screen.findByRole("button", { name: "Открыть профиль tester" });
-    fireEvent.click(screen.getByRole("button", { name: "Открыть информацию о чате" }));
     expect(screen.getByLabelText("Моя картинка чата")).toBeInTheDocument();
     if (allowed) {
       const file = new File(["image"], "shared.png", { type: "image/png" });
@@ -190,16 +190,20 @@ describe("ChatsPage: profile", () => {
     expect(screen.queryByAltText("Превью аватарки группы")).not.toBeInTheDocument();
   });
 
-  it("shows avatars and Russian roles in the header and opens a participant profile", async () => {
+  it("shows participants only in chat details and opens their profiles", async () => {
     apiMocks.getChatMembers.mockResolvedValue([
       { id: "user-1", username: "tester", tag: "tester", role: "owner", avatar_urls: [] },
       { id: "user-2", username: "Анна", tag: "anna", role: "moderator", avatar_urls: ["https://storage.test/old.png", "https://storage.test/anna.png"], created_at: "2026-01-01T12:00:00Z" },
     ]);
     renderChat();
-    const header = await screen.findByRole("region", { name: "Участники в шапке чата" });
-    const trigger = await within(header).findByRole("button", { name: "Открыть профиль Анна" });
-    expect(within(header).getByText("Владелец")).toBeVisible();
-    expect(within(header).getByText("Модератор")).toBeVisible();
+    const detailsButton = await screen.findByRole("button", { name: "Открыть информацию о чате" });
+    expect(screen.queryByText("Участники", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Открыть профиль Анна" })).not.toBeInTheDocument();
+    fireEvent.click(detailsButton);
+    const members = screen.getByRole("region", { name: "Участники чата" });
+    const trigger = await within(members).findByRole("button", { name: "Открыть профиль Анна" });
+    expect(within(members).getByRole("button", { name: "Открыть профиль tester" })).toHaveTextContent("Владелец");
+    expect(trigger).toHaveTextContent("Модератор");
     expect(trigger.querySelector("img")).toHaveAttribute("src", "https://storage.test/anna.png");
     trigger.focus();
     fireEvent.click(trigger);
@@ -212,6 +216,12 @@ describe("ChatsPage: profile", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Свернуть" }));
+    expect(screen.queryByRole("region", { name: "Участники чата" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Подробнее" }));
+    expect(screen.getByRole("region", { name: "Участники чата" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "← Вернуться к сообщениям" }));
+    expect(screen.queryByText("Участники", { exact: true })).not.toBeInTheDocument();
   });
 
   it("offers a retry when participants fail to load", async () => {
@@ -219,9 +229,11 @@ describe("ChatsPage: profile", () => {
       { id: "user-1", username: "tester", role: "owner" },
     ]);
     renderChat();
-    expect(await screen.findByRole("alert")).toHaveTextContent("Не удалось загрузить участников");
-    fireEvent.click(screen.getByRole("button", { name: "Повторить" }));
-    expect(await screen.findByRole("button", { name: "Открыть профиль tester" })).toBeVisible();
+    fireEvent.click(await screen.findByRole("button", { name: "Открыть информацию о чате" }));
+    const members = within(screen.getByRole("region", { name: "Участники чата" }));
+    expect(await members.findByRole("alert")).toHaveTextContent("Не удалось загрузить участников");
+    fireEvent.click(members.getByRole("button", { name: "Повторить" }));
+    expect(await members.findByRole("button", { name: "Открыть профиль tester" })).toBeVisible();
     expect(apiMocks.getChatMembers).toHaveBeenCalledTimes(2);
   });
 

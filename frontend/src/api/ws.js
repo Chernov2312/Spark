@@ -1,4 +1,4 @@
-import { API_BASE, getToken } from "./client";
+import { API_BASE, getToken, getValidAccessToken } from "./client";
 
 const WS_ENABLED = import.meta.env.VITE_WS_ENABLED !== "false";
 
@@ -20,8 +20,7 @@ export function createChatSocket(chatId, { onEvent, onOpen, onClose, onError, sh
     console.warn("[WS] Нет chatId — WebSocket не подключится");
     return noopSocket;
   }
-  const token = getToken();
-  if (!token) {
+  if (!getToken()) {
     console.warn("[WS] Нет токена — WebSocket не подключится");
     return noopSocket;
   }
@@ -31,8 +30,25 @@ export function createChatSocket(chatId, { onEvent, onOpen, onClose, onError, sh
   let reconnectTimer = null;
   let attempt = 0;
 
-  const connect = () => {
+  const reconnect = () => {
+    const delay = Math.min(1000 * 2 ** attempt++, 30000);
+    console.info(`[WS] Переподключение через ${delay}ms`);
+    reconnectTimer = setTimeout(connect, delay);
+  };
+
+  const connect = async () => {
     if (closedByUs) return;
+    let token;
+    try {
+      token = await getValidAccessToken();
+    } catch {
+      if (!closedByUs) {
+        onError?.();
+        reconnect();
+      }
+      return;
+    }
+    if (closedByUs || !token) return;
     const url = `${WS_BASE}/${chatId}/ws?token=${encodeURIComponent(token)}&share_presence=${sharePresence}`;
     console.info("[WS] Подключаюсь:", url.replace(/token=[^&]+/, "token=***"));
 
@@ -62,10 +78,7 @@ export function createChatSocket(chatId, { onEvent, onOpen, onClose, onError, sh
       if (closedByUs) return;
       console.info("[WS] Соединение закрыто:", e.code, e.reason);
       onClose?.(e);
-      // Экспоненциальная задержка: 1s, 2s, 4s, ... максимум 30s
-      const delay = Math.min(1000 * 2 ** attempt++, 30000);
-      console.info(`[WS] Переподключение через ${delay}ms`);
-      reconnectTimer = setTimeout(connect, delay);
+      reconnect();
     };
 
     socket.onerror = () => onError?.();

@@ -1,6 +1,7 @@
 from functools import lru_cache
+from urllib.parse import urlsplit
 
-from pydantic import PostgresDsn, RedisDsn, SecretStr
+from pydantic import PositiveInt, PostgresDsn, RedisDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
     SECRET_KEY: SecretStr
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: PositiveInt = 30
     VERIFICATION_TOKEN_EXPIRE_DAYS: int = 1
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
 
@@ -34,6 +36,17 @@ class Settings(BaseSettings):
     WEB_PUSH_PUBLIC_KEY: str = ""
     WEB_PUSH_PRIVATE_KEY: SecretStr = SecretStr("")
     WEB_PUSH_SUBJECT: str = ""
+
+    @property
+    def frontend_origins(self) -> list[str]:
+        frontend = urlsplit(self.FRONTEND_BASE_URL)
+        return [
+            f"{frontend.scheme}://{frontend.netloc}",
+            "http://localhost:5173",
+            "http://localhost:5174",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:5174",
+        ]
 
     @property
     def web_push_enabled(self) -> bool:

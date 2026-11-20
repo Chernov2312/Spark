@@ -76,8 +76,8 @@ async def get_id_current_user(
             algorithms=[settings.ALGORITHM],
         )
         sub_id = payload.get("sub")
-        if sub_id is None:
+        if sub_id is None or payload.get("purpose"):
             raise credentials_exception
-    except (InvalidTokenError, KeyError, TypeError):
+        return uuid.UUID(sub_id)
+    except (InvalidTokenError, KeyError, TypeError, ValueError):
         raise credentials_exception from None
-    return uuid.UUID(sub_id)
