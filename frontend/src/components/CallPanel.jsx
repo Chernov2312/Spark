@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { createCallSocket } from "../api/calls";
+import { createCallInvite, createCallSocket, revokeCallInvite } from "../api/calls";
 
 const DEFAULT_ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" },
@@ -32,7 +32,7 @@ function MediaTile({ stream, label, local = false }) {
     return () => {
       mediaElement.srcObject = null;
     };
-  }, [stream]);
+  }, [stream, hasVideo]);
 
   return (
     <div className={`call-tile ${local ? "call-tile--local" : ""}`}>
@@ -43,7 +43,7 @@ function MediaTile({ stream, label, local = false }) {
           <div className="call-tile__avatar" aria-hidden="true">
             {(label || "?").slice(0, 1).toUpperCase()}
           </div>
-          <audio ref={mediaRef} autoPlay />
+          <audio ref={mediaRef} autoPlay muted={local} />
         </>
       )}
       <span className="call-tile__name">{local ? "Вы" : label}</span>
@@ -51,7 +51,7 @@ function MediaTile({ stream, label, local = false }) {
   );
 }
 
-export default function CallPanel({ chatId, chatName, open, onClose }) {
+export default function CallPanel({ chatId, chatName, open, onClose, canInvite, guestToken }) {
   const [socketStatus, setSocketStatus] = useState("connecting");
   const [phase, setPhase] = useState("idle");
   const [incomingCall, setIncomingCall] = useState(null);
@@ -67,6 +67,8 @@ export default function CallPanel({ chatId, chatName, open, onClose }) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [callError, setCallError] = useState("");
   const [mediaPending, setMediaPending] = useState(false);
+  const [invite, setInvite] = useState(null);
+  const [inviteBusy, setInviteBusy] = useState(false);
 
   const socketRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -75,21 +77,17 @@ export default function CallPanel({ chatId, chatName, open, onClose }) {
   const iceServersRef = useRef(DEFAULT_ICE_SERVERS);
   const activeCallRef = useRef({ callId: null, chatId: null, media: "audio" });
   const incomingCallRef = useRef(null);
+  const mediaAttemptRef = useRef(0);
+  const pendingActionRef = useRef(null);
   const closePanelRef = useRef(onClose);
 
   useEffect(() => {
     closePanelRef.current = onClose;
   }, [onClose]);
 
-  useEffect(() => {
-    activeCallRef.current = { callId, chatId: callChatId, media: callMedia };
-  }, [callId, callChatId, callMedia]);
-
-  useEffect(() => {
-    incomingCallRef.current = incomingCall;
-  }, [incomingCall]);
-
   const releaseMedia = useCallback(() => {
+    mediaAttemptRef.current += 1;
+    pendingActionRef.current = null;
     for (const connection of peersRef.current.values()) connection.close();
     peersRef.current.clear();
     pendingCandidatesRef.current.clear();
@@ -104,6 +102,8 @@ export default function CallPanel({ chatId, chatName, open, onClose }) {
     setElapsedSeconds(0);
     setMuted(false);
     setCameraEnabled(true);
+    setMediaPending(false);
+    setInvite(null);
     setPhase("idle");
     activeCallRef.current = { callId: null, chatId: null, media: "audio" };
     incomingCallRef.current = null;
@@ -172,6 +172,7 @@ export default function CallPanel({ chatId, chatName, open, onClose }) {
   const handleSocketEvent = useCallback(async (event, data) => {
     if (event === "auth:ok") {
       setSocketStatus("ready");
+      if (!activeCallRef.current.callId && !incomingCallRef.current) setCallError("");
       if (Array.isArray(data.ice_servers) && data.ice_servers.length) {
         iceServersRef.current = data.ice_servers;
       }
@@ -183,6 +184,7 @@ export default function CallPanel({ chatId, chatName, open, onClose }) {
       return;
     }
     if (event === "call:incoming") {
+      if (activeCallRef.current.callId || pendingActionRef.current) return;
       setIncomingCall(data);
       incomingCallRef.current = data;
       setCallMedia(data.media || "audio");
@@ -193,6 +195,8 @@ export default function CallPanel({ chatId, chatName, open, onClose }) {
       return;
     }
     if (event === "call:started") {
+      pendingActionRef.current = null;
+      setMediaPending(false);
       setCallId(data.call_id);
       setCallChatId(data.chat_id);
       setCallMedia(data.media || "audio");
@@ -207,13 +211,27 @@ export default function CallPanel({ chatId, chatName, open, onClose }) {
       setPhase("outgoing");
       return;
     }
+    const activeId = activeCallRef.current.callId || incomingCallRef.current?.call_id;
+    if (event === "call:error") {
+      if (pendingActionRef.current) releaseMedia();
+      setCallError(data.message || "Не удалось выполнить действие со звонком.");
+      return;
+    }
+    if (!activeId || data.call_id !== activeId) return;
     if (event === "call:accepted") {
-      setPhase("connecting");
+      if (Array.isArray(data.ice_servers)) {
+        iceServersRef.current = data.ice_servers;
+        pendingActionRef.current = null;
+        setMediaPending(false);
+        incomingCallRef.current = null;
+        setIncomingCall(null);
+      }
+      setPhase((current) => current === "connected" ? current : "connecting");
       return;
     }
     if (event === "call:peer_joined") {
       addRemoteParticipant(data);
-      setPhase("connecting");
+      setPhase((current) => current === "connected" ? current : "connecting");
       if (data.should_offer) {
         const connection = await createPeerConnection(data.peer_id);
         const offer = await connection.createOffer();
@@ -267,39 +285,51 @@ export default function CallPanel({ chatId, chatName, open, onClose }) {
         return next;
       });
       setParticipants((current) => current.filter((item) => item.peer_id !== data.peer_id));
+      if (!peersRef.current.size) setPhase("outgoing");
       return;
     }
     if (event === "call:ended") {
       endCall(false);
-      closePanelRef.current?.();
+      if (data.reason === "timeout" && !guestToken) setCallError("Вызов остался без ответа.");
+      else closePanelRef.current?.();
       return;
     }
     if (event === "call:declined") {
-      setCallError("Собеседник отклонил звонок.");
+      setCallError(data.message || "Собеседник отклонил звонок.");
       return;
     }
-    if (event === "call:error") {
-      setCallError(data.message || "Не удалось выполнить действие со звонком.");
-    }
-  }, [addRemoteParticipant, applyPendingCandidates, createPeerConnection, endCall]);
+  }, [addRemoteParticipant, applyPendingCandidates, createPeerConnection, endCall, guestToken, releaseMedia]);
 
   useEffect(() => {
     const peers = peersRef.current;
     const streamRef = localStreamRef;
+    let events = Promise.resolve();
+    let closed = false;
     const socket = createCallSocket({
+      inviteToken: guestToken,
       onEvent: (event, data) => {
-        handleSocketEvent(event, data).catch((error) => {
-          setCallError(error.message || "Ошибка соединения во время звонка.");
-        });
+        events = events
+          .then(() => { if (!closed) return handleSocketEvent(event, data); })
+          .catch((error) => {
+            if (!closed) setCallError(error.message || "Ошибка соединения во время звонка.");
+          });
       },
-      onStatus: setSocketStatus,
+      onStatus: (status) => {
+        setSocketStatus(status);
+        if (status === "disconnected") {
+          releaseMedia();
+          setCallError("Соединение со звонком потеряно.");
+        }
+      },
     });
     socketRef.current = socket;
     return () => {
+      closed = true;
+      mediaAttemptRef.current += 1;
       socket.close();
       stopCallResources(peers, streamRef);
     };
-  }, [handleSocketEvent]);
+  }, [guestToken, handleSocketEvent, releaseMedia]);
 
   useEffect(() => {
     if (phase !== "connected") return undefined;
@@ -311,21 +341,28 @@ export default function CallPanel({ chatId, chatName, open, onClose }) {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error("Браузер не поддерживает доступ к микрофону и камере.");
     }
+    const attempt = ++mediaAttemptRef.current;
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: true,
       video: media === "video",
     });
+    if (attempt !== mediaAttemptRef.current) {
+      stream.getTracks().forEach((track) => track.stop());
+      return false;
+    }
     localStreamRef.current = stream;
     setLocalStream(stream);
     setCallMedia(media);
+    return true;
   };
 
   const startCall = async (media) => {
     if (socketStatus !== "ready" || !chatId || mediaPending) return;
     setCallError("");
     setMediaPending(true);
+    pendingActionRef.current = "start";
     try {
-      await acquireMedia(media);
+      if (!await acquireMedia(media)) return;
       setCallChatId(chatId);
       setCallerName(chatName || "Звонок в чате");
       setPhase("outgoing");
@@ -335,8 +372,6 @@ export default function CallPanel({ chatId, chatName, open, onClose }) {
     } catch (error) {
       releaseMedia();
       setCallError(error.message || "Не удалось получить доступ к микрофону или камере.");
-    } finally {
-      setMediaPending(false);
     }
   };
 
@@ -345,11 +380,9 @@ export default function CallPanel({ chatId, chatName, open, onClose }) {
     if (!incoming || mediaPending) return;
     setCallError("");
     setMediaPending(true);
+    pendingActionRef.current = "accept";
     try {
-      await acquireMedia(incoming.media || "audio");
-      if (!socketRef.current?.send("call:accept", { call_id: incoming.call_id })) {
-        throw new Error("Соединение с сервисом звонков потеряно. Попробуйте принять вызов ещё раз.");
-      }
+      if (!await acquireMedia(incoming.media || "audio")) return;
       setCallId(incoming.call_id);
       setCallChatId(incoming.chat_id);
       setCallerName(incoming.caller_name || "Участник чата");
@@ -358,14 +391,17 @@ export default function CallPanel({ chatId, chatName, open, onClose }) {
         chatId: incoming.chat_id,
         media: incoming.media || "audio",
       };
-      setIncomingCall(null);
-      setPhase("connecting");
+      if (!socketRef.current?.send("call:accept", { call_id: incoming.call_id })) {
+        throw new Error("Соединение с сервисом звонков потеряно. Попробуйте принять вызов ещё раз.");
+      }
     } catch (error) {
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
       localStreamRef.current = null;
       setLocalStream(null);
+      setCallId(null);
+      activeCallRef.current = { callId: null, chatId: null, media: "audio" };
+      pendingActionRef.current = null;
       setCallError(error.message || "Не удалось получить доступ к микрофону или камере.");
-    } finally {
       setMediaPending(false);
     }
   };
@@ -392,6 +428,25 @@ export default function CallPanel({ chatId, chatName, open, onClose }) {
       track.enabled = nextEnabled;
     });
     setCameraEnabled(nextEnabled);
+  };
+
+  const changeInvite = async () => {
+    if (!callId || inviteBusy) return;
+    setInviteBusy(true);
+    setCallError("");
+    try {
+      if (invite) {
+        await revokeCallInvite(invite.invite_id);
+        setInvite(null);
+      } else {
+        const created = await createCallInvite(callId);
+        if (activeCallRef.current.callId === callId) setInvite(created);
+      }
+    } catch (error) {
+      setCallError(error.message || "Не удалось изменить приглашение.");
+    } finally {
+      setInviteBusy(false);
+    }
   };
 
   const visible = open || phase !== "idle";
@@ -427,13 +482,13 @@ export default function CallPanel({ chatId, chatName, open, onClose }) {
           )}
         </header>
 
-        {phase === "idle" && (
+        {phase === "idle" && !guestToken && (
           <div className="call-panel__start">
             <div className="call-panel__symbol" aria-hidden="true">✦</div>
             <p>Начните звонок с участниками этого чата.</p>
             {socketStatus !== "ready" && <p className="call-panel__hint">{connectionMessage}</p>}
             {socketStatus === "unconfigured" && (
-              <p className="call-panel__hint">Добавьте <code>VITE_CALLS_WS_URL</code> после запуска Go-сервиса.</p>
+              <p className="call-panel__hint">Сервис звонков недоступен в этом окружении.</p>
             )}
             <div className="call-panel__start-actions">
               <button type="button" disabled={socketStatus !== "ready" || !chatId || mediaPending} onClick={() => startCall("audio")}>
@@ -484,8 +539,19 @@ export default function CallPanel({ chatId, chatName, open, onClose }) {
                   ▣
                 </button>
               )}
-              <button type="button" className="call-control call-control--danger" onClick={() => endCall(true)} aria-label="Завершить звонок">☎</button>
+              <button type="button" className="call-control call-control--danger" disabled={mediaPending} onClick={() => {
+                endCall(true);
+                if (guestToken) onClose?.();
+              }} aria-label="Завершить звонок">☎</button>
             </div>
+            {canInvite && callId && callChatId === chatId && (
+              <div className="call-panel__invite">
+                {invite && <input aria-label="Гостевая ссылка" readOnly value={invite.invite_url} onFocus={(event) => event.target.select()} />}
+                <button type="button" disabled={inviteBusy} onClick={changeInvite}>
+                  {invite ? "Отозвать ссылку" : "Создать гостевую ссылку"}
+                </button>
+              </div>
+            )}
           </>
         )}
 

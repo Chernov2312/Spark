@@ -3,7 +3,7 @@ services:
   redis-test:
     image: redis:7-alpine
     env_file:
-      - .env.test
+      - ${SPARK_TEST_ENV_FILE:-.env.test}
     ports:
       - "6380:6379"
     volumes:
@@ -16,19 +16,17 @@ services:
         reservations:
           cpus: '0.25'
           memory: 256M
-    entrypoint: >
-      /bin/sh -c "
-      mkdir -p /usr/local/etc/redis &&
-      echo 'bind 0.0.0.0' > /usr/local/etc/redis/redis.conf &&
-      echo 'appendonly yes' >> /usr/local/etc/redis/redis.conf &&
-      echo 'appendfsync everysec' >> /usr/local/etc/redis/redis.conf &&
-      echo 'daemonize no' >> /usr/local/etc/redis/redis.conf &&
-      echo 'user default on >$${REDIS_PASSWORD} ~* &* +@all' > /usr/local/etc/redis/users.acl &&
-      echo 'user $${REDIS_USER} on >$${REDIS_USER_PASSWORD} ~* &* +@all' >> /usr/local/etc/redis/users.acl &&
-      exec redis-server /usr/local/etc/redis/redis.conf --aclfile /usr/local/etc/redis/users.acl
-      "
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        umask 077
+        mkdir -p /usr/local/etc/redis
+        printf 'user default on >%s ~* &* +@all\n' "$$REDIS_PASSWORD" > /usr/local/etc/redis/users.acl
+        printf 'user %s on >%s ~* &* +@all\n' "$$REDIS_USER" "$$REDIS_USER_PASSWORD" >> /usr/local/etc/redis/users.acl
+        exec redis-server --bind 0.0.0.0 --appendonly yes --appendfsync everysec --aclfile /usr/local/etc/redis/users.acl
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "$$REDIS_PASSWORD", "ping"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -qx PONG"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -37,7 +35,7 @@ services:
   postgres-test:
     image: postgres:15-alpine
     env_file:
-      - .env.test
+      - ${SPARK_TEST_ENV_FILE:-.env.test}
     ports:
       - "5433:5432"
     healthcheck:
@@ -47,13 +45,17 @@ services:
       retries: 5
 
   backend-test:
+    group_add:
+      - "${DOCKER_SOCKET_GID:-0}"
     build:
       context: ./backend
       dockerfile: Dockerfile.test
     environment:
       POSTGRES_HOST: postgres-test
+      REDIS_HOST: redis-test
+      REDIS_PORT: 6379
     env_file:
-      - .env.test
+      - ${SPARK_TEST_ENV_FILE:-.env.test}
     command: ["sleep", "infinity"]
     depends_on:
       postgres-test:

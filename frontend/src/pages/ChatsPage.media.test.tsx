@@ -1,10 +1,74 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { apiMocks, audioMessage, chat, renderChat, socketState, setupChatTests } from "../test/chatHarness";
 
 setupChatTests();
 
 describe("ChatsPage: media", () => {
+  it("renders Markdown document structures and ignores raw HTML and unsafe links", async () => {
+    await import("../components/MarkdownAttachmentPreview");
+    const text = [
+      "Релиз", "=====", "",
+      "1. Пункт", "   - Вложенный пункт", "",
+      "| Версия | Статус |", "| --- | --- |", "| 1.0 | Готово |", "",
+      "- [x] Проверено", "",
+      "> Цитата", "",
+      "~~~js", "console.log('<tag>')", "~~~", "",
+      "[Сайт](https://example.com) [Запрещённая схема](javascript:alert%281%29)", "",
+      "<script>bad()</script>",
+    ].join("\n");
+    apiMocks.listMessages.mockResolvedValue([{
+      ...audioMessage,
+      attachments: [{
+        ...audioMessage.attachments[0],
+        mime_type: "application/octet-stream", file_name: "notes.MARKDOWN", text,
+      }],
+    }]);
+    renderChat();
+    fireEvent.click(await screen.findByRole("button", { name: "Просмотреть Markdown" }));
+    const preview = await screen.findByRole("region", { name: "Предпросмотр notes.MARKDOWN" });
+    expect(within(preview).getByRole("heading", { name: "Релиз", level: 1 })).toBeVisible();
+    expect(preview.querySelector("ol li ul")).toHaveTextContent("Вложенный пункт");
+    expect(within(preview).getByRole("table")).toHaveTextContent("Готово");
+    expect(within(preview).getByRole("checkbox")).toBeChecked();
+    expect(within(preview).getByRole("checkbox")).toBeDisabled();
+    expect(preview.querySelector("blockquote")).toHaveTextContent("Цитата");
+    expect(preview.querySelector("pre code")).toHaveTextContent("console.log('<tag>')");
+    expect(within(preview).getByRole("link", { name: "Сайт" })).toHaveAttribute("rel", "noopener noreferrer");
+    expect(within(preview).queryByRole("link", { name: "Запрещённая схема" })).not.toBeInTheDocument();
+    expect(preview).not.toHaveTextContent("bad()");
+    expect(apiMocks.getAttachmentDownloadUrl).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Скрыть Markdown" }));
+    expect(preview).not.toBeInTheDocument();
+  });
+
+  it("fetches an older Markdown attachment and can retry a failed request", async () => {
+    apiMocks.listMessages.mockResolvedValue([{
+      ...audioMessage,
+      attachments: [{
+        ...audioMessage.attachments[0],
+        mime_type: "text/markdown; charset=utf-8", file_name: "legacy", text: null,
+      }],
+    }]);
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response("", { status: 403 }))
+      .mockResolvedValueOnce(new Response("# Восстановленный документ"));
+    vi.stubGlobal("fetch", fetch);
+    renderChat();
+    const toggle = await screen.findByRole("button", { name: "Просмотреть Markdown" });
+    expect(fetch).not.toHaveBeenCalled();
+    fireEvent.click(toggle);
+    expect(await screen.findByText("Не удалось загрузить Markdown.")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Повторить" }));
+    expect(await screen.findByRole("heading", { name: "Восстановленный документ" })).toBeVisible();
+    expect(apiMocks.getAttachmentDownloadUrl).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenLastCalledWith(
+      "https://storage.test/download/audio.ogg",
+      expect.objectContaining({ credentials: "omit" }),
+    );
+  });
+
   it("shows a local image preview and removes it from the composer", async () => {
     renderChat();
     await screen.findByText(chat.title, { selector: ".chat-view__title" });

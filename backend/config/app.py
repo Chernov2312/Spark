@@ -31,6 +31,17 @@ class Settings(BaseSettings):
     API_BASE_URL: str = "http://localhost:8001"
     FRONTEND_BASE_URL: str = "http://localhost:5174/"
     APP_BASE_URL: str = "http://localhost:5174/"
+    WEB_PUSH_PUBLIC_KEY: str = ""
+    WEB_PUSH_PRIVATE_KEY: SecretStr = SecretStr("")
+    WEB_PUSH_SUBJECT: str = ""
+
+    @property
+    def web_push_enabled(self) -> bool:
+        return bool(
+            self.WEB_PUSH_PUBLIC_KEY
+            and self.WEB_PUSH_PRIVATE_KEY.get_secret_value()
+            and self.WEB_PUSH_SUBJECT
+        )
 
     @property
     def db_url(self) -> str:

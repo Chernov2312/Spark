@@ -1,4 +1,5 @@
 import { api, setToken, clearToken, getToken } from "./client";
+import { disableWebPush, isWebPushEnabled } from "./push";
 
 /* Кастомное событие для Header */
 const AUTH_CHANGE_EVENT = "spark:auth-change";
@@ -60,7 +61,9 @@ export async function loginUser({ username, password }) {
   return data;
 }
 
-export function logoutUser() {
+export async function logoutUser() {
+  const userId = getCurrentUser()?.id;
+  if (isWebPushEnabled(userId)) await disableWebPush(userId).catch(() => {});
   clearToken();
   emitAuthChange();
 }

@@ -3,6 +3,7 @@ import uuid
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from tasks.push import enqueue_message_push
 
 from core.message_actions import ensure_chat_member, queued_messages
 from db.dao.message_dao import MessageDao
@@ -143,6 +144,7 @@ async def create_poll(
             }
         ),
     )
+    await enqueue_message_push(chat_id, user_id, message.id)
     return response
 
 

@@ -4,7 +4,8 @@ LABEL maintainer="Vladimir Max"
 LABEL description="Spark"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    LOG_DIR=/logs
 
 WORKDIR /app
 
@@ -19,5 +20,7 @@ COPY . .
 COPY ./entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-RUN useradd -m appuser && chown -R appuser:appuser /app /entrypoint.sh
-USER appuser
+RUN groupadd --gid 65532 appuser && useradd --uid 65532 --gid 65532 -m appuser && \
+    install -d -o 65532 -g 65532 /logs /home/appuser/.cache/whisper
+ENV HOME=/home/appuser
+USER 65532:65532

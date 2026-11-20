@@ -54,7 +54,7 @@ export async function uploadAttachment(file, chatId, { compressImages = true } =
   }
 }
 
-export async function getAttachmentDownloadUrl(attachmentId) {
-  const { data } = await api.get(`/attachments/${attachmentId}/download`);
+export async function getAttachmentDownloadUrl(attachmentId, { signal } = {}) {
+  const { data } = await api.get(`/attachments/${attachmentId}/download`, { signal });
   return data.url;
 }

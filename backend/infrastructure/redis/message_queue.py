@@ -5,7 +5,7 @@ from infrastructure.redis.client import execute_redis_pipeline, Redis
 from schemas.message import MessageInternalDTO
 
 MESSAGE_QUEUE_PREFIX = "messages:queue:"
-HISTORY_CACHE_PREFIX = "messages:history:"
+HISTORY_CACHE_PREFIX = "messages:history:v4:"
 HISTORY_VERSION_PREFIX = "messages:history-version:"
 HISTORY_CACHE_TTL_SECONDS = 600
 

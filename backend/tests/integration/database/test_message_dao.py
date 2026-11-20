@@ -192,7 +192,8 @@ async def test_bulk_insert_messages_preserves_timestamp_and_ignores_duplicate(
         id=message_id,
         chat_id=chat.id,
         user_id=db_user.id,
-        text="retry-safe insert",
+        text="https://example.com/",
+        link_preview_url="https://example.com/",
         thread_root_id=root.id,
         created_at=created_at,
     )
@@ -201,7 +202,7 @@ async def test_bulk_insert_messages_preserves_timestamp_and_ignores_duplicate(
     await MessageDao.bulk_insert_messages(db_session, [message])
     loaded = await MessageDao.get_by_id(db_session, message_id)
 
-    assert loaded.text == "retry-safe insert"
+    assert loaded.text == loaded.link_preview_url == "https://example.com/"
     assert loaded.thread_root_id == root.id
     assert loaded.created_at == created_at
     assert await MessageDao.bulk_insert_messages(db_session, []) is None

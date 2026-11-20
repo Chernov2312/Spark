@@ -44,6 +44,7 @@ class ChatMessagePreview(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    is_forwarded: bool = False
     user_id: uuid.UUID
     poll_id: uuid.UUID | None = None
     text: str | None = None

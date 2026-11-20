@@ -26,6 +26,7 @@ export default defineConfig({
     timeout: 30_000,
     env: {
       VITE_API_URL: "/api/v1",
+      VITE_CALLS_WS_URL: "/v1/calls/ws",
     },
   },
 });

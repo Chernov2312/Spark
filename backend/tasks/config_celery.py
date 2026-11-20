@@ -27,6 +27,8 @@ celery_app.conf.update(
         "tasks.message_reactions",
         "tasks.scheduler",
         "tasks.audio_convert",
+        "tasks.link_preview",
+        "tasks.push",
     ],
 )
 

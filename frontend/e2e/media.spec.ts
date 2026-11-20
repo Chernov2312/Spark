@@ -2,6 +2,39 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { test, expect, chatId, user } from "./support";
 
+test("renders uploaded Markdown and loads its bytes when cached text is absent", async ({ page, mockApi }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const text = [
+    "# План релиза", "",
+    "| Раздел | Результат | Примечание | Ответственный | Дополнительно |",
+    "| --- | --- | --- | --- | --- |",
+    "| Чат | Готово | Проверено | Команда | Документация |", "",
+    "- [x] Проверить Markdown",
+  ].join("\n");
+  await mockApi.openChat();
+  await page.locator(".chat-view__composer input[type=file]").setInputFiles({
+    name: "release.markdown", mimeType: "application/octet-stream", buffer: Buffer.from(text),
+  });
+  await page.getByRole("button", { name: "Отправить", exact: true }).click();
+  const open = page.getByRole("button", { name: "Просмотреть Markdown" });
+  const preview = page.getByRole("region", { name: "Предпросмотр release.markdown" });
+  await open.click();
+  await expect(preview.getByRole("heading", { name: "План релиза" })).toBeVisible();
+  await expect(preview.getByRole("checkbox")).toBeChecked();
+  await expect(preview.getByRole("table")).toContainText("Документация");
+  const tableScroll = preview.locator(".markdown-body__table");
+  expect(await tableScroll.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  const attachment = mockApi.messages.get(chatId)![0].attachments[0];
+  expect(attachment.text).toBe(text);
+  attachment.text = null;
+  await page.reload();
+  await open.click();
+  await expect(preview.getByRole("heading", { name: "План релиза" })).toBeVisible();
+  expect(mockApi.requests.some((request) => request.path === "/attachments/" + attachment.id + "/download")).toBe(true);
+});
+
 test("audio upload, explicit live transcription and authenticated download preserve the file", async ({ page, mockApi }) => {
   const bytes = readFileSync(resolve("..", "backend", "tests", "integration", "audio_converter", "audio.ogg"));
   await mockApi.openChat();

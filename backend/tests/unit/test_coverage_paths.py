@@ -684,6 +684,7 @@ async def test_typing_websocket_publishes_events_and_cleans_up(
         if item and item["type"] == "message":
             published_events.append(item["data"])
     assert '"event":"message:new"' in published_events[0]
+    assert '"is_forwarded":false' in published_events[0]
     assert '"event":"user:typing"' in published_events[1]
     assert str(user_id) in published_events[1]
     assert await redis.smembers(f"chat:{chat_id}:users") == set()

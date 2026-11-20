@@ -6,6 +6,7 @@ import uuid
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.link_preview import parse_preview_url
 from db.dao.chat_dao import ChatDao
 from db.dao.message_dao import MessageDao
 from db.models import Message
@@ -57,6 +58,23 @@ async def ensure_chat_member(
         raise HTTPException(status_code=403, detail="You are not a member of this chat")
 
 
+def validate_message_preview_url(text: str | None, url: str | None) -> None:
+    if url is None:
+        return
+    try:
+        parse_preview_url(url)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail="Invalid link preview URL") from error
+    # The client adds https:// when it recognizes a bare www. address.
+    bare = url.removeprefix("https://")
+    if not text or (
+        url not in text and not (bare.lower().startswith("www.") and bare in text)
+    ):
+        raise HTTPException(
+            status_code=422, detail="Link preview URL must be in the message"
+        )
+
+
 async def queued_messages(redis: Redis, chat_id: uuid.UUID) -> list[MessageInternalDTO]:
     return [
         MessageInternalDTO.model_validate_json(fields["payload"])
@@ -64,6 +82,39 @@ async def queued_messages(redis: Redis, chat_id: uuid.UUID) -> list[MessageInter
             redis, message_queue_key(chat_id)
         )
     ]
+
+
+async def ensure_read_target(
+    session: AsyncSession,
+    redis: Redis,
+    chat_id: uuid.UUID,
+    message_id: uuid.UUID,
+) -> bool:
+    if await ChatDao.is_message_in_chat(session, chat_id, message_id):
+        return True
+
+    pending = {
+        item.id: item
+        for item in await queued_messages(redis, chat_id)
+        if item.chat_id == chat_id
+    }
+    # The worker commits to PostgreSQL before acknowledging the Redis entry.
+    if message_id not in pending:
+        return await ChatDao.is_message_in_chat(session, chat_id, message_id)
+
+    # Preserve the receipt's foreign key and the queued message's reply and thread references.
+    required = {message_id}
+    remaining = [message_id]
+    while remaining:
+        item = pending[remaining.pop()]
+        for dependency in (item.reply_to_id, item.thread_root_id):
+            if dependency in pending and dependency not in required:
+                required.add(dependency)
+                remaining.append(dependency)
+    messages = [item for item in pending.values() if item.id in required]
+    await MessageDao.bulk_insert_messages(session, messages)
+    await MessageDao.attach_queued_attachments(session, messages)
+    return True
 
 
 async def list_pinned_messages(
@@ -82,11 +133,11 @@ async def list_thread_roots(
     user_id: uuid.UUID,
 ) -> list[Message | MessageInternalDTO]:
     await ensure_chat_member(session, chat_id, user_id)
+    pending = await queued_messages(redis, chat_id)
     roots: dict[uuid.UUID, Message | MessageInternalDTO] = {
         root.id: root
         for root in await MessageDao.get_thread_roots(session, chat_id, user_id)
     }
-    pending = await queued_messages(redis, chat_id)
     pending_by_id = {item.id: item for item in pending}
     for item in pending:
         if item.thread_root_id is None or item.thread_root_id in roots:
@@ -101,6 +152,25 @@ async def list_thread_roots(
     return list(roots.values())
 
 
+async def count_thread_replies(
+    session: AsyncSession,
+    root_ids: set[uuid.UUID],
+    pending_messages: list[MessageInternalDTO],
+) -> dict[uuid.UUID, int]:
+    pending_replies = {
+        item.id: item.thread_root_id
+        for item in pending_messages
+        if item.thread_root_id is not None and item.thread_root_id in root_ids
+    }
+    # A reply can be present in both stores until Celery acknowledges it.
+    counts = await MessageDao.get_thread_reply_counts(
+        session, root_ids, exclude_message_ids=set(pending_replies)
+    )
+    for root_id in pending_replies.values():
+        counts[root_id] = counts.get(root_id, 0) + 1
+    return counts
+
+
 async def forward_message(
     session: AsyncSession,
     redis: Redis,
@@ -108,6 +178,7 @@ async def forward_message(
     message_id: uuid.UUID,
     target_chat_id: uuid.UUID,
     user_id: uuid.UUID,
+    link_preview_url: str | None = None,
 ) -> Message:
     await ensure_chat_member(session, chat_id, user_id)
     await ensure_chat_member(session, target_chat_id, user_id)
@@ -127,9 +198,16 @@ async def forward_message(
         raise HTTPException(status_code=404, detail="Message not found")
     if isinstance(source, Message) and source.poll_id is not None:
         raise HTTPException(status_code=422, detail="Polls cannot be forwarded")
+    validate_message_preview_url(source.text, link_preview_url)
     return await MessageDao.create_with_attachments(
         session,
-        {"chat_id": target_chat_id, "user_id": user_id, "text": source.text},
+        {
+            "chat_id": target_chat_id,
+            "user_id": user_id,
+            "is_forwarded": True,
+            "text": source.text,
+            "link_preview_url": link_preview_url,
+        },
         [
             {
                 "chat_id": target_chat_id,
