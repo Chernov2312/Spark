@@ -5,6 +5,7 @@ import CallLobby from "./CallLobby";
 
 const TRACK_SOURCES = { audio: "microphone", camera: "camera", screen: "screen_share" };
 const GUEST_NAME_MAX_LENGTH = 50;
+const INITIAL_CONNECTION_TIMEOUT_MS = 120_000;
 const CONNECTION_LABELS = {
   new: "Подключение…",
   connecting: "Подключение…",
@@ -240,7 +241,10 @@ export default function CallPanel({
         .on(RoomEvent.AudioPlaybackStatusChanged, () => setAudioBlocked(!room.canPlaybackAudio))
         .on(RoomEvent.Disconnected, failed);
 
-      await room.connect(callMediaUrl(), token);
+      await room.connect(callMediaUrl(), token, {
+        websocketTimeout: INITIAL_CONNECTION_TIMEOUT_MS,
+        peerConnectionTimeout: INITIAL_CONNECTION_TIMEOUT_MS,
+      });
       if (roomRef.current !== room) return;
       await Promise.all(Object.entries(localTracksRef.current).filter(([, track]) => track?.readyState === "live")
         .map(([source, track]) => room.localParticipant.publishTrack(track, { source: TRACK_SOURCES[source] })));
