@@ -319,7 +319,10 @@ func callHTTP(t *testing.T, service *httptest.Server, method, path, token, body 
 
 func TestGuestInviteAccessLimitsAndRevocation(t *testing.T) {
 	service := testServer(t)
-	owner, callID := start(t, service)
+	owner := dial(t, service, fields{"access_token": "owner", "video_slots": true})
+	receive(t, owner, "auth:ok")
+	send(t, owner, "call:start", fields{"chat_id": chatID, "media": "audio"})
+	callID := receive(t, owner, "call:started")["call_id"].(string)
 	path := "/v1/calls/" + callID + "/invites"
 	callHTTP(t, service, "POST", path, "outsider", "{}", http.StatusForbidden)
 	callHTTP(t, service, "POST", path, "member", "{}", http.StatusForbidden)
@@ -355,7 +358,7 @@ func TestGuestInviteAccessLimitsAndRevocation(t *testing.T) {
 		t.Fatalf("declined guest socket could still accept: %v", problem)
 	}
 
-	guest := dial(t, service, fields{"invite_token": token})
+	guest := dial(t, service, fields{"invite_token": token, "video_slots": true})
 	auth := receive(t, guest, "auth:ok")
 	if auth["guest"] != true || auth["call_id"] != callID {
 		t.Fatalf("unexpected guest authorization: %v", auth)
@@ -367,12 +370,29 @@ func TestGuestInviteAccessLimitsAndRevocation(t *testing.T) {
 	receive(t, second, "auth:ok")
 	receive(t, second, "call:incoming")
 
-	send(t, guest, "call:accept", fields{"call_id": callID})
+	for _, name := range []string{strings.Repeat("я", guestNameMaxLength+1), "Гость\x00Имя"} {
+		send(t, guest, "call:accept", fields{"call_id": callID, "display_name": name})
+		if problem := receive(t, guest, "call:error"); problem["code"] != "invalid_guest_name" {
+			t.Fatalf("accepted an invalid guest name: %v", problem)
+		}
+	}
+	send(t, guest, "call:accept", fields{"call_id": callID, "display_name": "  Мира 🌿  "})
 	receive(t, guest, "call:accepted")
-	receive(t, guest, "call:peer_joined")
+	if peer := receive(t, guest, "call:peer_joined"); peer["video_slots"] != true {
+		t.Fatalf("guest did not receive the owner's video capability: %v", peer)
+	}
 	receive(t, owner, "call:accepted")
-	if peer := receive(t, owner, "call:peer_joined"); peer["participant_type"] != "guest" || peer["display_name"] != "Гость 1" {
+	if peer := receive(t, owner, "call:peer_joined"); peer["participant_type"] != "guest" || peer["display_name"] != "Мира 🌿" || peer["video_slots"] != true {
 		t.Fatalf("unexpected guest: %v", peer)
+	}
+	send(t, guest, "rtc:video", fields{"call_id": callID, "target_id": ownerID, "video": fields{"screen": true}})
+	if problem := receive(t, guest, "call:error"); problem["code"] != "invalid_signal" {
+		t.Fatalf("accepted an incomplete video state: %v", problem)
+	}
+	send(t, guest, "rtc:video", fields{"call_id": callID, "target_id": ownerID, "video": fields{"camera": false, "screen": true}})
+	state := receive(t, owner, "rtc:video")
+	if video, ok := state["video"].(map[string]any); !ok || video["camera"] != false || video["screen"] != true || state["from_id"] != auth["peer_id"] {
+		t.Fatalf("unexpected video state: %v", state)
 	}
 	send(t, second, "call:accept", fields{"call_id": callID})
 	if problem := receive(t, second, "call:error"); problem["code"] != "invite_invalid" {
@@ -380,6 +400,16 @@ func TestGuestInviteAccessLimitsAndRevocation(t *testing.T) {
 	}
 	send(t, guest, "call:end", fields{"call_id": callID})
 	receive(t, owner, "call:peer_left")
+	_, newToken := makeInvite()
+	unnamed := dial(t, service, fields{"invite_token": newToken})
+	receive(t, unnamed, "auth:ok")
+	receive(t, unnamed, "call:incoming")
+	send(t, unnamed, "call:accept", fields{"call_id": callID, "display_name": "  "})
+	receive(t, unnamed, "call:accepted")
+	receive(t, owner, "call:accepted")
+	if peer := receive(t, owner, "call:peer_joined"); peer["display_name"] != "Гость 2" {
+		t.Fatalf("unexpected default guest name: %v", peer)
+	}
 	send(t, owner, "call:end", fields{"call_id": callID})
 	receive(t, owner, "call:ended")
 }

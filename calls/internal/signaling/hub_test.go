@@ -48,7 +48,7 @@ func TestExpireInviteDuringEstablishedCall(t *testing.T) {
 	if !ok {
 		t.Fatal("failed to create invite")
 	}
-	if problem := h.accept(member, current.id); problem != nil {
+	if problem := h.accept(member, current.id, ""); problem != nil {
 		t.Fatalf("member could not accept call: %s", problem.code)
 	}
 
