@@ -1,52 +1,27 @@
 const FORMATS = [
-  { id: "bold", label: "Ж", title: "Жирный (Ctrl+B)", wrap: ["**", "**"] },
-  {
-    id: "italic",
-    label: "К",
-    title: "Курсив (Ctrl+I)",
-    wrap: ["*", "*"],
-    italic: true,
-  },
-  {
-    id: "strike",
-    label: "S",
-    title: "Зачёркнутый",
-    wrap: ["~~", "~~"],
-    strike: true,
-  },
-  {
-    id: "code",
-    label: "</>",
-    title: "Моноширинный",
-    wrap: ["`", "`"],
-    mono: true,
-  },
-  { id: "quote", label: "❝", title: "Цитата", wrap: ["> ", ""] },
+  { id: "bold", label: "Ж", title: "Жирный", keys: "Ctrl+B" },
+  { id: "italic", label: "К", title: "Курсив", keys: "Ctrl+I" },
+  { id: "strike", label: "З", title: "Зачёркнутый" },
+  { id: "code", label: "</>", title: "Моноширинный", keys: "Ctrl+U" },
+  { id: "quote", label: "❝", title: "Цитата" },
+  { id: "spoiler", label: "Спойлер", title: "Скрытый текст" },
 ];
 
-export default function FormatToolbar({ onFormat, visible }) {
-  if (!visible) return null;
-
+export default function FormatToolbar({ onFormat }) {
   return (
-    <div className="format-toolbar" onMouseDown={(e) => e.preventDefault()}>
+    <div className="format-toolbar" role="group" aria-label="Форматирование текста" onPointerDown={(event) => {
+      if (event.target.closest("button")) event.preventDefault();
+    }}>
       {FORMATS.map((f) => (
         <button
           key={f.id}
           type="button"
           className={`format-toolbar__btn format-toolbar__btn--${f.id}`}
-          title={f.title}
-          onClick={() => onFormat(f.wrap[0], f.wrap[1])}
+          aria-label={f.title}
+          title={f.keys ? `${f.title} (${f.keys})` : f.title}
+          onClick={() => onFormat(f.id)}
         >
-          <span
-            style={{
-              fontStyle: f.italic ? "italic" : "normal",
-              textDecoration: f.strike ? "line-through" : "none",
-              fontFamily: f.mono ? "Consolas, monospace" : "inherit",
-              fontWeight: f.id === "bold" ? 800 : 600,
-            }}
-          >
-            {f.label}
-          </span>
+          {f.label}
         </button>
       ))}
     </div>

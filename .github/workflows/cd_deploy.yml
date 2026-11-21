@@ -1,18 +1,15 @@
 name: deploy
 on:
   workflow_run:
-    workflows: 
-      - "python_test"
+    workflows: ["Backend tests"]
+    branches: [master]
     types:
       - completed
-  push:
-    branches:
-      - master
 jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: .env
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Remote deploy script
         uses: appleboy/ssh-action@master
@@ -21,6 +18,7 @@ jobs:
           username: ${{secrets.HOST_USERNAME}}
           key: ${{secrets.SSH_PRIVATE_KEY}}
           key_path: ""
+          command_timeout: 30m
           script: |
             set -eu
             if [ ! -d  "Spark" ]; then

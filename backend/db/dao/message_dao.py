@@ -22,6 +22,7 @@ class QueuedMessage(Protocol):
     chat_id: uuid.UUID
     user_id: uuid.UUID
     text: str | None
+    link_preview_url: str | None
     reply_to_id: uuid.UUID | None
     thread_root_id: uuid.UUID | None
     created_at: datetime
@@ -230,14 +231,19 @@ class MessageDao(BaseDao[Message]):
         cls,
         session: AsyncSession,
         root_message_ids: set[uuid.UUID],
+        *,
+        exclude_message_ids: set[uuid.UUID] | None = None,
     ) -> dict[uuid.UUID, int]:
         if not root_message_ids:
             return {}
-        result = await session.execute(
+        query = (
             select(Message.thread_root_id, func.count(Message.id))
             .where(Message.thread_root_id.in_(root_message_ids))
-            .group_by(Message.thread_root_id),
+            .group_by(Message.thread_root_id)
         )
+        if exclude_message_ids:
+            query = query.where(Message.id.not_in(exclude_message_ids))
+        result = await session.execute(query)
         return {root_id: count for root_id, count in result.all()}
 
     @classmethod
@@ -323,7 +329,8 @@ class MessageDao(BaseDao[Message]):
         session: AsyncSession,
         target_id: uuid.UUID,
         user_id: uuid.UUID,
-        text: str,
+        text: str | None,
+        link_preview_url: str | None = None,
     ) -> Message | None:
         query = (
             update(Message)
@@ -331,7 +338,7 @@ class MessageDao(BaseDao[Message]):
                 Message.id == target_id,
                 Message.user_id == user_id,
             )
-            .values(text=text, edited_at=func.now())
+            .values(text=text, link_preview_url=link_preview_url, edited_at=func.now())
             .returning(Message)
         )
 
@@ -399,6 +406,7 @@ class MessageDao(BaseDao[Message]):
                 "chat_id": message.chat_id,
                 "user_id": message.user_id,
                 "text": message.text,
+                "link_preview_url": message.link_preview_url,
                 "reply_to_id": message.reply_to_id,
                 "thread_root_id": message.thread_root_id,
                 "created_at": message.created_at,

@@ -29,6 +29,7 @@ const { apiMocks, socialMocks, socketState } = vi.hoisted(() => ({
     setPersonalChatAvatar: vi.fn(),
     resetPersonalChatAvatar: vi.fn(),
     getChatMembers: vi.fn(),
+    markChatRead: vi.fn(),
     updateMemberRole: vi.fn(),
     createChat: vi.fn(),
     uploadChatAvatars: vi.fn(),
@@ -39,6 +40,7 @@ const { apiMocks, socialMocks, socketState } = vi.hoisted(() => ({
   },
   socialMocks: {
     listFriends: vi.fn(),
+    acceptFriend: vi.fn(),
     listChatFolders: vi.fn(),
   },
   socketState: {
@@ -53,6 +55,7 @@ vi.mock("../api", () => ({
     setPersonalChatAvatar: apiMocks.setPersonalChatAvatar,
     resetPersonalChatAvatar: apiMocks.resetPersonalChatAvatar,
     getChatMembers: apiMocks.getChatMembers,
+    markChatRead: apiMocks.markChatRead,
     updateMemberRole: apiMocks.updateMemberRole,
     createChat: apiMocks.createChat,
     uploadChatAvatars: apiMocks.uploadChatAvatars,
@@ -116,6 +119,7 @@ export function setupChatTests() {
     localStorage.setItem("user", JSON.stringify(testUser));
     apiMocks.listChats.mockResolvedValue([chat]);
     apiMocks.getChatMembers.mockResolvedValue([]);
+    apiMocks.markChatRead.mockResolvedValue({});
     apiMocks.listMessages.mockResolvedValue([audioMessage]);
     apiMocks.listPinnedMessages.mockResolvedValue([]);
     apiMocks.listThreads.mockResolvedValue([]);
@@ -123,6 +127,7 @@ export function setupChatTests() {
     socialMocks.listFriends.mockResolvedValue({
       friends: [],
       requests: [],
+      sentRequests: [],
       categories: [],
     });
     socialMocks.listChatFolders.mockResolvedValue([]);

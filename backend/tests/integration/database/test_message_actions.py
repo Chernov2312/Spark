@@ -2,18 +2,65 @@ from datetime import datetime
 import uuid
 
 from fastapi import HTTPException
+from httpx2 import AsyncClient
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.v1.message import forward_chat_message, get_chat_threads
+from api.v1.message import forward_chat_message, get_chat_threads, get_messages_history
 from core.message_actions import (
     forward_message,
     get_chat_message_previews,
     list_thread_roots,
 )
+from core.security import create_access_token
 from db.dao.chat_dao import ChatDao
 from db.dao.message_dao import MessageDao
+from db.models import Chat, User
 from infrastructure.redis.redis_dao import RedisDao
 from schemas.message import AttachmentRequest, MessageForwardRequest, MessageInternalDTO
+from schemas.websockets import WsEvent
+
+
+async def test_history_keeps_message_when_an_attachment_has_no_storage_key(
+    db_session: AsyncSession,
+    db_userchat: tuple[Chat, User],
+    minio_s3_storage: dict[str, str],
+    api_client: AsyncClient,
+) -> None:
+    chat, member = db_userchat
+    message = await MessageDao.create_with_attachments(
+        db_session,
+        {"chat_id": chat.id, "user_id": member.id, "text": "Message with attachments"},
+        [
+            {
+                "chat_id": chat.id,
+                "file_key": None,
+                "file_name": "legacy.txt",
+                "file_size": 3,
+                "mime_type": "text/plain",
+            },
+            {
+                "chat_id": chat.id,
+                "file_key": "uploads/current.txt",
+                "file_name": "current.txt",
+                "file_size": 4,
+                "mime_type": "text/plain",
+            },
+        ],
+    )
+    token = create_access_token({"sub": str(member.id)})
+    response = await api_client.get(
+        f"/api/v1/chats/{chat.id}/messages?limit=50",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    (history_message,) = response.json()["messages"]
+    assert history_message["id"] == str(message.id)
+    assert history_message["text"] == "Message with attachments"
+    (attachment,) = history_message["attachments"]
+    assert attachment["file_name"] == "current.txt"
+    assert attachment["file_key"].startswith(minio_s3_storage["endpoint"])
 
 
 async def test_forward_copies_attachments_and_checks_both_memberships(
@@ -55,6 +102,8 @@ async def test_forward_copies_attachments_and_checks_both_memberships(
     assert copy.id != source.id
     assert copy.chat_id == target.id
     assert copy.text == source.text
+    assert copy.is_forwarded
+    assert not source.is_forwarded
     assert copy.attachments[0].id != source.attachments[0].id
     assert copy.attachments[0].chat_id == target.id
     assert copy.attachments[0].file_key == source.attachments[0].file_key
@@ -129,6 +178,7 @@ async def test_queued_thread_discovery_and_forwarding(
         member.id,
     )
     assert copy.text == root.text
+    assert copy.is_forwarded
     assert copy.attachments[0].file_key == "queued.txt"
 
 
@@ -152,17 +202,30 @@ async def test_thread_list_and_forward_route_responses(
     threads = await get_chat_threads(chat.id, member.id, db_session, test_redis_client)
     assert [item.id for item in threads.messages] == [root.id]
     assert threads.messages[0].thread_reply_count == 1
-    forwarded = await forward_chat_message(
-        chat.id,
-        root.id,
-        MessageForwardRequest(target_chat_id=chat.id),
-        member.id,
-        db_session,
-        test_redis_client,
-    )
+    async with test_redis_client.pubsub() as subscriber:
+        await subscriber.subscribe(f"chat:{chat.id}")
+        await subscriber.get_message(timeout=1)
+        forwarded = await forward_chat_message(
+            chat.id,
+            root.id,
+            MessageForwardRequest(target_chat_id=chat.id),
+            member.id,
+            db_session,
+            test_redis_client,
+        )
+        event = await subscriber.get_message(ignore_subscribe_messages=True, timeout=2)
+        published = WsEvent.model_validate_json(event["data"])
+        assert published.data.id == forwarded.id
+        assert published.data.is_forwarded
     assert forwarded.id != root.id
     assert forwarded.text == root.text
     assert forwarded.user_id == member.id
+    assert forwarded.is_forwarded
+    history = await get_messages_history(
+        chat.id, user_id=member.id, session=db_session, redis=test_redis_client
+    )
+    markers = {message.id: message.is_forwarded for message in history.messages}
+    assert markers == {root.id: False, forwarded.id: True}
 
 
 async def test_last_message_preview_merges_queue_and_database(

@@ -30,7 +30,7 @@ describe("ChatsPage: polls", () => {
     const firstCard = screen.getByRole("heading", { name: first.question }).closest("section")!;
     expect(within(firstCard).getByRole("button", { name: /Первый/ })).toHaveAttribute("aria-pressed", "true");
     expect(apiMocks.getPoll).toHaveBeenCalledTimes(2);
-    fireEvent.click(within(document.getElementById("message-poll-message-2")!).getByRole("button", { name: "Действия с сообщением" }));
+    fireEvent.contextMenu(heading);
     expect(within(screen.getByRole("dialog")).queryByRole("button", { name: "Отменить голос" })).not.toBeInTheDocument();
   });
 
@@ -52,7 +52,7 @@ describe("ChatsPage: polls", () => {
     expect(await screen.findByRole("heading", { name: pollMessage.text })).toBeVisible();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(apiMocks.createPoll).toHaveBeenCalledWith(chat.id, expect.objectContaining({ is_anonymous: true, allow_retract: true, options: ["Утром", "Вечером"] }));
-    fireEvent.click(within(document.getElementById("message-poll-message")!).getByRole("button", { name: "Действия с сообщением" }));
+    fireEvent.contextMenu(screen.getByRole("heading", { name: pollMessage.text }));
     const actions = screen.getByRole("dialog", { name: "Действия с сообщением" });
     expect(within(actions).queryByRole("button", { name: "Изменить" })).not.toBeInTheDocument();
     expect(within(actions).queryByRole("button", { name: "Переслать" })).not.toBeInTheDocument();

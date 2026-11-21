@@ -25,7 +25,9 @@ export interface TestMessage {
   thread_root_id?: string | null;
   thread_reply_count?: number;
   reply_to_id?: string | null;
+  reply_to_text?: string | null;
   is_pinned?: boolean;
+  is_forwarded?: boolean;
 }
 
 export interface TestChat {

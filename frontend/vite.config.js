@@ -15,6 +15,10 @@ export default defineConfig({
     strictPort: true,
     allowedHosts: ['sparkwork.dpdns.org'],
     proxy: {
+      '/v1/calls': {
+        target: 'http://calls:8002',
+        ws: true,
+      },
       '/api': {
         target: 'http://backend:8000',
         changeOrigin: true,

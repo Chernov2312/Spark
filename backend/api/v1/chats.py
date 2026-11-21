@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -7,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import RouteTags
 from core.chat_appearance import clear_personal_avatar, set_personal_avatar
 from core.chat_members import list_chat_members
+from core.chat_members import mark_chat_read as mark_chat_read_for_user
 from core.dependencies import get_redis
 from core.message_actions import get_chat_message_previews
 from core.security import get_id_current_user
@@ -17,7 +17,6 @@ from db.dao.user_dao import UserDao
 from db.database import get_session
 from db.models import Chat
 from infrastructure.redis.client import Redis
-from infrastructure.redis.redis_dao import RedisDao
 from schemas.chat_state import (
     ChatMemberResponse,
     ChatMemberRoleUpdate,
@@ -36,7 +35,6 @@ from schemas.chats import (
     PatchChatRequest,
 )
 from schemas.responses import ChatMemberRoleResponse
-from schemas.websockets import WsEvent
 
 chat_router = APIRouter(prefix="/api/v1", tags=[RouteTags.CHAT])
 
@@ -100,33 +98,9 @@ async def mark_chat_read(
     user_id: uuid.UUID = Depends(get_id_current_user),
     redis: Redis = Depends(get_redis),
 ) -> MarkChatReadResponse:
-    chat = await ChatDao.get_chat_with_users(session=session, chat_id=chat_id)
-    if chat is None or not any(member.id == user_id for member in chat.users):
-        raise HTTPException(status_code=404, detail="Chat not found")
-    message_id = data.message_id
-    if message_id and not await ChatDao.is_message_in_chat(
-        session,
-        chat_id,
-        message_id,
-    ):
-        raise HTTPException(
-            status_code=422, detail="Message does not belong to this chat"
-        )
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    await ChatDao.mark_read(session, chat_id, user_id, message_id, now)
-    await RedisDao.publish_chat_event(
-        redis,
-        chat_id,
-        WsEvent(
-            event="user:read",
-            data={
-                "chat_id": chat_id,
-                "user_id": user_id,
-                "last_read_message_id": message_id,
-            },
-        ).model_dump_json(),
+    return await mark_chat_read_for_user(
+        session, redis, chat_id, user_id, data.message_id
     )
-    return MarkChatReadResponse(last_read_message_id=message_id)
 
 
 @chat_router.get("/chats", status_code=status.HTTP_200_OK)

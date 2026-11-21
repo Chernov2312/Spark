@@ -1,4 +1,4 @@
-name: python_test
+name: Backend tests
 
 on:
   push:
@@ -15,11 +15,7 @@ jobs:
     env:
       POSTGRES_DB: spark_test
       POSTGRES_USER: spark_test
-      POSTGRES_PASSWORD: spark_test_password
-      SECRET_KEY: test-only-secret-key
-      REDIS_PASSWORD: test-only-password
       REDIS_USER: default
-      REDIS_USER_PASSWORD: test-only-password
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: qwen3:0.6b
       YANDEX_CLOUD_KEY_ID: test-only-access-key
@@ -31,6 +27,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Generate per-run test credentials
+        run: |
+          for key in SECRET_KEY POSTGRES_PASSWORD REDIS_PASSWORD REDIS_USER_PASSWORD; do
+            value=$(openssl rand -hex 32)
+            echo "::add-mask::$value"
+            echo "$key=$value" >> "$GITHUB_ENV"
+          done
 
       - name: Free disk space
         uses: jlumbroso/free-disk-space@v1.3.1
@@ -56,7 +60,7 @@ jobs:
 
       - name: Run unit and integration tests with coverage
         run: >-
-          python -m pytest tests/unit tests/integration
+          python -m pytest tests
           --cov=api --cov=core --cov=config --cov=db --cov=schemas --cov=tasks --cov=main
           --cov-fail-under=80
           --cov-report=term-missing --cov-report=xml:coverage.xml

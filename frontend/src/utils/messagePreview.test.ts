@@ -10,8 +10,11 @@ const file = (mimeType: string, name = "document.pdf"): TestAttachment => ({
 describe("message previews", () => {
   it.each<[string, Partial<TestMessage>, string]>([
     ["text", { text: "  Две\nстроки   текста  " }, "Две строки текста"],
+    ["spoiler", { text: "До ||секрет|| после" }, "До [Спойлер] после"],
+    ["literal spoiler in inline code", { text: "Код: `||a||`" }, "Код: `||a||`"],
     ["caption before attachments", { text: "Подпись", attachments: [file("image/png")] }, "Подпись"],
     ["photo without caption", { text: null, attachments: [file("image/png")] }, "Фото"],
+    ["forwarded photo", { text: null, is_forwarded: true, attachments: [file("image/png")] }, "Переслано: Фото"],
     ["video without caption", { text: null, attachments: [file("video/mp4")] }, "Видео"],
     ["voice note", { text: null, attachments: [file("audio/ogg")] }, "Голосовое сообщение"],
     ["document", { text: "  ", attachments: [file("application/pdf")] }, "document.pdf"],

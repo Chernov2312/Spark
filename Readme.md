@@ -12,6 +12,7 @@ Spark — веб-мессенджер с REST API и WebSocket-соединен�
 - Форматирование сообщений, краткое содержание переписки и переписывание текста через Ollama с OpenAI-совместимым клиентом.
 - Распознавание голосовых вложений через Whisper по запросу пользователя.
 - Загрузка файлов в S3-совместимое хранилище Yandex Cloud.
+- Аудио- и видеозвонки через WebRTC с Go-сервисом сигналинга и гостевыми ссылками.
 
 ## Требования
 
@@ -37,7 +38,7 @@ Spark — веб-мессенджер с REST API и WebSocket-соединен�
    cp .env.example .env
    ```
 
-2. Для профиля `dev` используйте `API_BASE_URL=http://localhost:8001` и `FRONTEND_BASE_URL=http://localhost:5174`. Адреса `postgres:5432` и `redis:6379` в `.env` нужны сервисам внутри сети Compose. Приложение обращается к локальной модели `qwen3:0.6b` по `OPENAI_BASE_URL=http://ollama:11434/v1`. Для отправки писем и работы с объектным хранилищем заполните параметры SMTP и Yandex Cloud в `.env`.
+2. Для профиля `dev` используйте `API_BASE_URL=http://localhost:8001` и `FRONTEND_BASE_URL=http://localhost:5174`. Адреса `postgres:5432` и `redis:6379` в `.env` нужны сервисам внутри сети Compose. Для отправки писем и работы с объектным хранилищем заполните параметры SMTP и Yandex Cloud в `.env`.
 
 3. Соберите и запустите приложение:
 
@@ -45,7 +46,25 @@ Spark — веб-мессенджер с REST API и WebSocket-соединен�
    docker compose --profile dev up --build
    ```
 
-   Compose запускает Ollama и загружает выбранную модель, затем запускает PostgreSQL, Redis, FastAPI, Celery worker и beat, а также frontend. Backend обращается к локальной модели через OpenAI-совместимый API и применяет миграции Alembic.
+   Compose запускает PostgreSQL, Redis, FastAPI, Celery, сервис звонков и frontend. Backend применяет миграции Alembic. Повторите команду с `--build` после изменений `backend/requirements/prod.txt`, чтобы установить новые зависимости в образы FastAPI и Celery.
+
+   После обновления с refresh-сессиями перезапустите backend для применения миграции и пересоберите сервис звонков. Следующий вход создаст refresh-сессию сроком `REFRESH_TOKEN_EXPIRE_DAYS` дней. Для браузерной авторизации укажите фактический адрес фронтенда в `FRONTEND_BASE_URL`.
+
+   После изменения `frontend/package-lock.json` перезапустите frontend командой `docker compose --profile dev restart frontend`. При старте контейнер устанавливает зависимости из lock-файла и затем запускает Vite. Журнал доступен через `docker compose --profile dev logs frontend`.
+
+   Если после обновления образа `npm ci` завершается с `EACCES` в `/app/node_modules`, пересоздайте контейнер frontend с новым анонимным томом зависимостей:
+
+   ```bash
+   docker compose --profile dev up -d --no-deps --force-recreate --renew-anon-volumes frontend
+   ```
+
+4. Если нужен локальный ИИ, задайте `OPENAI_BASE_URL=http://ollama:11434/v1` и имя локальной модели в `OPENAI_MODEL`, например `qwen3:0.6b`. Запустите Ollama и загрузку модели отдельно. Чаты доступны во время загрузки.
+
+   ```bash
+   docker compose --profile local-ai up -d ollama ollama-model
+   ```
+
+   Для внешнего OpenAI-совместимого API достаточно профиля `dev` и настроек провайдера в `.env`.
 
 Откройте:
 
@@ -57,7 +76,7 @@ Spark — веб-мессенджер с REST API и WebSocket-соединен�
 - Redis: `localhost:6380`
 - Ollama API: <http://localhost:11434>
 
-Чтобы остановить сервисы и сохранить данные, выполните `docker compose --profile dev down`. Для полной очистки также удалите Docker volumes `spark_postgres_data` и `spark_ollama_data`, а также локальную папку `redisdata`.
+Чтобы остановить сервисы и сохранить данные, выполните `docker compose --profile dev --profile local-ai down`. Для полной очистки также удалите Docker volumes `spark_postgres_data` и `spark_ollama_data`, а также локальную папку `redisdata`.
 
 ### Запуск на сервере с HTTPS
 
@@ -71,7 +90,7 @@ OPENAI_MODEL=your-model-id
 OPENAI_API_KEY=example-provider-api-key
 ```
 
-Compose передаёт `API_BASE_URL` во frontend как `VITE_API_URL`. При значении `/api/v1` REST и WebSocket используют домен открытой страницы. Backend использует `FRONTEND_BASE_URL` в ссылках подтверждения почты и сброса пароля.
+При сборке frontend Compose передаёт `API_BASE_URL` как `VITE_API_URL`, а `VITE_CALLS_WS_URL` по умолчанию равен `/v1/calls/ws`. С относительными адресами REST и WebSocket используют домен открытой страницы. После изменения этих переменных пересоберите frontend. Backend использует `FRONTEND_BASE_URL` в ссылках подтверждения почты и сброса пароля.
 
 В Git хранятся `.env.example` с примерами значений и `.env.test` с тестовыми настройками. Рабочие пароли и ключи храните в исключённом из Git файле `.env` на сервере. Для новой установки задайте отдельные значения `SECRET_KEY`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD` и `REDIS_USER_PASSWORD`. Для генерации каждого значения можно использовать `openssl rand -hex 32`. Для существующей БД укажите пароль действующей роли PostgreSQL. Изменение `POSTGRES_PASSWORD` в `.env` применяется при создании БД, а пароль существующей роли меняется в PostgreSQL отдельно.
 
@@ -79,7 +98,7 @@ Compose передаёт `API_BASE_URL` во frontend как `VITE_API_URL`. П�
 
 Для Gemini укажите `OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/`, `OPENAI_MODEL=gemini-3.1-flash-lite` и ключ Gemini в `OPENAI_API_KEY`.
 
-DNS-запись домена должна указывать на публичный IP сервера. Nginx на хосте принимает HTTPS на `443`, использует сертификат для `sparkwork.dpdns.org` и проксирует запросы на `http://127.0.0.1:81`. В этом виртуальном хосте передавайте `Host`, `Upgrade` и `Connection` для WebSocket. Контейнерный Nginx направляет REST и WebSocket чата в FastAPI, а остальные запросы во frontend, который в текущем Compose запускается через Vite. Для обновления адресов контейнеров через DNS используется `resolve`, доступный в Nginx 1.27.3 и новее.
+DNS-запись домена должна указывать на публичный IP сервера. Nginx на хосте принимает HTTPS на `443`, использует сертификат для `sparkwork.dpdns.org` и проксирует запросы на `http://127.0.0.1:81`. В этом виртуальном хосте передавайте `Host`, `Upgrade` и `Connection` для WebSocket. Контейнерный Nginx направляет REST и WebSocket чата в FastAPI, маршруты `/v1/calls/` — в Go, а запросы страниц — во frontend. В профиле `prod` Vite собирает `dist/` при создании образа. Nginx внутри frontend отдаёт готовые файлы и возвращает `index.html` для маршрутов React. FastAPI запускается без автоматической перезагрузки. Для обновления адресов контейнеров через DNS используется `resolve`, доступный в Nginx 1.27.3 и новее.
 
 Продовый Compose публикует только Nginx на `127.0.0.1:81`. Для HTTPS нужен входящий `443`, а для перенаправления с HTTP и проверки Certbot через HTTP-01 — `80` хостового Nginx.
 
@@ -93,7 +112,7 @@ curl -I -H 'Host: sparkwork.dpdns.org' http://127.0.0.1:81/
 curl -I https://sparkwork.dpdns.org/
 ```
 
-При переходе со старого продового запуска после старта нового стека остановите контейнеры Ollama командой `docker compose --profile dev stop ollama-model ollama`. CD выполняет эту команду после успешного запуска.
+При переходе со старого продового запуска после старта нового стека остановите контейнеры Ollama командой `docker compose stop ollama-model ollama`. CD останавливает эти сервисы после успешного запуска.
 
 Продовые сервисы пишут в stdout и stderr. Драйвер Docker `local` ротирует журналы с лимитом в пять файлов по 20 МБ на контейнер. Посмотреть последние записи backend, воркера и PostgreSQL можно из каталога проекта.
 
@@ -113,6 +132,18 @@ SMTP_PORT=465
 ```
 
 Запись `SMTP_PORT: int = 465` некорректна: Docker Compose передаёт значение `int = 465`, и задача отправки завершается ошибкой валидации до подключения к SMTP.
+
+### Фоновые уведомления
+
+Из корня проекта с установленными backend-зависимостями сгенерируйте пару VAPID.
+
+```bash
+python backend/generate_web_push_keys.py
+```
+
+Добавьте выведенные `WEB_PUSH_PUBLIC_KEY` и `WEB_PUSH_PRIVATE_KEY` в `.env` и задайте `WEB_PUSH_SUBJECT` с рабочим контактом в формате `mailto:`. Backend и Celery должны использовать одну пару ключей. При ротации ключей пользователям потребуется снова включить фоновые уведомления в браузере.
+
+Пересоберите backend и Celery по инструкции для своего окружения. При запуске backend применит миграцию таблицы `push_subscriptions`. Откройте Spark через HTTPS или на `localhost`, зайдите в информацию о чате и включите уведомления в разделе «Настройки чата». Web Push использует службу браузера для доставки. Spark подписывает запросы ключом VAPID и шифрует данные с помощью `pywebpush`. [Push API](https://developer.mozilla.org/en-US/docs/Web/API/PushManager/subscribe) · [pywebpush](https://github.com/web-push-libs/pywebpush)
 
 ## Очистка пользователей
 
@@ -137,6 +168,8 @@ docker compose --profile dev run --rm --no-deps backend python cleardb.py
 
 Папка `./whisper-cache` подключена к backend и Celery worker как `/home/appuser/.cache/whisper`. Whisper скачивает модель при первом запросе на распознавание; последующие запуски используют тот же файл модели. Папка исключена из Git.
 
+В профилях `dev` и `prod` контейнер воркера `celery` ограничен `cpus: 0.5`. Whisper и остальные задачи этого воркера делят лимит в 50% одного логического ядра, поэтому распознавание может занять больше времени. [Лимиты CPU в Docker](https://docs.docker.com/engine/containers/resource_constraints/#cpu)
+
 ## API и WebSocket
 
 Основные маршруты начинаются с `/api/v1`:
@@ -153,7 +186,23 @@ docker compose --profile dev run --rm --no-deps backend python cleardb.py
 
 Распознавание вложения: `POST /chats/{chat_id}/messages/{message_id}/attachments/{attachment_id}/transcribe`. Оно запускается только после нажатия кнопки распознавания в чате. WebSocket подключается по адресу `ws://localhost:8001/{chat_id}/ws?token=<JWT>`.
 
+## Звонки
+
+Сервис `calls` включён в профили `dev` и `prod` Docker Compose. В dev Vite направляет `/v1/calls/*` в Go. В prod его обслуживает Nginx. Для standalone-запуска с Go 1.25 выполните `go run .` из `calls/`. По умолчанию сервис слушает порт 8002 и обращается к Python по `http://127.0.0.1:8001/api/v1`. Для standalone-фронтенда задайте `VITE_CALLS_WS_URL=ws://localhost:8002/v1/calls/ws` и укажите фактический origin фронтенда в `FRONTEND_BASE_URL` у Go-сервиса. Дополнительные origins принимает `CALLS_ALLOWED_ORIGINS` через запятую.
+
+Откройте чат и нажмите «Начать звонок». Приглашённые участники должны быть подключены к Spark. Владелец или модератор чата может создать гостевую ссылку в панели открытого звонка.
+
+Для сетей, где WebRTC-соединение требует ретранслятора, задайте `CALLS_TURN_URLS` и `CALLS_TURN_SECRET`. Go выдаёт временные учётные данные, совместимые с coturn в режиме `use-auth-secret`. Вне `localhost` браузер запрашивает доступ к микрофону и камере в HTTPS-контексте. Состояние активных звонков хранится в памяти одного Go-процесса. [API звонков](api.md#9-звонки-взаимодействие-go--и-python-сервисов) · [TURN REST API в coturn](https://github.com/coturn/coturn/wiki/turnserver)
+
 ## Разработка и проверки
+
+### Go-сервис звонков
+
+Образы backend, frontend и сервиса звонков запускают приложение с UID и GID `65532:65532`. На Linux предоставьте этому UID запись в примонтированные `logs/` и `whisper-cache/`.
+
+Точка входа — `calls/main.go`. Пакет `internal/config` читает настройки окружения и формирует параметры STUN/TURN. Клиент FastAPI в `internal/sparkapi` получает профиль пользователя и состав чата. В `internal/signaling` находятся маршруты HTTP, обработчики WebSocket и состояние активных звонков и приглашений. Тесты каждого пакета лежат рядом с его кодом.
+
+Из каталога `calls/` запустите `go test -cover ./...` и `golangci-lint run` (версия `2.11.3`). GitHub Actions также запускает тесты с детектором гонок, требует покрытие инструкций от 85% и прикладывает отчёт `go-coverage` к запуску. Для тестов Go не нужны запущенные FastAPI и Docker.
 
 После обновления с опросами примените миграцию `e8c2a490b517`: `docker compose --profile dev exec backend alembic upgrade head`. При обычном запуске контейнера миграции применяются автоматически через `entrypoint.sh`.
 
@@ -195,5 +244,7 @@ ruff format --check .
 ```
 
 Чтобы автоматически отформатировать Python-файлы, выполните `ruff format .`.
+
+Для запуска с локальными тестовыми ключами используйте `--env-file .env.test.local` во всех трёх командах. Этот файл содержит настройки из `.env.test`, индивидуальные значения ключей и строку `SPARK_TEST_ENV_FILE=.env.test.local`, которая выбирает тот же файл для контейнеров. Git игнорирует его. На Linux задайте `DOCKER_SOCKET_GID` равным результату `stat -c %g /var/run/docker.sock`, чтобы тестовый пользователь мог запускать Testcontainers. Для каждого запуска Python CI генерирует отдельные ключ JWT и пароли PostgreSQL и Redis.
 
 Тестовое окружение поднимает отдельные PostgreSQL и Redis; для интеграционных тестов также требуется Docker для Testcontainers.

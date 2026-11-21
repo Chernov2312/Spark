@@ -1,10 +1,14 @@
 import json
+from unittest.mock import Mock
 import uuid
 
 from fastapi import status
 from httpx2 import AsyncClient
+import pytest
+from tasks.link_preview import parse_link_preview_task
 from unit.schemas import GetMessageHistory
 
+from core.security import create_access_token
 from db.dao.attachment_dao import AttachmentDao
 from db.dao.message_dao import MessageDao
 from infrastructure.redis.message_queue import (
@@ -12,7 +16,83 @@ from infrastructure.redis.message_queue import (
     history_version_key,
     message_queue_key,
 )
+from infrastructure.redis.redis_dao import RedisDao
 from main import app
+from schemas.message import LinkPreview
+
+
+async def test_history_uses_only_preview_url_supplied_by_client(
+    api_client: AsyncClient,
+    auth_token_and_user: str,
+    chat_id: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submit = Mock()
+    monkeypatch.setattr(parse_link_preview_task, "apply_async", submit)
+    headers = {"Authorization": f"Bearer {auth_token_and_user}"}
+    endpoint = f"/api/v1/chats/{chat_id}/messages"
+    url = "https://second.example.com/"
+    text = f"https://first.example.com/ {url}"
+
+    without_selection = await api_client.post(
+        endpoint, headers=headers, json={"text": text}
+    )
+    assert without_selection.status_code == status.HTTP_201_CREATED
+    submit.assert_not_called()
+
+    with_selection = await api_client.post(
+        endpoint, headers=headers, json={"text": text, "link_preview_url": url}
+    )
+    assert with_selection.status_code == status.HTTP_201_CREATED
+    message_id = with_selection.json()["id"]
+    submit.assert_called_once()
+    assert submit.call_args.kwargs["args"] == (str(chat_id), message_id, url)
+
+    preview = LinkPreview(url=url, title="Selected link")
+    await RedisDao.cache_link_preview(
+        app.state.redis, chat_id, uuid.UUID(message_id), preview
+    )
+    history = await api_client.get(endpoint, headers=headers)
+    assert history.status_code == status.HTTP_200_OK
+    by_id = {row["id"]: row for row in history.json()["messages"]}
+    assert by_id[message_id]["link_preview"] == preview.model_dump()
+    assert by_id[without_selection.json()["id"]]["link_preview"] is None
+
+
+async def test_history_keeps_sender_and_quote_for_queued_messages(
+    api_client: AsyncClient,
+    auth_token_and_user: str,
+    chat_id: uuid.UUID,
+    id_first_user: uuid.UUID,
+    id_second_user: uuid.UUID,
+) -> None:
+    history_url = f"/api/v1/chats/{chat_id}/messages"
+    first_headers = {"Authorization": f"Bearer {auth_token_and_user}"}
+    second_token = create_access_token({"sub": str(id_second_user)})
+    second_headers = {"Authorization": f"Bearer {second_token}"}
+    original = await api_client.post(
+        history_url,
+        headers=first_headers,
+        json={"text": "Original message"},
+    )
+    assert original.status_code == status.HTTP_201_CREATED
+    original_id = original.json()["id"]
+    reply = await api_client.post(
+        history_url,
+        headers=second_headers,
+        json={"text": "Reply", "reply_to_id": original_id},
+    )
+    assert reply.status_code == status.HTTP_201_CREATED
+    reply_id = reply.json()["id"]
+
+    for headers in (first_headers, second_headers):
+        history = await api_client.get(history_url, headers=headers)
+        assert history.status_code == status.HTTP_200_OK
+        by_id = {message["id"]: message for message in history.json()["messages"]}
+        assert by_id[original_id]["user_id"] == str(id_first_user)
+        assert by_id[reply_id]["user_id"] == str(id_second_user)
+        assert by_id[reply_id]["reply_to_id"] == original_id
+        assert by_id[reply_id]["reply_to_text"] == "Original message"
 
 
 async def test_get_chat_history(

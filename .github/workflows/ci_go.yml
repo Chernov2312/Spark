@@ -1,0 +1,57 @@
+name: go_ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  calls:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: calls
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: calls/go.mod
+          cache-dependency-path: calls/go.sum
+
+      - name: Lint Go
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.11.3
+          working-directory: calls
+
+      - name: Run Go tests and check coverage
+        run: |
+          go test -race -coverpkg=./... -covermode=atomic -coverprofile=coverage.out ./...
+          go tool cover -html=coverage.out -o coverage.html
+          go tool cover -func=coverage.out | tee coverage.txt
+          awk '/^total:/ { coverage = $NF + 0; found = 1 }
+               END {
+                 if (!found || coverage < 85) {
+                   print "Go statement coverage must reach 85%" > "/dev/stderr"
+                   exit 1
+                 }
+               }' coverage.txt
+
+      - name: Upload Go coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: |
+            calls/coverage.out
+            calls/coverage.txt
+            calls/coverage.html
+          if-no-files-found: ignore

@@ -1,89 +1,13 @@
-import { api, setToken, clearToken, getToken } from "./client";
+import { api, sessionApi, setToken, clearToken, getToken, withSessionLock } from "./client";
+import { disableWebPush, isWebPushEnabled } from "./push";
 
-/* Кастомное событие для Header */
-const AUTH_CHANGE_EVENT = "spark:auth-change";
+export const AUTH_EVENT = "spark:auth-change";
 
 function emitAuthChange() {
-  window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
+  window.dispatchEvent(new Event(AUTH_EVENT));
 }
 
-export const AUTH_EVENT = AUTH_CHANGE_EVENT;
-
-/* POST /auth/register */
-export async function registerUser({ username, tag, email, password }) {
-  const { data } = await api.post("/auth/register", {
-    username,
-    tag,
-    email,
-    password,
-  });
-
-  if (data.access_token) {
-    setToken(data.access_token);
-    localStorage.setItem(
-      "user",
-      JSON.stringify({
-        id: data.id,
-        username: data.username,
-        tag: data.tag,
-        email: data.email,
-      }),
-    );
-    emitAuthChange();
-  }
-  return data;
-}
-
-/* POST /auth/login — form-urlencoded, поле формы называется username */
-export async function loginUser({ username, password }) {
-  const body = new URLSearchParams();
-  body.append("username", username);
-  body.append("password", password);
-
-  const { data } = await api.post("/auth/login", body, {
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-  });
-
-  if (data.access_token) {
-    setToken(data.access_token);
-    localStorage.setItem(
-      "user",
-      JSON.stringify({
-        id: data.id,
-        username: data.username,
-        tag: data.tag,
-        email: data.email,
-      }),
-    );
-    emitAuthChange();
-  }
-  return data;
-}
-
-export function logoutUser() {
-  clearToken();
-  emitAuthChange();
-}
-
-export function getCurrentUser() {
-  const raw = localStorage.getItem("user");
-  return raw ? JSON.parse(raw) : null;
-}
-
-export function isAuthenticated() {
-  return Boolean(getToken());
-}
-
-/* GET /auth/verification/{token} */
-export async function verifyEmailToken(token) {
-  const { data } = await api.get(
-    `/auth/verification/${encodeURIComponent(token)}`,
-  );
-
-  if (!data.access_token) {
-    throw new Error("Ответ сервера не содержит access token");
-  }
-
+function storeSession(data) {
   setToken(data.access_token);
   localStorage.setItem(
     "user",
@@ -95,8 +19,65 @@ export async function verifyEmailToken(token) {
     }),
   );
   emitAuthChange();
+}
 
+export async function registerUser({ username, tag, email, password }) {
+  const { data } = await api.post("/auth/register", {
+    username,
+    tag,
+    email,
+    password,
+  });
+  if (data.access_token) storeSession(data);
   return data;
+}
+
+/* POST /auth/login — form-urlencoded, поле формы называется username */
+export async function loginUser({ username, password }) {
+  const body = new URLSearchParams();
+  body.append("username", username);
+  body.append("password", password);
+
+  return withSessionLock(async () => {
+    const { data } = await sessionApi.post("/auth/login", body, {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    });
+    if (data.access_token) storeSession(data);
+    return data;
+  });
+}
+
+export async function logoutUser() {
+  const userId = getCurrentUser()?.id;
+  if (isWebPushEnabled(userId)) await disableWebPush(userId).catch(() => {});
+  await withSessionLock(async () => {
+    try {
+      await sessionApi.post("/auth/logout");
+    } finally {
+      clearToken();
+      emitAuthChange();
+    }
+  }).catch(() => {});
+}
+
+export function getCurrentUser() {
+  const raw = localStorage.getItem("user");
+  return raw ? JSON.parse(raw) : null;
+}
+
+export function isAuthenticated() {
+  return Boolean(getToken());
+}
+
+export async function verifyEmailToken(token) {
+  return withSessionLock(async () => {
+    const { data } = await sessionApi.get(`/auth/verification/${encodeURIComponent(token)}`);
+    if (!data.access_token) {
+      throw new Error("Ответ сервера не содержит access token");
+    }
+    storeSession(data);
+    return data;
+  });
 }
 
 export async function requestPasswordReset(email) {

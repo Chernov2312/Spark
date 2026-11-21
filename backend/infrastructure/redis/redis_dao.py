@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from hashlib import sha256
 from typing import TypedDict
 import uuid
 
@@ -9,7 +10,13 @@ from infrastructure.redis.message_queue import (
     invalidate_chat_history,
     MESSAGE_QUEUE_PREFIX,
 )
-from schemas.message import MessageInternalDTO
+from schemas.message import LinkPreview, MessageInternalDTO
+
+
+def _link_preview_key(chat_id: uuid.UUID, message_id: uuid.UUID, url: str) -> str:
+    return (
+        f"messages:link-preview:{chat_id}:{message_id}:{sha256(url.encode()).hexdigest()}"
+    )
 
 
 class RedisReactionSyncData(TypedDict):
@@ -19,6 +26,26 @@ class RedisReactionSyncData(TypedDict):
 
 
 class RedisDao:
+    @staticmethod
+    async def get_link_preview(
+        redis: Redis, chat_id: uuid.UUID, message_id: uuid.UUID, url: str
+    ) -> LinkPreview | None:
+        value = await redis.get(_link_preview_key(chat_id, message_id, url))
+        return LinkPreview.model_validate_json(value) if value else None
+
+    @staticmethod
+    async def cache_link_preview(
+        redis: Redis, chat_id: uuid.UUID, message_id: uuid.UUID, preview: LinkPreview
+    ) -> None:
+        async with redis.pipeline(transaction=True) as pipeline:
+            pipeline.set(
+                _link_preview_key(chat_id, message_id, preview.url),
+                preview.model_dump_json(),
+                ex=7 * 24 * 60 * 60,
+            )
+            pipeline.incr(history_version_key(chat_id))
+            await execute_redis_pipeline(pipeline, operation="cache_link_preview")
+
     @staticmethod
     async def set_once(
         redis: Redis,

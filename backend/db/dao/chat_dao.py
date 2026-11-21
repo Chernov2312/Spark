@@ -135,25 +135,22 @@ class ChatDao(BaseDao[Chat]):
         message_id: uuid.UUID | None,
         read_at: datetime,
     ) -> None:
-        state = await session.scalar(
-            select(ChatReadState).where(
-                ChatReadState.chat_id == chat_id,
-                ChatReadState.user_id == user_id,
+        insert = postgresql.insert(ChatReadState).values(
+            chat_id=chat_id,
+            user_id=user_id,
+            last_read_message_id=message_id,
+            last_read_at=read_at,
+        )
+        await session.execute(
+            insert.on_conflict_do_update(
+                constraint="uq_chat_read_user",
+                set_={
+                    "last_read_message_id": insert.excluded.last_read_message_id,
+                    "last_read_at": insert.excluded.last_read_at,
+                    "updated_at": read_at,
+                },
             ),
         )
-        if state is None:
-            session.add(
-                ChatReadState(
-                    chat_id=chat_id,
-                    user_id=user_id,
-                    last_read_message_id=message_id,
-                    last_read_at=read_at,
-                ),
-            )
-        else:
-            state.last_read_message_id = message_id
-            state.last_read_at = read_at
-        await session.flush()
 
     @classmethod
     async def set_owner_role(

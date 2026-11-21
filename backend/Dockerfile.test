@@ -10,3 +10,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y bash ffmpeg
 COPY requirements/ ./requirements/
 RUN pip install --no-cache-dir -r requirements/test.txt
 COPY . .
+RUN groupadd --gid 65532 appuser && useradd --uid 65532 --gid 65532 -m appuser
+ENV HOME=/home/appuser \
+    LOG_TO_STDOUT=1 \
+    PYTHONDONTWRITEBYTECODE=1
+USER 65532:65532

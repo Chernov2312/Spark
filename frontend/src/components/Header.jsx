@@ -39,8 +39,8 @@ export default function Header() {
     };
   }, []);
 
-  const handleLogout = () => {
-    auth.logoutUser();
+  const handleLogout = async () => {
+    await auth.logoutUser();
     navigate("/login");
   };
 

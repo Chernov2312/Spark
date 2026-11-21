@@ -1,10 +1,124 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { apiMocks, audioMessage, chat, renderChat, socketState, setupChatTests } from "../test/chatHarness";
+import { apiMocks, audioMessage, chat, renderChat, socialMocks, socketState, setupChatTests } from "../test/chatHarness";
+import { deferred } from "../test/fixtures";
 
 setupChatTests();
 
+function findMessage(id = audioMessage.id) {
+  return waitFor(() => {
+    const message = document.getElementById(`message-${id}`);
+    expect(message).toBeInTheDocument();
+    return message!;
+  });
+}
+
 describe("ChatsPage: messages", () => {
+  it("marks forwarded attachments in history and forwarded text received live", async () => {
+    apiMocks.listMessages.mockResolvedValue([{ ...audioMessage, is_forwarded: true }]);
+    renderChat();
+    expect(within(await findMessage()).getByText("Пересланное сообщение")).toBeVisible();
+    act(() => socketState.options!.onEvent("message:new", {
+      ...audioMessage, id: "forward", text: "Копия", attachments: [], is_forwarded: true,
+    }));
+    expect(within(await findMessage("forward")).getByText("Пересланное сообщение")).toBeVisible();
+  });
+
+  it.each([
+    ["stranger", chat.owner_id, [], true],
+    ["friend", chat.owner_id, [{ id: chat.owner_id }], false],
+    ["self", "user-1", [], false],
+  ] as const)("checks the creator notice for %s after friends load", async (_, ownerId, friends, visible) => {
+    const result = deferred<{ friends: typeof friends; requests: []; sentRequests: []; categories: [] }>();
+    socialMocks.listFriends.mockReturnValue(result.promise);
+    apiMocks.listChats.mockResolvedValue([{ ...chat, owner_id: ownerId }]);
+    renderChat();
+    await findMessage();
+    const notice = "Этот чат создал пользователь, которого нет в ваших друзьях.";
+    expect(screen.queryByText(notice)).toBeNull();
+    await act(async () => result.resolve({ friends, requests: [], sentRequests: [], categories: [] }));
+    expect(Boolean(screen.queryByText(notice))).toBe(visible);
+  });
+
+  it("removes the creator notice when their friend request is accepted", async () => {
+    const creator = { id: chat.owner_id, username: "Алексей", tag: "alex" };
+    const lists = { friends: [], requests: [], sentRequests: [], categories: [] };
+    socialMocks.listFriends.mockResolvedValueOnce({ ...lists, requests: [creator] })
+      .mockResolvedValue({ ...lists, friends: [creator] });
+    socialMocks.acceptFriend.mockResolvedValue({});
+    renderChat();
+    const notice = await screen.findByText("Этот чат создал пользователь, которого нет в ваших друзьях.");
+    fireEvent.click(screen.getByRole("tab", { name: /Друзья/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Принять" }));
+    await waitFor(() => expect(notice).not.toBeInTheDocument());
+    expect(socialMocks.acceptFriend).toHaveBeenCalledWith(creator.id);
+  });
+
+  it("sends a read receipt only for the active chat's latest message", async () => {
+    const otherChat = { ...chat, id: "chat-2", title: "Второй чат" };
+    const otherMessage = { ...audioMessage, id: "other-message", chat_id: otherChat.id };
+    const otherHistory = deferred<(typeof audioMessage)[]>();
+    apiMocks.listChats.mockResolvedValue([chat, otherChat]);
+    apiMocks.listMessages.mockImplementation((id) =>
+      id === chat.id ? Promise.resolve([audioMessage]) : otherHistory.promise,
+    );
+    renderChat();
+    await waitFor(() => expect(apiMocks.markChatRead).toHaveBeenCalledWith(chat.id, audioMessage.id));
+
+    act(() => socketState.options!.onEvent("message:updated", { ...audioMessage, text: "Изменено" }));
+    expect(apiMocks.markChatRead).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(await screen.findByText(otherChat.title, { selector: ".chat-item__title" }));
+    expect(apiMocks.markChatRead).toHaveBeenCalledTimes(1);
+    await act(async () => otherHistory.resolve([otherMessage]));
+    expect(apiMocks.markChatRead.mock.calls).toEqual([
+      [chat.id, audioMessage.id],
+      [otherChat.id, otherMessage.id],
+    ]);
+  });
+
+  it("links website URLs, phone numbers and email addresses while preserving Markdown and code", async () => {
+    apiMocks.listMessages.mockResolvedValue([{
+      ...audioMessage,
+      attachments: [],
+      text: 'Сайт: (**https://example.com/?a=1&b=2**). [Документация](https://docs.example.com/) '
+        + 'www.example.org, почта user+chat@example.com, телефон 8 (800) 555-35-35. '
+        + '\x60https://code.example.com\x60 [ошибка](javascript:alert(1)) <img src=x>',
+    }]);
+    renderChat();
+    const message = await findMessage();
+    const controls = within(message);
+    const link = controls.getByRole("link", { name: "https://example.com/?a=1&b=2" });
+    expect(link).toHaveAttribute("href", "https://example.com/?a=1&b=2");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(link.closest("strong")).not.toBeNull();
+    expect(controls.getByRole("link", { name: "Документация" })).toHaveAttribute("href", "https://docs.example.com/");
+    expect(controls.getByRole("link", { name: "www.example.org" })).toHaveAttribute("href", "https://www.example.org");
+    expect(controls.getByRole("link", { name: "user+chat@example.com" })).toHaveAttribute("href", "mailto:user+chat@example.com");
+    expect(controls.getByRole("link", { name: "8 (800) 555-35-35" })).toHaveAttribute("href", "tel:+78005553535");
+    expect(message.querySelector("code")).toHaveTextContent("https://code.example.com");
+    expect(controls.queryByRole("link", { name: "https://code.example.com" })).not.toBeInTheDocument();
+    expect(controls.queryByRole("link", { name: "ошибка" })).not.toBeInTheDocument();
+    expect(message.querySelector("img")).toBeNull();
+  });
+
+  it("shows a saved link card and ignores late previews for an edited URL", async () => {
+    const oldPreview = { url: "https://example.com/old", title: "Старая статья", description: "Описание" };
+    const newPreview = { url: "https://example.com/new", title: "Новая статья" };
+    const message = { ...audioMessage, text: oldPreview.url, attachments: [], link_preview: oldPreview };
+    apiMocks.listMessages.mockResolvedValue([message]);
+    renderChat();
+    const controls = within(await findMessage());
+    expect(controls.getByRole("link", { name: /Старая статья/ })).toHaveAttribute("href", oldPreview.url);
+    act(() => {
+      socketState.options!.onEvent("message:updated", { ...message, text: newPreview.url, link_preview: null });
+      socketState.options!.onEvent("message:link-preview", { chat_id: chat.id, message_id: message.id, preview: newPreview });
+      socketState.options!.onEvent("message:link-preview", { chat_id: chat.id, message_id: message.id, preview: oldPreview });
+    });
+    expect(controls.queryByText(oldPreview.title)).not.toBeInTheDocument();
+    expect(controls.getByRole("link", { name: /Новая статья/ })).toHaveAttribute("href", newPreview.url);
+  });
+
   it("shows pins outside the loaded history, opens them, and removes an unpinned entry", async () => {
     const oldPin = { ...audioMessage, id: "old-pin", text: "Важное старое сообщение", created_at: "2025-01-01T12:00:00Z", is_pinned: true };
     apiMocks.listPinnedMessages.mockResolvedValue([oldPin]);
@@ -24,7 +138,7 @@ describe("ChatsPage: messages", () => {
 
   it("updates pins from websocket edits and removes thread pins when their root is deleted", async () => {
     renderChat();
-    await screen.findByRole("button", { name: "Действия с сообщением" });
+    await findMessage();
     const pinned = { ...audioMessage, id: "remote-pin", text: "Закреплено участником", attachments: [], is_pinned: true };
     act(() => socketState.options!.onEvent("message:updated", pinned));
     const panel = screen.getByRole("region", { name: "Закреплённые сообщения" });
@@ -41,7 +155,7 @@ describe("ChatsPage: messages", () => {
     let resolvePins!: (messages: Array<Record<string, unknown>>) => void;
     apiMocks.listPinnedMessages.mockImplementationOnce(() => new Promise((resolve) => { resolvePins = resolve; }));
     renderChat();
-    await screen.findByRole("button", { name: "Действия с сообщением" });
+    await findMessage();
     const existing = { ...audioMessage, id: "existing-pin", text: "Сохранённый закреп", is_pinned: true };
     const live = { ...existing, id: "live-pin", text: "Новый закреп" };
     const removed = { ...existing, id: "removed-pin", text: "Уже откреплён" };
@@ -119,7 +233,7 @@ describe("ChatsPage: messages", () => {
     apiMocks.listThreads.mockResolvedValue([root]);
     apiMocks.listThreadMessages.mockResolvedValue([root, reply]);
     renderChat();
-    fireEvent.click(await screen.findByRole("button", { name: "Действия с сообщением" }));
+    fireEvent.contextMenu(await findMessage(root.id));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Открыть тред" }));
     expect(await screen.findByText("Ответ в треде")).toBeVisible();
     expect(screen.getByRole("tab", { name: "Треды этого чата" })).toHaveAttribute("aria-selected", "true");
@@ -128,38 +242,89 @@ describe("ChatsPage: messages", () => {
     expect(screen.queryByText("Ответ в треде")).not.toBeInTheDocument();
   });
 
-  it("replies on a horizontal swipe without treating vertical scrolling as a reply", async () => {
+  it.each([1, -1])("replies on a horizontal swipe in direction %i and ignores vertical and cancelled gestures", async (direction) => {
     renderChat();
-    await screen.findByRole("button", { name: "Действия с сообщением" });
-    const message = document.getElementById("message-message-1")!;
-    fireEvent.pointerDown(message, { pointerType: "touch", clientX: 20, clientY: 20 });
-    fireEvent.pointerMove(message, { pointerType: "touch", clientX: 25, clientY: 100 });
-    fireEvent.pointerUp(message, { pointerType: "touch", clientX: 30, clientY: 110 });
+    const message = await findMessage();
+    const touch = { pointerType: "touch", pointerId: 1, button: 0, isPrimary: true };
+    fireEvent.pointerDown(message, { ...touch, clientX: 100, clientY: 20 });
+    fireEvent.pointerMove(message, { ...touch, clientX: 105, clientY: 100 });
+    fireEvent.pointerUp(message, { ...touch, clientX: 110, clientY: 110 });
     expect(screen.queryByLabelText("Отменить ответ")).not.toBeInTheDocument();
-    fireEvent.pointerDown(message, { pointerType: "touch", clientX: 20, clientY: 20 });
-    fireEvent.pointerMove(message, { pointerType: "touch", clientX: 100, clientY: 24 });
-    fireEvent.pointerUp(message, { pointerType: "touch", clientX: 100, clientY: 24 });
+    const swipe = () => {
+      fireEvent.pointerDown(message, { ...touch, clientX: 100, clientY: 20 });
+      fireEvent.pointerMove(message, { ...touch, clientX: 100 + 80 * direction, clientY: 24 });
+    };
+    swipe();
+    fireEvent.pointerCancel(message, touch);
+    expect(message.style.translate).toBe("");
+    expect(screen.queryByLabelText("Отменить ответ")).not.toBeInTheDocument();
+    swipe();
+    fireEvent.pointerUp(message, { ...touch, clientX: 100 + 80 * direction, clientY: 24 });
     expect(screen.getByLabelText("Отменить ответ")).toBeVisible();
+    expect(screen.getByRole("button", { name: "В ответ tester Голосовое сообщение" })).toBeVisible();
+  });
+
+  it("shows the author's name and quote above the composer and cancels without clearing a draft", async () => {
+    const author = { id: "other-user", username: "Макс Чёрный", tag: "max", role: "member", avatar_urls: [] };
+    apiMocks.getChatMembers.mockResolvedValue([author]);
+    apiMocks.listMessages.mockResolvedValue([{
+      ...audioMessage, user_id: author.id, text: "Меня кстати\nне было", attachments: [],
+    }]);
+    renderChat();
+    const message = await findMessage();
+    const input = screen.getByPlaceholderText("Написать сообщение…");
+    fireEvent.change(input, { target: { value: "Мой черновик" } });
+    fireEvent.contextMenu(message);
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Ответить" }));
+    expect(screen.getByRole("button", { name: "В ответ Макс Чёрный Меня кстати не было" })).toBeVisible();
+    expect(input).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Отменить ответ" }));
+    expect(screen.queryByRole("button", { name: /^В ответ Макс Чёрный/ })).not.toBeInTheDocument();
+    expect(input).toHaveValue("Мой черновик");
+    expect(input).toHaveFocus();
+  });
+
+  it("opens message actions from a touch hold and from the keyboard", async () => {
+    renderChat();
+    const message = await findMessage();
+    const actions = { name: "Действия с сообщением" };
+    const touch = { pointerType: "touch", pointerId: 1, button: 0, isPrimary: true, clientX: 100, clientY: 120 };
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    fireEvent.pointerDown(message, touch);
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    vi.useRealTimers();
+    fireEvent.pointerUp(message, touch);
+    const menu = screen.getByRole("dialog", actions);
+    expect(within(menu).getByRole("button", { name: "Ответить" })).toBeVisible();
+    expect(screen.queryByLabelText("Отменить ответ")).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    message.focus();
+    fireEvent.keyDown(message, { key: "F10", shiftKey: true });
+    expect(screen.getByRole("dialog", actions)).toBeVisible();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(message).toHaveFocus();
   });
 
   it("forwards the chosen message to the selected chat", async () => {
     apiMocks.listChats.mockResolvedValue([chat, { ...chat, id: "chat-2", title: "Второй чат" }]);
     apiMocks.forwardMessage.mockResolvedValue({ ...audioMessage, id: "forward-copy", chat_id: "chat-2" });
     renderChat();
-    fireEvent.click(await screen.findByRole("button", { name: "Действия с сообщением" }));
+    fireEvent.contextMenu(await findMessage());
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Переслать" }));
     const dialog = screen.getByRole("dialog", { name: "Переслать сообщение" });
     fireEvent.change(within(dialog).getByLabelText("Куда переслать"), { target: { value: "chat-2" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Переслать" }));
-    await waitFor(() => expect(apiMocks.forwardMessage).toHaveBeenCalledWith(chat.id, audioMessage.id, "chat-2"));
+    await waitFor(() => expect(apiMocks.forwardMessage).toHaveBeenCalledWith(chat.id, audioMessage.id, "chat-2", audioMessage.text));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
   it("offers message actions on right click and pins the selected message", async () => {
     apiMocks.togglePin.mockResolvedValue(true);
     renderChat();
-    await screen.findByRole("button", { name: "Действия с сообщением" });
-    fireEvent.contextMenu(document.getElementById("message-message-1")!, { clientX: 100, clientY: 120 });
+    const message = await findMessage();
+    expect(within(message).queryByRole("button", { name: "Ответить" })).not.toBeInTheDocument();
+    expect(within(message).queryByRole("button", { name: "Действия с сообщением" })).not.toBeInTheDocument();
+    fireEvent.contextMenu(message, { clientX: 100, clientY: 120 });
     const menu = screen.getByRole("dialog", { name: "Действия с сообщением" });
     expect(within(menu).getByRole("button", { name: "Изменить" })).toBeVisible();
     expect(within(menu).getByRole("button", { name: "Удалить" })).toBeVisible();
@@ -174,11 +339,11 @@ describe("ChatsPage: messages", () => {
     apiMocks.updateMessage.mockResolvedValue({ ...audioMessage, text: "Исправленный текст" });
     apiMocks.deleteMessage.mockResolvedValue(undefined);
     renderChat();
-    fireEvent.click(await screen.findByRole("button", { name: "Действия с сообщением" }));
+    fireEvent.contextMenu(await findMessage());
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Изменить" }));
     expect(await screen.findByText("Исправленный текст")).toBeVisible();
     expect(apiMocks.updateMessage).toHaveBeenCalledWith(audioMessage.id, "Исправленный текст");
-    fireEvent.click(screen.getByRole("button", { name: "Действия с сообщением" }));
+    fireEvent.contextMenu(await findMessage());
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Удалить" }));
     await waitFor(() => expect(document.getElementById("message-message-1")).toBeNull());
     expect(apiMocks.deleteMessage).toHaveBeenCalledWith(audioMessage.id);
@@ -187,7 +352,10 @@ describe("ChatsPage: messages", () => {
   it("hides edit and delete for other authors and closes actions on Escape", async () => {
     apiMocks.listMessages.mockResolvedValue([{ ...audioMessage, user_id: "other-user" }]);
     renderChat();
-    fireEvent.click(await screen.findByRole("button", { name: "Действия с сообщением" }));
+    const message = await findMessage();
+    expect(message).not.toHaveClass("msg--me");
+    expect(message.querySelector(".msg__author")).toHaveTextContent("@other-");
+    fireEvent.contextMenu(message);
     const menu = screen.getByRole("dialog", { name: "Действия с сообщением" });
     expect(within(menu).queryByRole("button", { name: "Изменить" })).not.toBeInTheDocument();
     expect(within(menu).queryByRole("button", { name: "Удалить" })).not.toBeInTheDocument();

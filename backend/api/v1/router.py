@@ -7,6 +7,7 @@ from api.v1.core import core_router
 from api.v1.media import attachment_router
 from api.v1.message import message_router
 from api.v1.polls import poll_router
+from api.v1.push import push_router
 from api.v1.reactions import reactions_router
 from api.v1.social import social_router
 from api.v1.user import user_router
@@ -21,6 +22,7 @@ router.include_router(social_router)
 router.include_router(chat_router)
 router.include_router(message_router)
 router.include_router(poll_router)
+router.include_router(push_router)
 router.include_router(reactions_router)
 router.include_router(attachment_router)
 router.include_router(ai_router)
