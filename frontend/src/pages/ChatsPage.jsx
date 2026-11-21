@@ -447,6 +447,7 @@ function MediaViewer({ attachments, index, onClose, onChange, onDownload, label 
 
 const MessageItem = React.memo(function MessageItem({
   message: m,
+  authorName,
   isMe,
   onReaction,
   onContextMenu,
@@ -507,7 +508,7 @@ const MessageItem = React.memo(function MessageItem({
     >
       {!isMe && (
         <div className="msg__author">
-          {m.user_name || (m.user_id ? `@${String(m.user_id).slice(0, 6)}` : "")}
+          {authorName || m.user_name || "Участник"}
         </div>
       )}
       <div className="msg__bubble">
@@ -2214,6 +2215,7 @@ export default function ChatsPage() {
                   <MessageItem
                     key={m.id}
                     message={pinsLoading || pinsError ? m : { ...m, is_pinned: pinnedMessageIds.has(m.id) }}
+                    authorName={chatMembers.find((member) => member.id === m.user_id)?.username}
                     isMe={m.user_id === me?.id}
                     onReaction={handleReaction}
                     onContextMenu={handleContextMenuMessage}
