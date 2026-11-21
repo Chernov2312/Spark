@@ -1,3 +1,4 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
 alembic>=1.13.0
 asyncpg==0.31.0
 aioboto3>=1.13.15
