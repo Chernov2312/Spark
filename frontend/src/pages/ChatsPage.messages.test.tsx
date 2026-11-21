@@ -350,11 +350,15 @@ describe("ChatsPage: messages", () => {
   });
 
   it("hides edit and delete for other authors and closes actions on Escape", async () => {
+    apiMocks.getChatMembers.mockResolvedValue([
+      { id: "other-user", username: "Другой участник", tag: "other", role: "member" },
+    ]);
     apiMocks.listMessages.mockResolvedValue([{ ...audioMessage, user_id: "other-user" }]);
     renderChat();
     const message = await findMessage();
     expect(message).not.toHaveClass("msg--me");
-    expect(message.querySelector(".msg__author")).toHaveTextContent("@other-");
+    await screen.findByText("Другой участник");
+    expect(message.querySelector(".msg__author")).toHaveTextContent("Другой участник");
     fireEvent.contextMenu(message);
     const menu = screen.getByRole("dialog", { name: "Действия с сообщением" });
     expect(within(menu).queryByRole("button", { name: "Изменить" })).not.toBeInTheDocument();
