@@ -26,12 +26,15 @@ type requestEvent struct {
 type requestData struct {
 	AccessToken string          `json:"access_token"`
 	InviteToken string          `json:"invite_token"`
+	VideoSlots  bool            `json:"video_slots"`
+	DisplayName string          `json:"display_name"`
 	ChatID      string          `json:"chat_id"`
 	CallID      string          `json:"call_id"`
 	TargetID    string          `json:"target_id"`
 	Media       string          `json:"media"`
 	SDP         json.RawMessage `json:"sdp"`
 	Candidate   json.RawMessage `json:"candidate"`
+	Video       json.RawMessage `json:"video"`
 }
 
 type fields map[string]any
@@ -62,6 +65,7 @@ type client struct {
 	guest      bool
 	guestCall  string
 	inviteHash [32]byte
+	videoSlots bool
 }
 
 func (c *client) emit(name string, data fields) {
@@ -124,6 +128,7 @@ func (s *server) authenticate(r *http.Request, auth requestEvent, c *client) (fi
 	if auth.Event != "auth" || (data.AccessToken == "") == (data.InviteToken == "") {
 		return nil, &failure{"invalid_auth", "Первым сообщением отправьте данные для входа."}
 	}
+	c.videoSlots = data.VideoSlots
 	if data.InviteToken != "" {
 		if !s.hub.authorizeGuest(c, data.InviteToken) {
 			return nil, invalidInvite
@@ -218,7 +223,7 @@ func (s *server) handle(r *http.Request, c *client, request requestEvent) *failu
 				return apiFailure(err)
 			}
 		}
-		return s.hub.accept(c, data.CallID)
+		return s.hub.accept(c, data.CallID, data.DisplayName)
 	case "call:decline":
 		return s.hub.decline(c, data.CallID)
 	case "call:end":
@@ -232,7 +237,7 @@ func (s *server) handle(r *http.Request, c *client, request requestEvent) *failu
 			description.Type != request.Event[len("rtc:"):] || description.SDP == "" {
 			return &failure{"invalid_signal", "Некорректное описание WebRTC."}
 		}
-		return s.hub.signal(c, data.CallID, data.TargetID, request.Event, data.SDP)
+		return s.hub.signal(c, data.CallID, data.TargetID, request.Event, "sdp", data.SDP)
 	case "rtc:ice":
 		var candidate struct {
 			Value string `json:"candidate"`
@@ -240,7 +245,16 @@ func (s *server) handle(r *http.Request, c *client, request requestEvent) *failu
 		if json.Unmarshal(data.Candidate, &candidate) != nil || candidate.Value == "" {
 			return &failure{"invalid_signal", "Некорректный ICE-кандидат."}
 		}
-		return s.hub.signal(c, data.CallID, data.TargetID, request.Event, data.Candidate)
+		return s.hub.signal(c, data.CallID, data.TargetID, request.Event, "candidate", data.Candidate)
+	case "rtc:video":
+		var video struct {
+			Camera *bool `json:"camera"`
+			Screen *bool `json:"screen"`
+		}
+		if json.Unmarshal(data.Video, &video) != nil || video.Camera == nil || video.Screen == nil {
+			return &failure{"invalid_signal", "Некорректное состояние видео."}
+		}
+		return s.hub.signal(c, data.CallID, data.TargetID, request.Event, "video", video)
 	default:
 		return &failure{"unsupported_event", "Неизвестное событие звонка."}
 	}
