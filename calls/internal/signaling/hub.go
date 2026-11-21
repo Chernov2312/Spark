@@ -3,16 +3,19 @@ package signaling
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"spark/calls/internal/config"
 	"spark/calls/internal/sparkapi"
 )
 
 const unansweredTimeout = 90 * time.Second
+const guestNameMaxLength = 50
 
 func newID() string {
 	var value [16]byte
@@ -144,7 +147,7 @@ func (h *hub) chatID(callID string) string {
 	return ""
 }
 
-func (h *hub) accept(c *client, id string) *failure {
+func (h *hub) accept(c *client, id, guestName string) *failure {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	current := h.calls[id]
@@ -162,9 +165,16 @@ func (h *hub) accept(c *client, id string) *failure {
 		if c.guestCall != id || entry == nil || !entry.usable(time.Now()) {
 			return invalidInvite
 		}
+		guestName = strings.TrimSpace(guestName)
+		if utf8.RuneCountInString(guestName) > guestNameMaxLength || strings.ContainsFunc(guestName, unicode.IsControl) {
+			return &failure{"invalid_guest_name", "Введите ник до 50 символов без управляющих символов."}
+		}
 		entry.uses++
 		current.guests++
-		c.user.Username = fmt.Sprintf("Гость %d", current.guests)
+		if guestName == "" {
+			guestName = fmt.Sprintf("Гость %d", current.guests)
+		}
+		c.user.Username = guestName
 	} else {
 		if h.pending[c.peerID] != id {
 			return denied
@@ -195,7 +205,7 @@ func peerEvent(callID string, c *client, shouldOffer bool) fields {
 	}
 	return fields{
 		"call_id": callID, "peer_id": c.peerID, "display_name": c.user.Username,
-		"should_offer": shouldOffer, "participant_type": kind,
+		"should_offer": shouldOffer, "participant_type": kind, "video_slots": c.videoSlots,
 	}
 }
 
@@ -228,7 +238,7 @@ func (h *hub) decline(c *client, id string) *failure {
 	return nil
 }
 
-func (h *hub) signal(c *client, id, targetID, name string, value json.RawMessage) *failure {
+func (h *hub) signal(c *client, id, targetID, name, key string, value any) *failure {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	current := h.calls[id]
@@ -238,10 +248,6 @@ func (h *hub) signal(c *client, id, targetID, name string, value json.RawMessage
 	target := current.peers[targetID]
 	if target == nil || target == c {
 		return denied
-	}
-	key := "sdp"
-	if name == "rtc:ice" {
-		key = "candidate"
 	}
 	target.emit(name, fields{
 		"call_id": id, "from_id": c.peerID, "target_id": targetID, key: value,

@@ -63,7 +63,10 @@ export function createCallSocket({ onEvent, onStatus, inviteToken } = {}) {
       onStatus?.("authenticating");
       socket.send(JSON.stringify({
         event: "auth",
-        data: inviteToken ? { invite_token: inviteToken } : { access_token: token },
+        data: {
+          ...(inviteToken ? { invite_token: inviteToken } : { access_token: token }),
+          video_slots: true,
+        },
       }));
     };
     socket.onmessage = (message) => {
