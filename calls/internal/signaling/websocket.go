@@ -1,7 +1,7 @@
 package signaling
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -24,17 +24,12 @@ type requestEvent struct {
 }
 
 type requestData struct {
-	AccessToken string          `json:"access_token"`
-	InviteToken string          `json:"invite_token"`
-	VideoSlots  bool            `json:"video_slots"`
-	DisplayName string          `json:"display_name"`
-	ChatID      string          `json:"chat_id"`
-	CallID      string          `json:"call_id"`
-	TargetID    string          `json:"target_id"`
-	Media       string          `json:"media"`
-	SDP         json.RawMessage `json:"sdp"`
-	Candidate   json.RawMessage `json:"candidate"`
-	Video       json.RawMessage `json:"video"`
+	AccessToken string `json:"access_token"`
+	InviteToken string `json:"invite_token"`
+	DisplayName string `json:"display_name"`
+	ChatID      string `json:"chat_id"`
+	CallID      string `json:"call_id"`
+	Media       string `json:"media"`
 }
 
 type fields map[string]any
@@ -50,22 +45,26 @@ type failure struct {
 }
 
 var (
-	unavailable = &failure{"call_unavailable", "Звонок завершён или недоступен."}
-	denied      = &failure{"forbidden", "Нет доступа к этому звонку."}
-	busy        = &failure{"busy", "Вы уже участвуете в другом звонке."}
+	unavailable      = &failure{"call_unavailable", "Звонок завершён или недоступен."}
+	denied           = &failure{"forbidden", "Нет доступа к этому звонку."}
+	busy             = &failure{"busy", "Вы уже участвуете в другом звонке."}
+	mediaUnavailable = &failure{"media_unavailable", "Сервис медиасвязи недоступен."}
 )
 
 type client struct {
-	conn       *websocket.Conn
-	out        chan event
-	done       chan struct{}
-	user       sparkapi.Person
-	token      string
-	peerID     string
-	guest      bool
-	guestCall  string
-	inviteHash [32]byte
-	videoSlots bool
+	conn          *websocket.Conn
+	out           chan event
+	done          chan struct{}
+	user          sparkapi.Person
+	token         string
+	peerID        string
+	guest         bool
+	watchedChat   string
+	guestCall     string
+	inviteHash    [32]byte
+	mediaContext  context.Context
+	cancelMedia   context.CancelFunc
+	mediaIdentity string
 }
 
 func (c *client) emit(name string, data fields) {
@@ -97,7 +96,6 @@ func (s *server) websocket(w http.ResponseWriter, r *http.Request) {
 		_ = conn.WriteJSON(event{"auth:error", fields{"code": authError.code, "message": authError.message}})
 		return
 	}
-	claims["ice_servers"] = s.cfg.ICEServers(c.peerID)
 	claims["peer_id"] = c.peerID
 	s.hub.connect(c)
 	defer s.hub.disconnect(c)
@@ -128,7 +126,6 @@ func (s *server) authenticate(r *http.Request, auth requestEvent, c *client) (fi
 	if auth.Event != "auth" || (data.AccessToken == "") == (data.InviteToken == "") {
 		return nil, &failure{"invalid_auth", "Первым сообщением отправьте данные для входа."}
 	}
-	c.videoSlots = data.VideoSlots
 	if data.InviteToken != "" {
 		if !s.hub.authorizeGuest(c, data.InviteToken) {
 			return nil, invalidInvite
@@ -195,66 +192,70 @@ func (s *server) refreshClientToken(r *http.Request, c *client, token string) *f
 func (s *server) handle(r *http.Request, c *client, request requestEvent) *failure {
 	data := request.Data
 	switch request.Event {
+	case "call:check":
+		c.emit("call:checked", fields{"media_ready": s.hub.media.Ready(r.Context())})
+		return nil
+	case "call:watch":
+		if c.guest {
+			return denied
+		}
+		s.hub.watch(c, "")
+		if data.ChatID == "" {
+			return nil
+		}
+		if problem := s.refreshClientToken(r, c, data.AccessToken); problem != nil {
+			c.emit("call:status", fields{"chat_id": data.ChatID})
+			return nil
+		}
+		if _, _, err := s.python.Members(r.Context(), data.ChatID, c.token, c.user.ID); err != nil {
+			c.emit("call:status", fields{"chat_id": data.ChatID})
+			return nil
+		}
+		s.hub.watch(c, data.ChatID)
+		return nil
 	case "call:start":
 		if c.guest {
 			return denied
 		}
-		if !sparkapi.ValidID(data.ChatID) || (data.Media != "audio" && data.Media != "video") {
+		if (data.ChatID != "" && !sparkapi.ValidID(data.ChatID)) || (data.Media != "audio" && data.Media != "video") {
 			return &failure{"invalid_call", "Некорректные параметры звонка."}
 		}
 		if problem := s.refreshClientToken(r, c, data.AccessToken); problem != nil {
 			return problem
+		}
+		if data.ChatID == "" {
+			return s.hub.start(c, "", data.Media, nil)
 		}
 		members, _, err := s.python.Members(r.Context(), data.ChatID, c.token, c.user.ID)
 		if err != nil {
 			return apiFailure(err)
 		}
 		return s.hub.start(c, data.ChatID, data.Media, members)
-	case "call:accept":
+	case "call:accept", "call:join":
+		joinFromChat := request.Event == "call:join"
+		if joinFromChat && c.guest {
+			return denied
+		}
 		if !c.guest {
 			if problem := s.refreshClientToken(r, c, data.AccessToken); problem != nil {
 				return problem
 			}
-			chatID := s.hub.chatID(data.CallID)
-			if chatID == "" {
+			chatID, _, exists := s.hub.callInfo(data.CallID)
+			if !exists {
 				return unavailable
+			}
+			if chatID == "" {
+				return denied
 			}
 			if _, _, err := s.python.Members(r.Context(), chatID, c.token, c.user.ID); err != nil {
 				return apiFailure(err)
 			}
 		}
-		return s.hub.accept(c, data.CallID, data.DisplayName)
+		return s.hub.accept(c, data.CallID, data.DisplayName, joinFromChat)
 	case "call:decline":
 		return s.hub.decline(c, data.CallID)
 	case "call:end":
 		return s.hub.leave(c, data.CallID)
-	case "rtc:offer", "rtc:answer":
-		var description struct {
-			Type string `json:"type"`
-			SDP  string `json:"sdp"`
-		}
-		if json.Unmarshal(data.SDP, &description) != nil ||
-			description.Type != request.Event[len("rtc:"):] || description.SDP == "" {
-			return &failure{"invalid_signal", "Некорректное описание WebRTC."}
-		}
-		return s.hub.signal(c, data.CallID, data.TargetID, request.Event, "sdp", data.SDP)
-	case "rtc:ice":
-		var candidate struct {
-			Value string `json:"candidate"`
-		}
-		if json.Unmarshal(data.Candidate, &candidate) != nil || candidate.Value == "" {
-			return &failure{"invalid_signal", "Некорректный ICE-кандидат."}
-		}
-		return s.hub.signal(c, data.CallID, data.TargetID, request.Event, "candidate", data.Candidate)
-	case "rtc:video":
-		var video struct {
-			Camera *bool `json:"camera"`
-			Screen *bool `json:"screen"`
-		}
-		if json.Unmarshal(data.Video, &video) != nil || video.Camera == nil || video.Screen == nil {
-			return &failure{"invalid_signal", "Некорректное состояние видео."}
-		}
-		return s.hub.signal(c, data.CallID, data.TargetID, request.Event, "video", video)
 	default:
 		return &failure{"unsupported_event", "Неизвестное событие звонка."}
 	}

@@ -1,0 +1,6 @@
+port: 7880
+rtc:
+  tcp_port: 7881
+  force_tcp: true
+  use_ice_lite: true
+  use_external_ip: false

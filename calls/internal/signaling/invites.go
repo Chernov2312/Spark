@@ -56,16 +56,16 @@ func (h *hub) addInvite(callID, userID string, expiresIn, maxUses int) (invite, 
 	return *entry, token, true
 }
 
-func (h *hub) inviteDetails(id string) (chatID, authorID string) {
+func (h *hub) inviteDetails(id string) (chatID, authorID string, exists bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	entry := h.invites[id]
 	if entry != nil && entry.usable(time.Now()) {
 		if current := h.calls[entry.callID]; current != nil {
-			return current.chatID, entry.authorID
+			return current.chatID, entry.authorID, true
 		}
 	}
-	return "", ""
+	return "", "", false
 }
 
 func (h *hub) dropInvite(id string) bool {
