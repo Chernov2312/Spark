@@ -31,6 +31,5 @@ jobs:
               ${{ secrets.ENV_SECRET }}
             EOF
             chmod 600 .env
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile prod up --build --wait
-            docker compose --profile dev stop ollama-model ollama
+            docker compose -f docker-compose.prod.yml up --build --wait
 

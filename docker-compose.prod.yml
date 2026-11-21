@@ -1,3 +1,4 @@
+name: spark
 x-logging: &prod-logging
   driver: local
   options:
@@ -6,44 +7,110 @@ x-logging: &prod-logging
 
 services:
   postgres:
-    ports: !reset []
-    volumes: !override
+    image: postgres:15-alpine
+    env_file: [.env]
+    volumes:
       - postgres_data:/var/lib/postgresql/data
     command: ["postgres", "-c", "log_connections=on", "-c", "log_disconnections=on"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      timeout: 5s
+      retries: 5
     logging: *prod-logging
 
   redis:
-    ports: !reset []
+    image: redis:latest
+    env_file: [.env]
+    volumes:
+      - ./redisdata:/data
+      - ./redis.sh:/usr/local/bin/redis.sh:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    entrypoint: ["/bin/sh", "/usr/local/bin/redis.sh"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "$$REDIS_PASSWORD", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
     logging: *prod-logging
 
   backend:
-    ports: !reset []
-    volumes: !override
-      - ./whisper-cache:/home/appuser/.cache/whisper
+    build: ./backend
+    env_file: [.env]
     environment:
+      POSTGRES_HOST: postgres
       LOG_TO_STDOUT: "1"
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:?Set OPENAI_BASE_URL in .env}
       OPENAI_MODEL: ${OPENAI_MODEL:?Set OPENAI_MODEL in .env}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env}
     command: ["bash", "./entrypoint.sh", "--log-level", "warning", "--no-access-log"]
-    depends_on: !override
+    volumes:
+      - ./whisper-cache:/home/appuser/.cache/whisper
+    depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; exit(0) if urllib.request.urlopen('http://backend:8000/health').getcode() == 200 else exit(1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    logging: *prod-logging
+
+  calls:
+    build: ./calls
+    environment:
+      CALLS_PYTHON_API_URL: http://backend:8000/api/v1
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:?Set FRONTEND_BASE_URL in .env}
+      CALLS_ALLOWED_ORIGINS: ${CALLS_ALLOWED_ORIGINS:-}
+      LIVEKIT_INTERNAL_URL: http://livekit:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?Set LIVEKIT_API_KEY in .env}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?Set LIVEKIT_API_SECRET in .env}
+    depends_on:
+      backend:
+        condition: service_healthy
+      livekit:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *prod-logging
+
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    command: ["--config", "/etc/livekit.yaml"]
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?Set LIVEKIT_API_KEY in .env}: ${LIVEKIT_API_SECRET:?Set LIVEKIT_API_SECRET in .env}"
+      NODE_IP: ${LIVEKIT_NODE_IP:?Set LIVEKIT_NODE_IP to the media server public IP in .env}
+    ports:
+      - "7881:7881/tcp"
+      - "7882:7882/udp"
+      - "3478:3478/udp"
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:7880/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
     logging: *prod-logging
 
   frontend:
     image: spark-frontend-production
     build:
+      context: ./frontend
       target: production
       args:
         VITE_API_URL: ${API_BASE_URL:-/api/v1}
         VITE_CALLS_WS_URL: ${VITE_CALLS_WS_URL:-/v1/calls/ws}
-    ports: !reset []
-    volumes: !reset []
-    command: null
-    environment: !reset {}
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5173/index.html"]
       interval: 10s
@@ -52,23 +119,32 @@ services:
       start_period: 2s
     logging: *prod-logging
 
-  calls:
-    logging: *prod-logging
-
   celery:
-    volumes: !override
+    build: ./backend
+    cpus: 0.5
+    env_file: [.env]
+    environment:
+      POSTGRES_HOST: postgres
+    volumes:
       - ./whisper-cache:/home/appuser/.cache/whisper
-    command: celery -A tasks.config_celery.celery_app worker --loglevel=info --concurrency=1
+    command: ["celery", "-A", "tasks.config_celery.celery_app", "worker", "--loglevel=info", "--concurrency=1"]
     logging: *prod-logging
 
   celery-beat:
-    volumes: !reset []
-    command: celery -A tasks.config_celery.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    build: ./backend
+    env_file: [.env]
+    environment:
+      POSTGRES_HOST: postgres
+    command: ["celery", "-A", "tasks.config_celery.celery_app", "beat", "--loglevel=info", "--schedule=/tmp/celerybeat-schedule"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     logging: *prod-logging
 
   nginx:
     image: nginx:alpine
-    profiles: ["prod"]
     restart: always
     ports:
       - "127.0.0.1:81:80"
@@ -82,3 +158,6 @@ services:
       calls:
         condition: service_started
     logging: *prod-logging
+
+volumes:
+  postgres_data:

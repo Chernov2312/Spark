@@ -2,6 +2,16 @@ import { getToken, getValidAccessToken, refreshAccessToken } from "./client";
 
 const CALLS_WS_URL = import.meta.env.VITE_CALLS_WS_URL?.trim();
 
+export function callMediaUrl() {
+  return new URL("/v1/calls/media", new URL(CALLS_WS_URL, window.location.href)).href;
+}
+
+export function callAudioConstraints() {
+  // Chromium on Android keeps media volume routing when capture has no voice processing effects.
+  const androidChromium = /\bAndroid\b.*\bChrom(?:e|ium)\//i.test(navigator.userAgent);
+  return androidChromium ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false } : true;
+}
+
 export function createCallSocket({ onEvent, onStatus, inviteToken } = {}) {
   if (!CALLS_WS_URL) {
     onStatus?.("unconfigured");
@@ -63,7 +73,9 @@ export function createCallSocket({ onEvent, onStatus, inviteToken } = {}) {
       onStatus?.("authenticating");
       socket.send(JSON.stringify({
         event: "auth",
-        data: inviteToken ? { invite_token: inviteToken } : { access_token: token },
+        data: {
+          ...(inviteToken ? { invite_token: inviteToken } : { access_token: token }),
+        },
       }));
     };
     socket.onmessage = (message) => {

@@ -1,15 +1,10 @@
 package config
 
 import (
-	"crypto/hmac"
-	"crypto/sha1"
-	"encoding/base64"
 	"errors"
-	"fmt"
 	"net/url"
 	"os"
 	"strings"
-	"time"
 )
 
 type Config struct {
@@ -17,15 +12,9 @@ type Config struct {
 	PythonAPIURL   string
 	FrontendURL    string
 	AllowedOrigins map[string]bool
-	STUNURLs       []string
-	turnURLs       []string
-	turnSecret     string
-}
-
-type ICEServer struct {
-	URLs       []string `json:"urls"`
-	Username   string   `json:"username,omitempty"`
-	Credential string   `json:"credential,omitempty"`
+	LiveKitURL     *url.URL
+	LiveKitAPIKey  string
+	LiveKitSecret  string
 }
 
 func getenv(name, fallback string) string {
@@ -51,9 +40,8 @@ func Load() (Config, error) {
 		PythonAPIURL:   strings.TrimRight(getenv("CALLS_PYTHON_API_URL", "http://127.0.0.1:8001/api/v1"), "/"),
 		FrontendURL:    strings.TrimRight(getenv("FRONTEND_BASE_URL", "http://localhost:5174"), "/"),
 		AllowedOrigins: make(map[string]bool),
-		STUNURLs:       listEnv("CALLS_STUN_URLS", "stun:stun.l.google.com:19302"),
-		turnURLs:       listEnv("CALLS_TURN_URLS", ""),
-		turnSecret:     os.Getenv("CALLS_TURN_SECRET"),
+		LiveKitAPIKey:  strings.TrimSpace(os.Getenv("LIVEKIT_API_KEY")),
+		LiveKitSecret:  strings.TrimSpace(os.Getenv("LIVEKIT_API_SECRET")),
 	}
 	for _, raw := range []string{cfg.PythonAPIURL, cfg.FrontendURL} {
 		u, err := url.Parse(raw)
@@ -68,25 +56,14 @@ func Load() (Config, error) {
 		}
 		cfg.AllowedOrigins[u.Scheme+"://"+u.Host] = true
 	}
-	if len(cfg.turnURLs) > 0 && cfg.turnSecret == "" {
-		return Config{}, errors.New("CALLS_TURN_SECRET is required when TURN is configured")
+	liveKitURL, err := url.Parse(strings.TrimRight(getenv("LIVEKIT_INTERNAL_URL", "http://127.0.0.1:7880"), "/"))
+	if err != nil || liveKitURL.Hostname() == "" || (liveKitURL.Scheme != "http" && liveKitURL.Scheme != "https") ||
+		liveKitURL.User != nil || liveKitURL.RawQuery != "" || liveKitURL.Fragment != "" || liveKitURL.Path != "" {
+		return Config{}, errors.New("LIVEKIT_INTERNAL_URL must be an HTTP(S) origin")
 	}
+	if cfg.LiveKitAPIKey == "" || len(cfg.LiveKitSecret) < 32 {
+		return Config{}, errors.New("LIVEKIT_API_KEY and a LIVEKIT_API_SECRET of at least 32 bytes are required")
+	}
+	cfg.LiveKitURL = liveKitURL
 	return cfg, nil
-}
-
-func (cfg Config) ICEServers(peerID string) []ICEServer {
-	servers := make([]ICEServer, 0, 2)
-	if len(cfg.STUNURLs) > 0 {
-		servers = append(servers, ICEServer{URLs: cfg.STUNURLs})
-	}
-	if len(cfg.turnURLs) > 0 {
-		username := fmt.Sprintf("%d:%s", time.Now().Add(4*time.Hour).Unix(), peerID)
-		signature := hmac.New(sha1.New, []byte(cfg.turnSecret))
-		signature.Write([]byte(username))
-		servers = append(servers, ICEServer{
-			URLs: cfg.turnURLs, Username: username,
-			Credential: base64.StdEncoding.EncodeToString(signature.Sum(nil)),
-		})
-	}
-	return servers
 }

@@ -3,16 +3,20 @@ package signaling
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"fmt"
+	"log"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
-	"spark/calls/internal/config"
+	"spark/calls/internal/livekit"
 	"spark/calls/internal/sparkapi"
 )
 
 const unansweredTimeout = 90 * time.Second
+const guestNameMaxLength = 50
 
 func newID() string {
 	var value [16]byte
@@ -35,7 +39,7 @@ type call struct {
 
 type hub struct {
 	mu      sync.Mutex
-	ice     func(string) []config.ICEServer
+	media   livekit.Client
 	clients map[*client]bool
 	online  map[string]map[*client]bool
 	calls   map[string]*call
@@ -46,9 +50,9 @@ type hub struct {
 	byHash  map[[32]byte]*invite
 }
 
-func newHub(ice func(string) []config.ICEServer) *hub {
+func newHub(media livekit.Client) *hub {
 	return &hub{
-		ice: ice, clients: make(map[*client]bool),
+		media: media, clients: make(map[*client]bool),
 		online: make(map[string]map[*client]bool), calls: make(map[string]*call),
 		byChat: make(map[string]string), active: make(map[string]string),
 		pending: make(map[string]string), invites: make(map[string]*invite),
@@ -59,7 +63,7 @@ func newHub(ice func(string) []config.ICEServer) *hub {
 func (h *hub) incoming(c *client, current *call) {
 	data := fields{
 		"call_id": current.id, "media": current.media,
-		"caller_name": current.creator.user.Username,
+		"caller_name": current.creator.user.Username, "participant_count": len(current.peers),
 	}
 	if !c.guest {
 		data["chat_id"] = current.chatID
@@ -90,7 +94,6 @@ func (h *hub) connect(c *client) {
 
 func (h *hub) disconnect(c *client) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	delete(h.clients, c)
 	group := h.online[c.peerID]
 	delete(group, c)
@@ -98,8 +101,12 @@ func (h *hub) disconnect(c *client) {
 		delete(h.online, c.peerID)
 	}
 	if current := h.calls[h.active[c.peerID]]; current != nil && current.peers[c.peerID] == c {
-		h.leaveLocked(current, c)
+		departure := h.leaveLocked(current, c)
+		h.mu.Unlock()
+		h.removeMedia(departure)
+		return
 	}
+	h.mu.Unlock()
 }
 
 func (h *hub) start(c *client, chatID, media string, members []sparkapi.Person) *failure {
@@ -116,12 +123,22 @@ func (h *hub) start(c *client, chatID, media string, members []sparkapi.Person) 
 		peers: map[string]*client{c.peerID: c}, ringing: make(map[string]bool),
 		waitUntil: time.Now().Add(unansweredTimeout),
 	}
+	mediaIdentity := newID()
+	token, err := h.media.JoinToken(current.id, mediaIdentity)
+	if err != nil {
+		return mediaUnavailable
+	}
+	c.mediaContext, c.cancelMedia = context.WithCancel(context.Background())
+	c.mediaIdentity = mediaIdentity
 	h.calls[current.id] = current
-	h.byChat[chatID] = current.id
+	if chatID != "" {
+		h.byChat[chatID] = current.id
+	}
 	h.active[c.peerID] = current.id
 	c.emit("call:started", fields{
-		"call_id": current.id, "chat_id": chatID, "media": media, "ice_servers": h.ice(c.peerID),
+		"call_id": current.id, "chat_id": chatID, "media": media, "media_token": token, "media_identity": mediaIdentity,
 	})
+	h.publishChatCallLocked(chatID)
 	for _, member := range members {
 		if member.ID == c.peerID || h.active[member.ID] != "" || h.pending[member.ID] != "" || len(h.online[member.ID]) == 0 {
 			continue
@@ -135,16 +152,61 @@ func (h *hub) start(c *client, chatID, media string, members []sparkapi.Person) 
 	return nil
 }
 
-func (h *hub) chatID(callID string) string {
+func (h *hub) callInfo(callID string) (chatID, creatorID string, exists bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if current := h.calls[callID]; current != nil {
-		return current.chatID
+		return current.chatID, current.creator.peerID, true
 	}
-	return ""
+	return "", "", false
 }
 
-func (h *hub) accept(c *client, id string) *failure {
+func (h *hub) watch(c *client, chatID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	c.watchedChat = chatID
+	if chatID != "" {
+		c.emit("call:status", h.chatCallLocked(chatID))
+	}
+}
+
+func (h *hub) chatCallLocked(chatID string) fields {
+	status := fields{"chat_id": chatID}
+	if current := h.calls[h.byChat[chatID]]; current != nil {
+		status["call_id"] = current.id
+		status["caller_name"] = current.creator.user.Username
+		status["media"] = current.media
+		status["participant_count"] = len(current.peers)
+	}
+	return status
+}
+
+func (h *hub) publishChatCallLocked(chatID string) {
+	if chatID == "" {
+		return
+	}
+	status := h.chatCallLocked(chatID)
+	for session := range h.clients {
+		if session.watchedChat == chatID {
+			session.emit("call:status", status)
+		}
+	}
+}
+
+func (h *hub) mediaSession(callID, mediaIdentity string) context.Context {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if current := h.calls[callID]; current != nil {
+		for _, peer := range current.peers {
+			if peer.mediaIdentity == mediaIdentity {
+				return peer.mediaContext
+			}
+		}
+	}
+	return nil
+}
+
+func (h *hub) accept(c *client, id, guestName string, joinFromChat bool) *failure {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	current := h.calls[id]
@@ -157,18 +219,36 @@ func (h *hub) accept(c *client, id string) *failure {
 	if h.active[c.peerID] != "" {
 		return busy
 	}
+	if !c.guest {
+		pending := h.pending[c.peerID]
+		if !joinFromChat && pending != id {
+			return denied
+		}
+		if pending != "" && pending != id {
+			return busy
+		}
+	}
+	mediaIdentity := newID()
+	token, err := h.media.JoinToken(id, mediaIdentity)
+	if err != nil {
+		return mediaUnavailable
+	}
 	if c.guest {
 		entry := h.byHash[c.inviteHash]
 		if c.guestCall != id || entry == nil || !entry.usable(time.Now()) {
 			return invalidInvite
 		}
+		guestName = strings.TrimSpace(guestName)
+		if utf8.RuneCountInString(guestName) > guestNameMaxLength || strings.ContainsFunc(guestName, unicode.IsControl) {
+			return &failure{"invalid_guest_name", "Введите ник до 50 символов без управляющих символов."}
+		}
 		entry.uses++
 		current.guests++
-		c.user.Username = fmt.Sprintf("Гость %d", current.guests)
-	} else {
-		if h.pending[c.peerID] != id {
-			return denied
+		if guestName == "" {
+			guestName = fmt.Sprintf("Гость %d", current.guests)
 		}
+		c.user.Username = guestName
+	} else {
 		delete(h.pending, c.peerID)
 		delete(current.ringing, c.peerID)
 		for sibling := range h.online[c.peerID] {
@@ -177,25 +257,28 @@ func (h *hub) accept(c *client, id string) *failure {
 			}
 		}
 	}
-	c.emit("call:accepted", fields{"call_id": id, "peer_id": c.peerID, "ice_servers": h.ice(c.peerID)})
+	c.mediaContext, c.cancelMedia = context.WithCancel(context.Background())
+	c.mediaIdentity = mediaIdentity
+	c.emit("call:accepted", fields{"call_id": id, "peer_id": c.peerID, "media_token": token, "media_identity": mediaIdentity})
 	for _, other := range current.peers {
 		other.emit("call:accepted", fields{"call_id": id, "peer_id": c.peerID})
-		other.emit("call:peer_joined", peerEvent(id, c, true))
-		c.emit("call:peer_joined", peerEvent(id, other, false))
+		other.emit("call:peer_joined", peerEvent(id, c))
+		c.emit("call:peer_joined", peerEvent(id, other))
 	}
 	current.peers[c.peerID] = c
 	h.active[c.peerID] = id
+	h.publishChatCallLocked(current.chatID)
 	return nil
 }
 
-func peerEvent(callID string, c *client, shouldOffer bool) fields {
+func peerEvent(callID string, c *client) fields {
 	kind := "user"
 	if c.guest {
 		kind = "guest"
 	}
 	return fields{
 		"call_id": callID, "peer_id": c.peerID, "display_name": c.user.Username,
-		"should_offer": shouldOffer, "participant_type": kind,
+		"participant_type": kind, "media_identity": c.mediaIdentity,
 	}
 }
 
@@ -228,60 +311,56 @@ func (h *hub) decline(c *client, id string) *failure {
 	return nil
 }
 
-func (h *hub) signal(c *client, id, targetID, name string, value json.RawMessage) *failure {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	current := h.calls[id]
-	if current == nil || current.peers[c.peerID] != c {
-		return denied
-	}
-	target := current.peers[targetID]
-	if target == nil || target == c {
-		return denied
-	}
-	key := "sdp"
-	if name == "rtc:ice" {
-		key = "candidate"
-	}
-	target.emit(name, fields{
-		"call_id": id, "from_id": c.peerID, "target_id": targetID, key: value,
-	})
-	return nil
-}
-
 func (h *hub) leave(c *client, id string) *failure {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	current := h.calls[id]
 	if current == nil || current.peers[c.peerID] != c {
+		h.mu.Unlock()
 		return denied
 	}
-	h.leaveLocked(current, c)
+	departure := h.leaveLocked(current, c)
+	h.mu.Unlock()
+	h.removeMedia(departure)
 	return nil
 }
 
-func (h *hub) leaveLocked(current *call, c *client) {
+type mediaDeparture struct {
+	room string
+	peer string
+}
+
+func (h *hub) removeMedia(departure mediaDeparture) {
+	if err := h.media.Remove(departure.room, departure.peer); err != nil {
+		log.Printf("LiveKit cleanup for room %s: %v", departure.room, err)
+	}
+}
+
+func (h *hub) leaveLocked(current *call, c *client) mediaDeparture {
 	if current.creator == c {
 		h.endLocked(current, "ended")
-		return
+		return mediaDeparture{room: current.id}
 	}
+	c.cancelMedia()
 	delete(current.peers, c.peerID)
 	delete(h.active, c.peerID)
 	if c.guest {
 		c.guestCall = ""
 	}
 	for _, other := range current.peers {
-		other.emit("call:peer_left", fields{"call_id": current.id, "peer_id": c.peerID})
+		other.emit("call:peer_left", fields{"call_id": current.id, "peer_id": c.peerID, "media_identity": c.mediaIdentity})
 	}
 	c.emit("call:ended", fields{"call_id": current.id})
 	if len(current.peers) == 1 {
 		current.waitUntil = time.Now().Add(unansweredTimeout)
 	}
+	h.publishChatCallLocked(current.chatID)
+	return mediaDeparture{room: current.id, peer: c.mediaIdentity}
 }
 
 func (h *hub) endLocked(current *call, reason string) {
 	data := fields{"call_id": current.id, "reason": reason}
 	for id, session := range current.peers {
+		session.cancelMedia()
 		delete(h.active, id)
 		session.emit("call:ended", data)
 	}
@@ -303,6 +382,7 @@ func (h *hub) endLocked(current *call, reason string) {
 	}
 	delete(h.byChat, current.chatID)
 	delete(h.calls, current.id)
+	h.publishChatCallLocked(current.chatID)
 }
 
 func (h *hub) expire(ctx context.Context) {
@@ -320,9 +400,10 @@ func (h *hub) expire(ctx context.Context) {
 
 func (h *hub) expireAt(now time.Time) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	var expired []string
 	for _, current := range h.calls {
-		if len(current.peers) == 1 && !now.Before(current.waitUntil) {
+		if current.chatID != "" && len(current.peers) == 1 && !now.Before(current.waitUntil) {
+			expired = append(expired, current.id)
 			h.endLocked(current, "timeout")
 		}
 	}
@@ -331,11 +412,18 @@ func (h *hub) expireAt(now time.Time) {
 			h.removeInviteLocked(entry)
 		}
 	}
+	h.mu.Unlock()
+	for _, room := range expired {
+		h.removeMedia(mediaDeparture{room: room})
+	}
 }
 
 func (h *hub) close() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	for _, current := range h.calls {
+		h.endLocked(current, "ended")
+	}
 	for c := range h.clients {
 		_ = c.conn.Close()
 	}

@@ -49,16 +49,20 @@ func (s *server) createInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	callID := r.PathValue("call_id")
-	chatID := s.hub.chatID(callID)
-	if chatID == "" {
+	chatID, creatorID, exists := s.hub.callInfo(callID)
+	if !exists {
 		writeJSON(w, http.StatusNotFound, fields{"code": unavailable.code, "message": unavailable.message})
 		return
 	}
-	member, ok := s.requestMember(w, r, chatID, token, user.ID)
-	if !ok {
-		return
+	canInvite := user.ID == creatorID
+	if chatID != "" {
+		member, ok := s.requestMember(w, r, chatID, token, user.ID)
+		if !ok {
+			return
+		}
+		canInvite = member.Role == "owner" || member.Role == "moderator"
 	}
-	if member.Role != "owner" && member.Role != "moderator" {
+	if !canInvite {
 		writeJSON(w, http.StatusForbidden, fields{"code": denied.code, "message": denied.message})
 		return
 	}
@@ -94,16 +98,20 @@ func (s *server) revokeInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("invite_id")
-	chatID, authorID := s.hub.inviteDetails(id)
-	if chatID == "" {
+	chatID, authorID, exists := s.hub.inviteDetails(id)
+	if !exists {
 		writeJSON(w, http.StatusNotFound, fields{"code": invalidInvite.code, "message": invalidInvite.message})
 		return
 	}
-	member, ok := s.requestMember(w, r, chatID, token, user.ID)
-	if !ok {
-		return
+	canRevoke := user.ID == authorID
+	if chatID != "" {
+		member, ok := s.requestMember(w, r, chatID, token, user.ID)
+		if !ok {
+			return
+		}
+		canRevoke = canRevoke || member.Role == "owner" || member.Role == "moderator"
 	}
-	if user.ID != authorID && member.Role != "owner" && member.Role != "moderator" {
+	if !canRevoke {
 		writeJSON(w, http.StatusForbidden, fields{"code": denied.code, "message": denied.message})
 		return
 	}
