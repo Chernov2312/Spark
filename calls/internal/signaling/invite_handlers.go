@@ -67,29 +67,35 @@ func (s *server) createInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	options := struct {
-		ExpiresIn int `json:"expires_in_seconds"`
-		MaxUses   int `json:"max_uses"`
-	}{ExpiresIn: 3600, MaxUses: 5}
+		ExpiresIn int  `json:"expires_in_seconds"` // Accepted for compatibility with existing clients.
+		MaxUses   *int `json:"max_uses"`
+	}{}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
 	decoder.DisallowUnknownFields()
 	err := decoder.Decode(&options)
 	if err == nil && decoder.Decode(new(any)) != io.EOF {
 		err = errors.New("unexpected content")
 	}
-	if (err != nil && err != io.EOF) || options.ExpiresIn < 60 || options.ExpiresIn > 86400 ||
-		options.MaxUses < 1 || options.MaxUses > 20 {
+	if (err != nil && err != io.EOF) || (options.MaxUses != nil && (*options.MaxUses < 1 || *options.MaxUses > 20)) {
 		writeJSON(w, http.StatusBadRequest, fields{"code": "invalid_invite_options", "message": "Некорректные параметры приглашения."})
 		return
 	}
-	entry, guestToken, ok := s.hub.addInvite(callID, user.ID, options.ExpiresIn, options.MaxUses)
+	maxUses := 0
+	if options.MaxUses != nil {
+		maxUses = *options.MaxUses
+	}
+	entry, guestToken, ok := s.hub.addInvite(callID, user.ID, maxUses)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, fields{"code": unavailable.code, "message": unavailable.message})
 		return
 	}
-	writeJSON(w, http.StatusCreated, fields{
+	result := fields{
 		"invite_id": entry.id, "invite_url": s.cfg.FrontendURL + "/call/join#invite=" + guestToken,
-		"expires_at": entry.expiresAt, "max_uses": entry.maxUses,
-	})
+	}
+	if maxUses > 0 {
+		result["max_uses"] = maxUses
+	}
+	writeJSON(w, http.StatusCreated, result)
 }
 
 func (s *server) revokeInvite(w http.ResponseWriter, r *http.Request) {

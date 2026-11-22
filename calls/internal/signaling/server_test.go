@@ -373,6 +373,11 @@ func TestLateChatMemberWatchesAndJoinsActiveCall(t *testing.T) {
 	checkMediaStatus(t, service, first["media_token"].(string), http.StatusForbidden)
 	send(t, owner, "call:end", fields{"call_id": callID})
 	receive(t, owner, "call:ended")
+	receive(t, member, "call:peer_left")
+	if status := receive(t, member, "call:status"); status["call_id"] != callID || status["participant_count"] != float64(1) {
+		t.Fatalf("status lost the remaining participant: %v", status)
+	}
+	send(t, member, "call:end", fields{"call_id": callID})
 	receive(t, member, "call:ended")
 	if status := receive(t, member, "call:status"); status["call_id"] != nil {
 		t.Fatalf("status retained the ended call: %v", status)
@@ -392,7 +397,7 @@ func TestStandaloneCallSupportsInvitationWithoutChat(t *testing.T) {
 	send(t, owner, "call:start", fields{"media": "audio"})
 	started := receive(t, owner, "call:started")
 	callID := started["call_id"].(string)
-	expectMediaToken(t, started, callID)
+	ownerToken := expectMediaToken(t, started, callID)
 	if started["chat_id"] != "" {
 		t.Fatalf("standalone call has a chat: %v", started["chat_id"])
 	}
@@ -403,14 +408,44 @@ func TestStandaloneCallSupportsInvitationWithoutChat(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &invite); err != nil {
 		t.Fatal(err)
 	}
+	if _, hasExpiry := invite["expires_at"]; hasExpiry {
+		t.Fatal("default invitation has an expiration date")
+	}
+	if _, hasLimit := invite["max_uses"]; hasLimit {
+		t.Fatal("default invitation has a usage limit")
+	}
 	_, token, _ := strings.Cut(invite["invite_url"].(string), "#invite=")
 	guest := dial(t, service, fields{"invite_token": token})
 	receive(t, guest, "auth:ok")
 	receive(t, guest, "call:incoming")
 	send(t, guest, "call:accept", fields{"call_id": callID})
-	expectMediaToken(t, receive(t, guest, "call:accepted"), callID)
+	guestToken := expectMediaToken(t, receive(t, guest, "call:accepted"), callID)
+	receive(t, guest, "call:peer_joined")
 	receive(t, owner, "call:accepted")
 	receive(t, owner, "call:peer_joined")
+
+	send(t, owner, "call:end", fields{"call_id": callID})
+	receive(t, owner, "call:ended")
+	if left := receive(t, guest, "call:peer_left"); left["peer_id"] != ownerID {
+		t.Fatalf("unexpected participant departure: %v", left)
+	}
+	checkMediaStatus(t, service, ownerToken, http.StatusForbidden)
+	checkMediaStatus(t, service, guestToken, http.StatusOK)
+
+	for range 5 {
+		newGuest := dial(t, service, fields{"invite_token": token})
+		receive(t, newGuest, "auth:ok")
+		receive(t, newGuest, "call:incoming")
+		send(t, newGuest, "call:accept", fields{"call_id": callID})
+		receive(t, newGuest, "call:accepted")
+		receive(t, newGuest, "call:peer_joined")
+		receive(t, guest, "call:accepted")
+		receive(t, guest, "call:peer_joined")
+		send(t, newGuest, "call:end", fields{"call_id": callID})
+		receive(t, newGuest, "call:ended")
+		receive(t, guest, "call:peer_left")
+	}
+
 	revoke := "/v1/calls/invites/" + invite["invite_id"].(string)
 	callHTTP(t, service, http.MethodDelete, revoke, "member", "", http.StatusForbidden)
 	callHTTP(t, service, http.MethodDelete, revoke, "owner", "", http.StatusNoContent)

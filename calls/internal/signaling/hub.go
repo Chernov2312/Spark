@@ -121,7 +121,9 @@ func (h *hub) start(c *client, chatID, media string, members []sparkapi.Person) 
 	current := &call{
 		id: newID(), chatID: chatID, media: media, creator: c,
 		peers: map[string]*client{c.peerID: c}, ringing: make(map[string]bool),
-		waitUntil: time.Now().Add(unansweredTimeout),
+	}
+	if chatID != "" {
+		current.waitUntil = time.Now().Add(unansweredTimeout)
 	}
 	mediaIdentity := newID()
 	token, err := h.media.JoinToken(current.id, mediaIdentity)
@@ -235,14 +237,19 @@ func (h *hub) accept(c *client, id, guestName string, joinFromChat bool) *failur
 	}
 	if c.guest {
 		entry := h.byHash[c.inviteHash]
-		if c.guestCall != id || entry == nil || !entry.usable(time.Now()) {
+		if c.guestCall != id || entry == nil {
 			return invalidInvite
 		}
 		guestName = strings.TrimSpace(guestName)
 		if utf8.RuneCountInString(guestName) > guestNameMaxLength || strings.ContainsFunc(guestName, unicode.IsControl) {
 			return &failure{"invalid_guest_name", "Введите ник до 50 символов без управляющих символов."}
 		}
-		entry.uses++
+		if entry.usesLeft > 0 {
+			entry.usesLeft--
+			if entry.usesLeft == 0 {
+				h.removeInviteLocked(entry)
+			}
+		}
 		current.guests++
 		if guestName == "" {
 			guestName = fmt.Sprintf("Гость %d", current.guests)
@@ -266,6 +273,7 @@ func (h *hub) accept(c *client, id, guestName string, joinFromChat bool) *failur
 		c.emit("call:peer_joined", peerEvent(id, other))
 	}
 	current.peers[c.peerID] = c
+	current.waitUntil = time.Time{}
 	h.active[c.peerID] = id
 	h.publishChatCallLocked(current.chatID)
 	return nil
@@ -305,9 +313,11 @@ func (h *hub) decline(c *client, id string) *failure {
 	for sibling := range h.online[c.peerID] {
 		sibling.emit("call:ended", fields{"call_id": id})
 	}
-	current.creator.emit("call:declined", fields{
-		"call_id": id, "message": "Участник отклонил звонок.",
-	})
+	if creator := current.peers[current.creator.peerID]; creator != nil {
+		creator.emit("call:declined", fields{
+			"call_id": id, "message": "Участник отклонил звонок.",
+		})
+	}
 	return nil
 }
 
@@ -336,7 +346,7 @@ func (h *hub) removeMedia(departure mediaDeparture) {
 }
 
 func (h *hub) leaveLocked(current *call, c *client) mediaDeparture {
-	if current.creator == c {
+	if len(current.peers) == 1 {
 		h.endLocked(current, "ended")
 		return mediaDeparture{room: current.id}
 	}
@@ -350,9 +360,6 @@ func (h *hub) leaveLocked(current *call, c *client) mediaDeparture {
 		other.emit("call:peer_left", fields{"call_id": current.id, "peer_id": c.peerID, "media_identity": c.mediaIdentity})
 	}
 	c.emit("call:ended", fields{"call_id": current.id})
-	if len(current.peers) == 1 {
-		current.waitUntil = time.Now().Add(unansweredTimeout)
-	}
 	h.publishChatCallLocked(current.chatID)
 	return mediaDeparture{room: current.id, peer: c.mediaIdentity}
 }
@@ -402,14 +409,9 @@ func (h *hub) expireAt(now time.Time) {
 	h.mu.Lock()
 	var expired []string
 	for _, current := range h.calls {
-		if current.chatID != "" && len(current.peers) == 1 && !now.Before(current.waitUntil) {
+		if !current.waitUntil.IsZero() && !now.Before(current.waitUntil) {
 			expired = append(expired, current.id)
 			h.endLocked(current, "timeout")
-		}
-	}
-	for _, entry := range h.invites {
-		if !entry.usable(now) {
-			h.removeInviteLocked(entry)
 		}
 	}
 	h.mu.Unlock()
