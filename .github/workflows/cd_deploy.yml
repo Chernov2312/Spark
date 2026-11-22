@@ -30,7 +30,7 @@ jobs:
       DEPLOY_SHA: ${{ github.sha }}
     steps:
       - name: Remote deploy script
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{secrets.HOST}}
           username: ${{secrets.HOST_USERNAME}}
