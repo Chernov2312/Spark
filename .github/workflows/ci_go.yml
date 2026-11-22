@@ -1,8 +1,9 @@
 name: go_ci
 
 on:
+  workflow_call:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
     branches: [main, master]
 
@@ -34,7 +35,8 @@ jobs:
 
       - name: Run Go tests and check coverage
         run: |
-          go test -race -coverpkg=./... -covermode=atomic -coverprofile=coverage.out ./...
+          # Cached test results can include stale coverage from other packages.
+          go test -race -count=1 -coverpkg=./... -covermode=atomic -coverprofile=coverage.out ./...
           go tool cover -html=coverage.out -o coverage.html
           go tool cover -func=coverage.out | tee coverage.txt
           awk '/^total:/ { coverage = $NF + 0; found = 1 }

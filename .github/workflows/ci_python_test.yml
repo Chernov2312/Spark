@@ -1,8 +1,9 @@
 name: Backend tests
 
 on:
+  workflow_call:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
     branches: [main, master]
 
