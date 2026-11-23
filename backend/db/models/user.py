@@ -1,8 +1,7 @@
 from datetime import date
 
 from sqlalchemy import Boolean, Column, Date, false, ForeignKey, String, Table, text
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.user_tags import normalize_user_tag

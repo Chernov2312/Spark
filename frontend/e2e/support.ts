@@ -69,6 +69,13 @@ export class MockApi {
         return respond({ verification_required: true, email: input.email, tag: input.tag }, 201);
       }
       if (method === "GET" && path === "/chats") return respond({ chats: this.chats });
+      if (method === "GET" && path === "/users/me") return respond({
+        ...user,
+        bio: null,
+        birth_date: null,
+        profile_visibility: { avatar: "everyone", bio: "everyone", birth_date: "everyone" },
+        profile_exceptions: { avatar: [], bio: [], birth_date: [] },
+      });
       if (method === "GET" && path === "/friends") return respond({ friends: [], requests: [], categories: [] });
       if (method === "GET" && path === "/chat-folders") return respond({ folders: [] });
       const chatMatch = path.match(/^\/chats\/([^/]+)\/(.+)$/);

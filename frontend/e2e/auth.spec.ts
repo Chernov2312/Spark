@@ -44,7 +44,9 @@ test("email login submits OAuth credentials and logout clears the session", asyn
   await expect(page.locator(".chat-item__title")).toHaveText(mockApi.chats.map((chat) => chat.title));
   const login = mockApi.requests.find((request) => request.path === "/auth/login");
   expect(Object.fromEntries(new URLSearchParams(String(login?.body)))).toMatchObject({ username: user.email, password: "ValidPassword123" });
-  await page.getByRole("button", { name: "Выйти" }).click();
+  await page.getByRole("link", { name: "Настройки" }).click();
+  await page.getByRole("button", { name: "Аккаунт" }).click();
+  await page.getByRole("button", { name: "Выйти из аккаунта" }).click();
   await expect(page).toHaveURL(/\/login$/);
   expect(mockApi.requests.some(({ method, path }) => method === "POST" && path === "/auth/logout")).toBe(true);
   expect(await page.evaluate(() => [localStorage.getItem("access_token"), localStorage.getItem("user")])).toEqual([null, null]);
