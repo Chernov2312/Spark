@@ -1,6 +1,7 @@
 import { Link, NavLink } from "react-router-dom";
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useContext, useEffect, useLayoutEffect, useState } from "react";
 import SparkLogo from "./SparkLogo";
+import { CallsContext } from "./callsContext";
 import { auth, AUTH_EVENT } from "../api";
 
 const navCls = ({ isActive }) =>
@@ -17,6 +18,7 @@ function getInitialTheme() {
 export default function Header() {
   const [user, setUser] = useState(auth.getCurrentUser());
   const [theme, setTheme] = useState(getInitialTheme);
+  const calls = useContext(CallsContext);
 
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -84,6 +86,11 @@ export default function Header() {
           </button>
           {user ? (
             <>
+              {calls?.available && <button type="button" className="nav-link header-calls" aria-label="Звонки"
+                title="Звонки" onClick={calls.openStandalone}>
+                <span className="header-calls__icon" aria-hidden="true">☎</span>
+                <span className="header-calls__label">Звонки</span>
+              </button>}
               <NavLink to="/profile" className="header-user" title="Открыть профиль">
                 @{user.username}
               </NavLink>

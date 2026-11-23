@@ -9,6 +9,7 @@ import FaqPage from "./pages/FaqPage";
 import ChatsPage from "./pages/ChatsPage";
 import GuestCallPage from "./pages/GuestCallPage";
 import SettingsPage from "./pages/SettingsPage";
+import CallsProvider from "./components/CallsProvider";
 import EmailVerificationPage from "./pages/EmailVerificationPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
@@ -34,7 +35,7 @@ export default function App() {
   const isChatsPage = pathname === "/chats" || pathname.startsWith("/chats/");
 
   return (
-    <>
+    <CallsProvider>
       {!isVerificationPage && <Header />}
       <Routes>
         <Route path="/" element={<HomePage />} />
@@ -99,6 +100,6 @@ export default function App() {
         <Route path="*" element={<NotFound />} />
       </Routes>
       {!isVerificationPage && !isChatsPage && <Footer />}
-    </>
+    </CallsProvider>
   );
 }

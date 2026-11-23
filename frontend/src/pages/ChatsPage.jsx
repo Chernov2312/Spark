@@ -2,6 +2,7 @@ import React, {
   lazy,
   Suspense,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useReducer,
@@ -19,7 +20,7 @@ import {
 } from "../api";
 import FormatToolbar from "../components/FormatToolbar";
 import AIChatPanel from "../components/AIChatPanel";
-import CallPanel from "../components/CallPanel";
+import { CallsContext } from "../components/callsContext";
 import SocialSidebar from "../components/SocialSidebar";
 import ChatMemberProfile, { MemberAvatar, MemberRole } from "../components/ChatMemberProfile";
 import ChatPreferences from "../components/ChatPreferences";
@@ -569,6 +570,7 @@ const MessageItem = React.memo(function MessageItem({
    ============================================================ */
 
 export default function ChatsPage() {
+  const calls = useContext(CallsContext);
   const navigate = useNavigate();
   const { chatId } = useParams();
   const me = auth.getCurrentUser();
@@ -690,7 +692,6 @@ export default function ChatsPage() {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState(null);
   const [chatDetailsOpen, setChatDetailsOpen] = useState(true);
-  const [callPanelOpen, setCallPanelOpen] = useState(false);
   const [activeChatTab, setActiveChatTab] = useState("messages");
   const [aiPanelOpen, setAIPanelOpen] = useState(false);
   const [transcribingAttachments, setTranscribingAttachments] = useState(
@@ -1790,6 +1791,14 @@ export default function ChatsPage() {
   const canEditSharedAvatar = Boolean(me?.id && (
     activeChat?.owner_id === me.id || chatMembers.some((member) => member.id === me.id && member.role === "moderator")
   ));
+  const setCallChat = calls?.setChat;
+  const activeChatTitle = activeChat?.title;
+  const activeChatCall = calls?.chatCall?.chat_id === chatId && calls?.chatCall?.call_id ? calls.chatCall : null;
+  useEffect(() => {
+    if (!setCallChat || !chatId || !activeChatTitle) return undefined;
+    setCallChat({ id: chatId, name: activeChatTitle, canInvite: canEditSharedAvatar });
+    return () => setCallChat(null);
+  }, [activeChatTitle, canEditSharedAvatar, chatId, setCallChat]);
   const messagesById = useMemo(
     () => new Map([...messages, ...threadMessages].map((message) => [message.id, message])),
     [messages, threadMessages],
@@ -2084,16 +2093,28 @@ export default function ChatsPage() {
                 aria-controls="chat-message-search"
                 onClick={() => { setSearchOpen((open) => !open); setActiveChatTab("messages"); if (activeThread) closeThread(); }}
               >⌕ Поиск</button>
-              <button
+              {!activeChatCall && <button
                 type="button"
                 className="call-start-button"
-                onClick={() => setCallPanelOpen(true)}
+                onClick={calls?.openChat}
                 aria-label="Начать звонок"
                 title="Аудио- и видеозвонок"
               >
                 ☎ <span>Позвонить</span>
-              </button>
+              </button>}
             </header>
+
+            {activeChatCall && (
+              <div className="chat-call-banner">
+                <div>
+                  <strong>{activeChatCall.media === "video" ? "Идёт видеозвонок" : "Идёт аудиозвонок"}</strong>
+                  <span>{activeChatCall.caller_name} · Участников: {activeChatCall.participant_count}</span>
+                </div>
+                <button type="button" className="call-start-button" onClick={() => calls.joinChat(activeChatCall)}>
+                  Присоединиться
+                </button>
+              </div>
+            )}
 
             {me?.id && activeChat.owner_id && activeChat.owner_id !== me.id &&
               friends && !friends.some((friend) => friend.id === activeChat.owner_id) && (
@@ -2836,13 +2857,6 @@ export default function ChatsPage() {
           } else setMessages((items) => items.some((item) => item.id === message.id) ? items : [...items, message]);
         }}
       />}
-      <CallPanel
-        chatId={chatId}
-        chatName={activeChat?.title}
-        canInvite={canEditSharedAvatar}
-        open={callPanelOpen}
-        onClose={() => setCallPanelOpen(false)}
-      />
     </main>
   );
 }

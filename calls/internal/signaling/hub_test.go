@@ -4,66 +4,70 @@ import (
 	"testing"
 	"time"
 
-	"spark/calls/internal/config"
+	"spark/calls/internal/livekit"
 	"spark/calls/internal/sparkapi"
 )
 
 func TestExpireUnansweredCall(t *testing.T) {
 	h, caller, member, current := ringingCall(t)
-	entry, token, ok := h.addInvite(current.id, caller.peerID, 120, 1)
-	if !ok {
-		t.Fatal("failed to create invite")
-	}
-	guest := localClient("")
-	if !h.authorizeGuest(guest, token) {
-		t.Fatal("guest could not authenticate with a fresh invite")
-	}
-	h.connect(guest)
-	if incoming := nextHubEvent(t, guest, "call:incoming"); incoming["call_id"] != current.id {
-		t.Fatalf("unexpected guest invitation: %v", incoming)
-	}
-
 	h.expireAt(current.waitUntil.Add(-time.Millisecond))
-	if h.chatID(current.id) != chatID {
+	if activeChat, _, exists := h.callInfo(current.id); !exists || activeChat != chatID {
 		t.Fatal("call expired before the deadline")
 	}
 	h.expireAt(current.waitUntil)
-	for _, session := range []*client{caller, member, guest} {
+	for _, session := range []*client{caller, member} {
 		ended := nextHubEvent(t, session, "call:ended")
 		if ended["reason"] != "timeout" || ended["call_id"] != current.id {
 			t.Fatalf("unexpected end event: %v", ended)
 		}
 	}
-	if h.chatID(current.id) != "" || h.invites[entry.id] != nil || h.authorizeGuest(localClient(""), token) {
-		t.Fatal("timed-out call or its invite is still available")
+	if _, _, exists := h.callInfo(current.id); exists {
+		t.Fatal("timed-out call is still available")
 	}
 	if problem := h.start(member, chatID, "audio", []sparkapi.Person{member.user, caller.user}); problem != nil {
 		t.Fatalf("timeout did not free the chat and invited member: %s", problem.code)
 	}
 }
 
-func TestExpireInviteDuringEstablishedCall(t *testing.T) {
-	h, caller, member, current := ringingCall(t)
-	entry, token, ok := h.addInvite(current.id, caller.peerID, 60, 1)
+func TestInviteKeepsCallOpenUntilLastParticipantLeaves(t *testing.T) {
+	h, caller, _, current := ringingCall(t)
+	future := current.waitUntil.Add(48 * time.Hour)
+	entry, token, ok := h.addInvite(current.id, caller.peerID, 0)
 	if !ok {
 		t.Fatal("failed to create invite")
 	}
-	if problem := h.accept(member, current.id); problem != nil {
-		t.Fatalf("member could not accept call: %s", problem.code)
-	}
 
-	h.expireAt(current.waitUntil)
-	if h.chatID(current.id) != chatID {
-		t.Fatal("established call expired at the ringing deadline")
+	h.expireAt(future)
+	guest := localClient("")
+	if !h.authorizeGuest(guest, token) {
+		t.Fatal("invite expired while the caller was waiting")
 	}
-	if h.invites[entry.id] != nil || h.authorizeGuest(localClient(""), token) {
-		t.Fatal("expired invite remained usable")
+	if problem := h.accept(guest, current.id, "", false); problem != nil {
+		t.Fatalf("guest could not join: %s", problem.code)
+	}
+	h.disconnect(caller)
+	h.expireAt(future)
+	if h.mediaSession(current.id, caller.mediaIdentity) != nil || h.mediaSession(current.id, guest.mediaIdentity) == nil {
+		t.Fatal("caller departure did not preserve the remaining guest's media session")
+	}
+	waiting := localClient("")
+	if !h.authorizeGuest(waiting, token) {
+		t.Fatal("invite expired with a guest still in the call")
+	}
+	h.connect(waiting)
+	nextHubEvent(t, waiting, "call:incoming")
+	if problem := h.leave(guest, current.id); problem != nil {
+		t.Fatalf("guest could not leave: %s", problem.code)
+	}
+	nextHubEvent(t, waiting, "call:ended")
+	if _, _, exists := h.callInfo(current.id); exists || h.invites[entry.id] != nil || h.authorizeGuest(localClient(""), token) {
+		t.Fatal("call or invite remained active after the last participant left")
 	}
 }
 
 func ringingCall(t *testing.T) (*hub, *client, *client, *call) {
 	t.Helper()
-	h := newHub(config.Config{}.ICEServers)
+	h := newHub(livekit.New(nil, "test-key", testMediaSecret))
 	caller, member := localClient(ownerID), localClient(memberID)
 	h.connect(caller)
 	h.connect(member)

@@ -10,17 +10,11 @@ import (
 var invalidInvite = &failure{"invite_invalid", "Ссылка недействительна или звонок завершён."}
 
 type invite struct {
-	id        string
-	hash      [32]byte
-	callID    string
-	authorID  string
-	expiresAt time.Time
-	maxUses   int
-	uses      int
-}
-
-func (entry *invite) usable(now time.Time) bool {
-	return now.Before(entry.expiresAt) && entry.uses < entry.maxUses
+	id       string
+	hash     [32]byte
+	callID   string
+	authorID string
+	usesLeft int
 }
 
 func (h *hub) authorizeGuest(c *client, token string) bool {
@@ -31,48 +25,50 @@ func (h *hub) authorizeGuest(c *client, token string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	entry := h.byHash[digest]
-	if entry == nil || !entry.usable(time.Now()) || h.calls[entry.callID] == nil {
+	if entry == nil || h.calls[entry.callID] == nil {
 		return false
 	}
 	c.guest, c.guestCall, c.inviteHash, c.peerID = true, entry.callID, digest, newID()
 	return true
 }
 
-func (h *hub) addInvite(callID, userID string, expiresIn, maxUses int) (invite, string, bool) {
+func (h *hub) addInvite(callID, userID string, maxUses int) (invite, string, bool) {
 	var bytes [32]byte
 	rand.Read(bytes[:])
 	token := base64.RawURLEncoding.EncodeToString(bytes[:])
 	entry := &invite{
 		id: newID(), hash: sha256.Sum256([]byte(token)), callID: callID, authorID: userID,
-		expiresAt: time.Now().Add(time.Duration(expiresIn) * time.Second).UTC(), maxUses: maxUses,
+		usesLeft: maxUses,
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.calls[callID] == nil {
+	current := h.calls[callID]
+	if current == nil {
 		return invite{}, "", false
 	}
 	h.invites[entry.id] = entry
 	h.byHash[entry.hash] = entry
+	current.waitUntil = time.Time{}
 	return *entry, token, true
 }
 
-func (h *hub) inviteDetails(id string) (chatID, authorID string) {
+func (h *hub) inviteDetails(id string) (chatID, authorID string, exists bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	entry := h.invites[id]
-	if entry != nil && entry.usable(time.Now()) {
+	if entry != nil {
 		if current := h.calls[entry.callID]; current != nil {
-			return current.chatID, entry.authorID
+			return current.chatID, entry.authorID, true
 		}
 	}
-	return "", ""
+	return "", "", false
 }
 
 func (h *hub) dropInvite(id string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	entry := h.invites[id]
-	if entry == nil || !entry.usable(time.Now()) {
+	if entry == nil {
 		return false
 	}
 	h.removeInviteLocked(entry)

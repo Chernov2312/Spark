@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -12,20 +13,23 @@ import (
 	"github.com/gorilla/websocket"
 
 	"spark/calls/internal/config"
+	"spark/calls/internal/livekit"
 	"spark/calls/internal/sparkapi"
 )
 
 const (
-	ownerID    = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa"
-	memberID   = "bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb"
-	outsiderID = "cccccccc-cccc-4ccc-cccc-cccccccccccc"
-	chatID     = "dddddddd-dddd-4ddd-dddd-dddddddddddd"
+	ownerID         = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa"
+	memberID        = "bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb"
+	outsiderID      = "cccccccc-cccc-4ccc-cccc-cccccccccccc"
+	chatID          = "dddddddd-dddd-4ddd-dddd-dddddddddddd"
+	testMediaSecret = "test-livekit-secret-not-used-in-production"
 )
 
 func TestConfiguredOrigins(t *testing.T) {
 	t.Setenv("FRONTEND_BASE_URL", "https://spark.example")
 	t.Setenv("CALLS_ALLOWED_ORIGINS", "https://test.spark.example, http://localhost:5174")
-	t.Setenv("CALLS_TURN_URLS", "")
+	t.Setenv("LIVEKIT_API_KEY", "test-key")
+	t.Setenv("LIVEKIT_API_SECRET", testMediaSecret)
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -47,6 +51,17 @@ func TestConfiguredOrigins(t *testing.T) {
 
 func testServer(t *testing.T) *httptest.Server {
 	t.Helper()
+	return testServerWithMedia(t, http.NotFoundHandler())
+}
+
+func testServerWithMedia(t *testing.T, mediaHandler http.Handler) *httptest.Server {
+	t.Helper()
+	media := httptest.NewServer(mediaHandler)
+	t.Cleanup(media.Close)
+	mediaURL, err := url.Parse(media.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
 	users := map[string]sparkapi.Person{
 		"Bearer owner":    {ID: ownerID, Username: "Владелец", Role: "owner"},
 		"Bearer member":   {ID: memberID, Username: "Участник", Role: "member"},
@@ -76,7 +91,7 @@ func testServer(t *testing.T) *httptest.Server {
 	t.Cleanup(python.Close)
 	app := newServer(config.Config{
 		PythonAPIURL: python.URL + "/api/v1", FrontendURL: "https://spark.example",
-		STUNURLs:       []string{"stun:stun.example:3478"},
+		LiveKitURL: mediaURL, LiveKitAPIKey: "test-key", LiveKitSecret: testMediaSecret,
 		AllowedOrigins: map[string]bool{"https://spark.example": true},
 	})
 	service := httptest.NewServer(app.routes())
@@ -142,8 +157,47 @@ func TestCallActionsAcceptRenewedTokensForSameUser(t *testing.T) {
 	receive(t, member, "call:accepted")
 }
 
-func TestMemberCallRelaysSignalsAndDisconnects(t *testing.T) {
-	service := testServer(t)
+func TestMemberCallAuthorizesMediaAndDisconnects(t *testing.T) {
+	type cleanupRequest struct {
+		path string
+		body map[string]string
+	}
+	cleanups := make(chan cleanupRequest, 4)
+	service := testServerWithMedia(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/rtc/validate":
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/rtc/v1":
+			upgrader := websocket.Upgrader{}
+			conn, err := upgrader.Upgrade(w, r, nil)
+			if err != nil {
+				return
+			}
+			defer func() { _ = conn.Close() }()
+			_ = conn.WriteMessage(websocket.TextMessage, []byte("livekit"))
+			_, _, _ = conn.ReadMessage()
+		case strings.HasPrefix(r.URL.Path, "/twirp/"):
+			var body map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			cleanups <- cleanupRequest{r.URL.Path, body}
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	expectCleanup := func(method string, room, identity string) {
+		t.Helper()
+		select {
+		case cleanup := <-cleanups:
+			if cleanup.path != "/twirp/livekit.RoomService/"+method ||
+				cleanup.body["room"] != room || cleanup.body["identity"] != identity {
+				t.Fatalf("unexpected media cleanup: %+v", cleanup)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatalf("missing LiveKit %s", method)
+		}
+	}
+
 	member := dial(t, service, fields{"access_token": "member"})
 	receive(t, member, "auth:ok")
 	outsider := dial(t, service, fields{"access_token": "outsider"})
@@ -151,46 +205,100 @@ func TestMemberCallRelaysSignalsAndDisconnects(t *testing.T) {
 	send(t, outsider, "call:start", fields{"chat_id": chatID, "media": "audio"})
 	receive(t, outsider, "call:error")
 
-	owner, callID := start(t, service)
+	owner := dial(t, service, fields{"access_token": "owner"})
+	receive(t, owner, "auth:ok")
+	send(t, owner, "call:start", fields{"chat_id": chatID, "media": "video"})
+	started := receive(t, owner, "call:started")
+	callID := started["call_id"].(string)
+	ownerToken := expectMediaToken(t, started, callID)
 	incoming := receive(t, member, "call:incoming")
-	if incoming["call_id"] != callID || incoming["media"] != "video" || incoming["caller_name"] != "Владелец" {
-		t.Fatalf("unexpected invite: %v", incoming)
-	}
-	send(t, outsider, "call:accept", fields{"call_id": callID})
-	receive(t, outsider, "call:error")
-	send(t, member, "call:accept", fields{"call_id": callID})
-	receive(t, member, "call:accepted")
-	if peer := receive(t, member, "call:peer_joined"); peer["peer_id"] != ownerID || peer["should_offer"] != false {
-		t.Fatalf("unexpected caller: %v", peer)
-	}
-	receive(t, owner, "call:accepted")
-	if peer := receive(t, owner, "call:peer_joined"); peer["peer_id"] != memberID || peer["should_offer"] != true {
-		t.Fatalf("unexpected participant: %v", peer)
+	if incoming["call_id"] != callID || incoming["media"] != "video" ||
+		incoming["caller_name"] != "Владелец" || incoming["media_token"] != nil {
+		t.Fatalf("unexpected incoming call: %v", incoming)
 	}
 
-	send(t, owner, "rtc:offer", fields{"call_id": callID, "target_id": memberID, "sdp": fields{"type": "offer", "sdp": "example"}})
-	if offer := receive(t, member, "rtc:offer"); offer["from_id"] != ownerID {
-		t.Fatalf("unexpected offer sender: %v", offer)
+	send(t, outsider, "call:accept", fields{"call_id": callID})
+	receive(t, outsider, "call:error")
+	checkMediaStatus(t, service, "", http.StatusUnauthorized)
+	checkMediaStatus(t, service, "invalid", http.StatusUnauthorized)
+	unacceptedToken, err := livekit.New(nil, "test-key", testMediaSecret).JoinToken(callID, memberID)
+	if err != nil {
+		t.Fatal(err)
 	}
-	send(t, member, "rtc:answer", fields{"call_id": callID, "target_id": ownerID, "sdp": fields{"type": "answer", "sdp": "example"}})
-	receive(t, owner, "rtc:answer")
-	send(t, member, "rtc:ice", fields{"call_id": callID, "target_id": ownerID, "candidate": fields{"candidate": "candidate:example"}})
-	receive(t, owner, "rtc:ice")
+	checkMediaStatus(t, service, unacceptedToken, http.StatusForbidden)
+	checkMediaStatus(t, service, ownerToken, http.StatusOK)
+
+	send(t, member, "call:accept", fields{"call_id": callID})
+	accepted := receive(t, member, "call:accepted")
+	memberToken := expectMediaToken(t, accepted, callID)
+	if peer := receive(t, member, "call:peer_joined"); peer["peer_id"] != ownerID || peer["media_identity"] != started["media_identity"] {
+		t.Fatalf("unexpected caller: %v", peer)
+	}
+	if other := receive(t, owner, "call:accepted"); other["media_token"] != nil {
+		t.Fatal("member token was disclosed to the owner")
+	}
+	if peer := receive(t, owner, "call:peer_joined"); peer["peer_id"] != memberID || peer["media_identity"] != accepted["media_identity"] {
+		t.Fatalf("unexpected participant: %v", peer)
+	}
+	checkMediaStatus(t, service, memberToken, http.StatusOK)
+
+	mediaConn, _, err := websocket.DefaultDialer.Dial(
+		"ws"+strings.TrimPrefix(service.URL, "http")+"/v1/calls/media/rtc/v1?access_token="+url.QueryEscape(memberToken), nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = mediaConn.Close() })
+	_ = mediaConn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, payload, err := mediaConn.ReadMessage(); err != nil || string(payload) != "livekit" {
+		t.Fatalf("LiveKit WebSocket upgrade was not proxied: %s, %v", payload, err)
+	}
 	if err := member.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if left := receive(t, owner, "call:peer_left"); left["peer_id"] != memberID {
 		t.Fatalf("unexpected disconnected participant: %v", left)
 	}
+	expectCleanup("RemoveParticipant", callID, accepted["media_identity"].(string))
+	checkMediaStatus(t, service, memberToken, http.StatusForbidden)
+	_ = mediaConn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, _, err := mediaConn.ReadMessage(); err == nil {
+		t.Fatal("media tunnel remained open after leaving the call")
+	} else if timeout, ok := err.(interface{ Timeout() bool }); ok && timeout.Timeout() {
+		t.Fatalf("media tunnel did not close promptly: %v", err)
+	}
 
 	send(t, owner, "call:end", fields{"call_id": callID})
 	receive(t, owner, "call:ended")
+	expectCleanup("DeleteRoom", callID, "")
+	checkMediaStatus(t, service, ownerToken, http.StatusForbidden)
 	_, nextID := start(t, service)
 	if nextID == callID {
 		t.Fatal("ended call ID was reused")
 	}
 }
 
+func expectMediaToken(t *testing.T, data fields, room string) string {
+	t.Helper()
+	token, _ := data["media_token"].(string)
+	issuedRoom, issuedIdentity, ok := livekit.New(nil, "test-key", testMediaSecret).JoinIdentity(token)
+	if !ok || issuedRoom != room || issuedIdentity != data["media_identity"] || !sparkapi.ValidID(issuedIdentity) {
+		t.Fatal("invalid media token")
+	}
+	return token
+}
+
+func checkMediaStatus(t *testing.T, service *httptest.Server, token string, expected int) {
+	t.Helper()
+	resp, err := service.Client().Get(service.URL + "/v1/calls/media/rtc/validate?access_token=" + url.QueryEscape(token))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != expected {
+		t.Fatalf("media status = %d, want %d", resp.StatusCode, expected)
+	}
+}
 func TestDeclineClearsIncomingCallOnEveryTab(t *testing.T) {
 	service := testServer(t)
 	member := dial(t, service, fields{"access_token": "member"})
@@ -222,6 +330,127 @@ func TestDeclineClearsIncomingCallOnEveryTab(t *testing.T) {
 	}
 }
 
+func TestLateChatMemberWatchesAndJoinsActiveCall(t *testing.T) {
+	service := testServer(t)
+	owner, callID := start(t, service)
+	member := dial(t, service, fields{"access_token": "member"})
+	receive(t, member, "auth:ok")
+	send(t, member, "call:watch", fields{"chat_id": chatID})
+	if status := receive(t, member, "call:status"); status["call_id"] != callID || status["participant_count"] != float64(1) {
+		t.Fatalf("unexpected active call: %v", status)
+	}
+	outsider := dial(t, service, fields{"access_token": "outsider"})
+	receive(t, outsider, "auth:ok")
+	send(t, outsider, "call:watch", fields{"chat_id": chatID})
+	if status := receive(t, outsider, "call:status"); status["call_id"] != nil {
+		t.Fatal("non-member received active call details")
+	}
+	send(t, outsider, "call:join", fields{"call_id": callID})
+	receive(t, outsider, "call:error")
+
+	join := func() fields {
+		t.Helper()
+		send(t, member, "call:join", fields{"call_id": callID})
+		accepted := receive(t, member, "call:accepted")
+		expectMediaToken(t, accepted, callID)
+		receive(t, member, "call:peer_joined")
+		receive(t, owner, "call:accepted")
+		receive(t, owner, "call:peer_joined")
+		if status := receive(t, member, "call:status"); status["participant_count"] != float64(2) {
+			t.Fatalf("watch did not report the new participant: %v", status)
+		}
+		return accepted
+	}
+	first := join()
+	send(t, member, "call:end", fields{"call_id": callID})
+	receive(t, owner, "call:peer_left")
+	receive(t, member, "call:ended")
+	receive(t, member, "call:status")
+	next := join()
+	if next["media_identity"] == first["media_identity"] {
+		t.Fatal("rejoining reused the old LiveKit session")
+	}
+	checkMediaStatus(t, service, first["media_token"].(string), http.StatusForbidden)
+	send(t, owner, "call:end", fields{"call_id": callID})
+	receive(t, owner, "call:ended")
+	receive(t, member, "call:peer_left")
+	if status := receive(t, member, "call:status"); status["call_id"] != callID || status["participant_count"] != float64(1) {
+		t.Fatalf("status lost the remaining participant: %v", status)
+	}
+	send(t, member, "call:end", fields{"call_id": callID})
+	receive(t, member, "call:ended")
+	if status := receive(t, member, "call:status"); status["call_id"] != nil {
+		t.Fatalf("status retained the ended call: %v", status)
+	}
+}
+
+func TestStandaloneCallSupportsInvitationWithoutChat(t *testing.T) {
+	service := testServerWithMedia(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	owner := dial(t, service, fields{"access_token": "owner"})
+	receive(t, owner, "auth:ok")
+	send(t, owner, "call:check", fields{})
+	if health := receive(t, owner, "call:checked"); health["media_ready"] != true {
+		t.Fatalf("healthy LiveKit failed prejoin check: %v", health)
+	}
+	send(t, owner, "call:start", fields{"media": "audio"})
+	started := receive(t, owner, "call:started")
+	callID := started["call_id"].(string)
+	ownerToken := expectMediaToken(t, started, callID)
+	if started["chat_id"] != "" {
+		t.Fatalf("standalone call has a chat: %v", started["chat_id"])
+	}
+	path := "/v1/calls/" + callID + "/invites"
+	callHTTP(t, service, http.MethodPost, path, "member", "{}", http.StatusForbidden)
+	raw := callHTTP(t, service, http.MethodPost, path, "owner", "{}", http.StatusCreated)
+	var invite fields
+	if err := json.Unmarshal([]byte(raw), &invite); err != nil {
+		t.Fatal(err)
+	}
+	if _, hasExpiry := invite["expires_at"]; hasExpiry {
+		t.Fatal("default invitation has an expiration date")
+	}
+	if _, hasLimit := invite["max_uses"]; hasLimit {
+		t.Fatal("default invitation has a usage limit")
+	}
+	_, token, _ := strings.Cut(invite["invite_url"].(string), "#invite=")
+	guest := dial(t, service, fields{"invite_token": token})
+	receive(t, guest, "auth:ok")
+	receive(t, guest, "call:incoming")
+	send(t, guest, "call:accept", fields{"call_id": callID})
+	guestToken := expectMediaToken(t, receive(t, guest, "call:accepted"), callID)
+	receive(t, guest, "call:peer_joined")
+	receive(t, owner, "call:accepted")
+	receive(t, owner, "call:peer_joined")
+
+	send(t, owner, "call:end", fields{"call_id": callID})
+	receive(t, owner, "call:ended")
+	if left := receive(t, guest, "call:peer_left"); left["peer_id"] != ownerID {
+		t.Fatalf("unexpected participant departure: %v", left)
+	}
+	checkMediaStatus(t, service, ownerToken, http.StatusForbidden)
+	checkMediaStatus(t, service, guestToken, http.StatusOK)
+
+	for range 5 {
+		newGuest := dial(t, service, fields{"invite_token": token})
+		receive(t, newGuest, "auth:ok")
+		receive(t, newGuest, "call:incoming")
+		send(t, newGuest, "call:accept", fields{"call_id": callID})
+		receive(t, newGuest, "call:accepted")
+		receive(t, newGuest, "call:peer_joined")
+		receive(t, guest, "call:accepted")
+		receive(t, guest, "call:peer_joined")
+		send(t, newGuest, "call:end", fields{"call_id": callID})
+		receive(t, newGuest, "call:ended")
+		receive(t, guest, "call:peer_left")
+	}
+
+	revoke := "/v1/calls/invites/" + invite["invite_id"].(string)
+	callHTTP(t, service, http.MethodDelete, revoke, "member", "", http.StatusForbidden)
+	callHTTP(t, service, http.MethodDelete, revoke, "owner", "", http.StatusNoContent)
+}
+
 func TestSocketRejectsInvalidAuthenticationAndSignalling(t *testing.T) {
 	service := testServer(t)
 	for _, tt := range []struct {
@@ -240,17 +469,9 @@ func TestSocketRejectsInvalidAuthenticationAndSignalling(t *testing.T) {
 		})
 	}
 	caller, callID := start(t, service)
-	send(t, caller, "rtc:offer", fields{"call_id": callID, "target_id": memberID, "sdp": fields{"type": "answer", "sdp": "example"}})
-	if problem := receive(t, caller, "call:error"); problem["code"] != "invalid_signal" {
-		t.Fatalf("accepted the wrong SDP type: %v", problem)
-	}
-	send(t, caller, "rtc:ice", fields{"call_id": callID, "target_id": memberID, "candidate": fields{}})
-	if problem := receive(t, caller, "call:error"); problem["code"] != "invalid_signal" {
-		t.Fatalf("accepted an empty ICE candidate: %v", problem)
-	}
-	send(t, caller, "rtc:offer", fields{"call_id": callID, "target_id": outsiderID, "sdp": fields{"type": "offer", "sdp": "example"}})
-	if problem := receive(t, caller, "call:error"); problem["code"] != "forbidden" {
-		t.Fatalf("relayed SDP outside the call: %v", problem)
+	send(t, caller, "rtc:offer", fields{"call_id": callID})
+	if problem := receive(t, caller, "call:error"); problem["code"] != "unsupported_event" {
+		t.Fatalf("legacy WebRTC signaling was accepted: %v", problem)
 	}
 }
 
@@ -319,7 +540,10 @@ func callHTTP(t *testing.T, service *httptest.Server, method, path, token, body 
 
 func TestGuestInviteAccessLimitsAndRevocation(t *testing.T) {
 	service := testServer(t)
-	owner, callID := start(t, service)
+	owner := dial(t, service, fields{"access_token": "owner"})
+	receive(t, owner, "auth:ok")
+	send(t, owner, "call:start", fields{"chat_id": chatID, "media": "audio"})
+	callID := receive(t, owner, "call:started")["call_id"].(string)
 	path := "/v1/calls/" + callID + "/invites"
 	callHTTP(t, service, "POST", path, "outsider", "{}", http.StatusForbidden)
 	callHTTP(t, service, "POST", path, "member", "{}", http.StatusForbidden)
@@ -367,11 +591,26 @@ func TestGuestInviteAccessLimitsAndRevocation(t *testing.T) {
 	receive(t, second, "auth:ok")
 	receive(t, second, "call:incoming")
 
-	send(t, guest, "call:accept", fields{"call_id": callID})
-	receive(t, guest, "call:accepted")
-	receive(t, guest, "call:peer_joined")
-	receive(t, owner, "call:accepted")
-	if peer := receive(t, owner, "call:peer_joined"); peer["participant_type"] != "guest" || peer["display_name"] != "Гость 1" {
+	for _, name := range []string{strings.Repeat("я", guestNameMaxLength+1), "Гость\x00Имя"} {
+		send(t, guest, "call:accept", fields{"call_id": callID, "display_name": name})
+		if problem := receive(t, guest, "call:error"); problem["code"] != "invalid_guest_name" {
+			t.Fatalf("accepted an invalid guest name: %v", problem)
+		}
+	}
+	send(t, guest, "call:accept", fields{"call_id": callID, "display_name": "  Мира 🌿  "})
+	accepted := receive(t, guest, "call:accepted")
+	guestToken := expectMediaToken(t, accepted, callID)
+	if accepted["peer_id"] != auth["peer_id"] {
+		t.Fatal("guest peer ID changed upon joining")
+	}
+	checkMediaStatus(t, service, guestToken, http.StatusNotFound)
+	if peer := receive(t, guest, "call:peer_joined"); peer["peer_id"] != ownerID {
+		t.Fatalf("unexpected owner: %v", peer)
+	}
+	if other := receive(t, owner, "call:accepted"); other["media_token"] != nil {
+		t.Fatal("guest token was disclosed to the owner")
+	}
+	if peer := receive(t, owner, "call:peer_joined"); peer["participant_type"] != "guest" || peer["display_name"] != "Мира 🌿" {
 		t.Fatalf("unexpected guest: %v", peer)
 	}
 	send(t, second, "call:accept", fields{"call_id": callID})
@@ -380,6 +619,16 @@ func TestGuestInviteAccessLimitsAndRevocation(t *testing.T) {
 	}
 	send(t, guest, "call:end", fields{"call_id": callID})
 	receive(t, owner, "call:peer_left")
+	_, newToken := makeInvite()
+	unnamed := dial(t, service, fields{"invite_token": newToken})
+	receive(t, unnamed, "auth:ok")
+	receive(t, unnamed, "call:incoming")
+	send(t, unnamed, "call:accept", fields{"call_id": callID, "display_name": "  "})
+	receive(t, unnamed, "call:accepted")
+	receive(t, owner, "call:accepted")
+	if peer := receive(t, owner, "call:peer_joined"); peer["display_name"] != "Гость 2" {
+		t.Fatalf("unexpected default guest name: %v", peer)
+	}
 	send(t, owner, "call:end", fields{"call_id": callID})
 	receive(t, owner, "call:ended")
 }

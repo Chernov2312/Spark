@@ -17,7 +17,7 @@ Spark — веб-мессенджер с REST API и WebSocket-соединен�
 ## Требования
 
 - Docker и Docker Compose. На Windows и macOS можно использовать Docker Desktop.
-- Профиль `dev` запускает Ollama в Docker. Значение `OPENAI_API_KEY=ollama` служит заглушкой для SDK. Для `prod` нужен доступ к OpenAI-совместимому API.
+- Для локальной Ollama можно отдельно запустить профиль `local-ai`. Для production задайте адрес, модель и ключ OpenAI-совместимого API.
 - Backend image использует Python 3.13 и FFmpeg для подготовки аудио к Whisper.
 
 ## Запуск через Docker Compose
@@ -46,7 +46,7 @@ Spark — веб-мессенджер с REST API и WebSocket-соединен�
    docker compose --profile dev up --build
    ```
 
-   Compose запускает PostgreSQL, Redis, FastAPI, Celery, сервис звонков и frontend. Backend применяет миграции Alembic. Повторите команду с `--build` после изменений `backend/requirements/prod.txt`, чтобы установить новые зависимости в образы FastAPI и Celery.
+   Compose запускает PostgreSQL, Redis, FastAPI, Celery, сервис звонков, LiveKit и frontend. Для запуска задайте ключ и секрет LiveKit в `.env`. Backend применяет миграции Alembic. Повторите команду с `--build` после изменений `backend/requirements/prod.txt`, чтобы установить новые зависимости в образы FastAPI и Celery.
 
    После обновления с refresh-сессиями перезапустите backend для применения миграции и пересоберите сервис звонков. Следующий вход создаст refresh-сессию сроком `REFRESH_TOKEN_EXPIRE_DAYS` дней. Для браузерной авторизации укажите фактический адрес фронтенда в `FRONTEND_BASE_URL`.
 
@@ -80,7 +80,7 @@ Spark — веб-мессенджер с REST API и WebSocket-соединен�
 
 ### Запуск на сервере с HTTPS
 
-На сервере нужен Docker Compose 2.24.4 или новее для объединения `docker-compose.yml` и `docker-compose.prod.yml`. Создайте `.env` из `.env.example` для новой установки или отредактируйте действующий файл. Для CD укажите те же настройки в секрете `ENV_SECRET`.
+На сервере запустите самостоятельный файл `docker-compose.prod.yml`. Создайте `.env` из `.env.example` для новой установки или отредактируйте действующий файл. Для CD укажите те же настройки в секрете `ENV_SECRET`.
 
 ```dotenv
 API_BASE_URL=/api/v1
@@ -98,26 +98,26 @@ OPENAI_API_KEY=example-provider-api-key
 
 Для Gemini укажите `OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/`, `OPENAI_MODEL=gemini-3.1-flash-lite` и ключ Gemini в `OPENAI_API_KEY`.
 
-DNS-запись домена должна указывать на публичный IP сервера. Nginx на хосте принимает HTTPS на `443`, использует сертификат для `sparkwork.dpdns.org` и проксирует запросы на `http://127.0.0.1:81`. В этом виртуальном хосте передавайте `Host`, `Upgrade` и `Connection` для WebSocket. Контейнерный Nginx направляет REST и WebSocket чата в FastAPI, маршруты `/v1/calls/` — в Go, а запросы страниц — во frontend. В профиле `prod` Vite собирает `dist/` при создании образа. Nginx внутри frontend отдаёт готовые файлы и возвращает `index.html` для маршрутов React. FastAPI запускается без автоматической перезагрузки. Для обновления адресов контейнеров через DNS используется `resolve`, доступный в Nginx 1.27.3 и новее.
+DNS-запись домена должна указывать на публичный IP сервера. Nginx на хосте принимает HTTPS на `443`, использует сертификат для `sparkwork.dpdns.org` и проксирует запросы на `http://127.0.0.1:81`. В этом виртуальном хосте передавайте `Host`, `Upgrade` и `Connection` для WebSocket. Контейнерный Nginx направляет REST и WebSocket чата в FastAPI, маршруты `/v1/calls/` — в Go, а запросы страниц — во frontend. Vite собирает `dist/` при создании production-образа. Nginx внутри frontend отдаёт готовые файлы и возвращает `index.html` для маршрутов React. FastAPI запускается без автоматической перезагрузки. Для обновления адресов контейнеров через DNS используется `resolve`, доступный в Nginx 1.27.3 и новее.
 
 Продовый Compose публикует только Nginx на `127.0.0.1:81`. Для HTTPS нужен входящий `443`, а для перенаправления с HTTP и проверки Certbot через HTTP-01 — `80` хостового Nginx.
+
+При push в `master` GitHub Actions запускает Go CI, Ruff, тесты и сборку образа backend, а также TypeScript CI. Автоматический деплой начинается, когда все четыре workflow успешно завершаются для одного коммита.
 
 Из каталога проекта на сервере выполните команды запуска и проверки.
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile prod config --quiet
-docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile prod up --build --wait
-docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile prod exec nginx nginx -t
+docker compose -f docker-compose.prod.yml config --quiet
+docker compose -f docker-compose.prod.yml up --build --wait
+docker compose -f docker-compose.prod.yml exec nginx nginx -t
 curl -I -H 'Host: sparkwork.dpdns.org' http://127.0.0.1:81/
 curl -I https://sparkwork.dpdns.org/
 ```
 
-При переходе со старого продового запуска после старта нового стека остановите контейнеры Ollama командой `docker compose stop ollama-model ollama`. CD останавливает эти сервисы после успешного запуска.
-
 Продовые сервисы пишут в stdout и stderr. Драйвер Docker `local` ротирует журналы с лимитом в пять файлов по 20 МБ на контейнер. Посмотреть последние записи backend, воркера и PostgreSQL можно из каталога проекта.
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile prod logs --tail 100 backend celery postgres
+docker compose -f docker-compose.prod.yml logs --tail 100 backend celery postgres
 ```
 
 ### Настройка почты
@@ -168,7 +168,7 @@ docker compose --profile dev run --rm --no-deps backend python cleardb.py
 
 Папка `./whisper-cache` подключена к backend и Celery worker как `/home/appuser/.cache/whisper`. Whisper скачивает модель при первом запросе на распознавание; последующие запуски используют тот же файл модели. Папка исключена из Git.
 
-В профилях `dev` и `prod` контейнер воркера `celery` ограничен `cpus: 0.5`. Whisper и остальные задачи этого воркера делят лимит в 50% одного логического ядра, поэтому распознавание может занять больше времени. [Лимиты CPU в Docker](https://docs.docker.com/engine/containers/resource_constraints/#cpu)
+В локальной и production-конфигурациях контейнер воркера `celery` ограничен `cpus: 0.5`. Whisper и остальные задачи этого воркера делят лимит в 50% одного логического ядра, поэтому распознавание может занять больше времени. [Лимиты CPU в Docker](https://docs.docker.com/engine/containers/resource_constraints/#cpu)
 
 ## API и WebSocket
 
@@ -188,11 +188,15 @@ docker compose --profile dev run --rm --no-deps backend python cleardb.py
 
 ## Звонки
 
-Сервис `calls` включён в профили `dev` и `prod` Docker Compose. В dev Vite направляет `/v1/calls/*` в Go. В prod его обслуживает Nginx. Для standalone-запуска с Go 1.25 выполните `go run .` из `calls/`. По умолчанию сервис слушает порт 8002 и обращается к Python по `http://127.0.0.1:8001/api/v1`. Для standalone-фронтенда задайте `VITE_CALLS_WS_URL=ws://localhost:8002/v1/calls/ws` и укажите фактический origin фронтенда в `FRONTEND_BASE_URL` у Go-сервиса. Дополнительные origins принимает `CALLS_ALLOWED_ORIGINS` через запятую.
+Профиль `dev` и самостоятельный `docker-compose.prod.yml` включают Go-сервис `calls` и LiveKit. Vite в dev и Nginx в prod направляют `/v1/calls/*` в Go. Браузеры устанавливают медиасоединения с LiveKit.
 
-Откройте чат и нажмите «Начать звонок». Приглашённые участники должны быть подключены к Spark. Владелец или модератор чата может создать гостевую ссылку в панели открытого звонка.
+Откройте чат и нажмите «Начать звонок» или выберите «Звонки» в верхней панели для звонка по ссылке без чата. Перед входом можно проверить доступность медиасервера, микрофон, камеру и воспроизведение звука. Участники чата могут зайти в уже идущий звонок через плашку под заголовком. В чатах гостевые ссылки создают владелец и модераторы, а для отдельного звонка ссылкой управляет инициатор. Ссылка, созданная в интерфейсе, работает до выхода последнего участника или ручного отзыва.
 
-Для сетей, где WebRTC-соединение требует ретранслятора, задайте `CALLS_TURN_URLS` и `CALLS_TURN_SECRET`. Go выдаёт временные учётные данные, совместимые с coturn в режиме `use-auth-secret`. Вне `localhost` браузер запрашивает доступ к микрофону и камере в HTTPS-контексте. Состояние активных звонков хранится в памяти одного Go-процесса. [API звонков](api.md#9-звонки-взаимодействие-go--и-python-сервисов) · [TURN REST API в coturn](https://github.com/coturn/coturn/wiki/turnserver)
+Задайте `LIVEKIT_API_KEY` и случайный `LIVEKIT_API_SECRET` длиной от 32 байт в `.env`. Для Docker Desktop укажите локальный IPv4 компьютера в `LIVEKIT_NODE_IP`. В dev медиапорты публикуются на этом адресе и по умолчанию используют `127.0.0.1`. При проблемах с UDP в Docker Desktop задайте `LIVEKIT_DEV_CONFIG=./livekit.dev-tcp.yaml` для ICE/TCP на порту 7881. В prod укажите публичный IP сервера в `LIVEKIT_NODE_IP`, в том числе в `ENV_SECRET` при выкладке через GitHub Actions.
+
+На сервере разрешите входящие соединения на `7882/udp` для WebRTC, `7881/tcp` для резервного ICE/TCP и `3478/udp` для встроенного TURN. HTTP-порт LiveKit `7880` остаётся внутри Compose. Браузер подключается к сигналингу через HTTPS/WSS основного домена. Если внешний HTTPS-прокси журналирует запросы, исключите параметры URL маршрута `/v1/calls/media/` из его журналов. Для сетей, допускающих только исходящий TLS, настройте TURN/TLS по документации LiveKit. [Порты LiveKit](https://docs.livekit.io/transport/self-hosting/ports-firewall/) · [Развёртывание LiveKit](https://docs.livekit.io/transport/self-hosting/deployment/)
+
+Для standalone-запуска укажите ключ, секрет и адрес `LIVEKIT_INTERNAL_URL` (по умолчанию `http://127.0.0.1:7880`) в окружении Go и выполните `go run .` из `calls/`. Go слушает порт 8002 и по умолчанию обращается к Python на `http://127.0.0.1:8001/api/v1`. Для standalone-фронтенда задайте `VITE_CALLS_WS_URL=ws://localhost:8002/v1/calls/ws` и фактический origin в `FRONTEND_BASE_URL` у Go-сервиса. Дополнительные origins принимает `CALLS_ALLOWED_ORIGINS` через запятую. [API звонков](api.md#9-звонки-взаимодействие-go-python-и-livekit)
 
 ## Разработка и проверки
 
@@ -200,7 +204,7 @@ docker compose --profile dev run --rm --no-deps backend python cleardb.py
 
 Образы backend, frontend и сервиса звонков запускают приложение с UID и GID `65532:65532`. На Linux предоставьте этому UID запись в примонтированные `logs/` и `whisper-cache/`.
 
-Точка входа — `calls/main.go`. Пакет `internal/config` читает настройки окружения и формирует параметры STUN/TURN. Клиент FastAPI в `internal/sparkapi` получает профиль пользователя и состав чата. В `internal/signaling` находятся маршруты HTTP, обработчики WebSocket и состояние активных звонков и приглашений. Тесты каждого пакета лежат рядом с его кодом.
+Точка входа — `calls/main.go`. Пакет `internal/config` читает настройки окружения, а `internal/livekit` выпускает медиатокены и обращается к RoomService. Клиент FastAPI в `internal/sparkapi` получает профиль пользователя и состав чата. В `internal/signaling` находятся маршруты HTTP, обработчики WebSocket и состояние активных звонков и приглашений. Тесты каждого пакета лежат рядом с его кодом.
 
 Из каталога `calls/` запустите `go test -cover ./...` и `golangci-lint run` (версия `2.11.3`). GitHub Actions также запускает тесты с детектором гонок, требует покрытие инструкций от 85% и прикладывает отчёт `go-coverage` к запуску. Для тестов Go не нужны запущенные FastAPI и Docker.
 

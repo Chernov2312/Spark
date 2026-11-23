@@ -1,23 +1,41 @@
 name: deploy
 on:
-  workflow_run:
-    workflows: ["Backend tests"]
+  push:
     branches: [master]
-    types:
-      - completed
+
+permissions:
+  contents: read
+
 jobs:
+  go_ci:
+    uses: ./.github/workflows/ci_go.yml
+
+  lint_test:
+    uses: ./.github/workflows/ci_linter_test.yml
+
+  backend_tests:
+    uses: ./.github/workflows/ci_python_test.yml
+    permissions:
+      contents: read
+      packages: write
+
+  typescript_ci:
+    uses: ./.github/workflows/ci_typescript.yml
+
   deploy:
+    needs: [go_ci, lint_test, backend_tests, typescript_ci]
     runs-on: ubuntu-latest
     environment: .env
-    if: ${{ github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success' }}
+    env:
+      DEPLOY_SHA: ${{ github.sha }}
     steps:
       - name: Remote deploy script
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{secrets.HOST}}
           username: ${{secrets.HOST_USERNAME}}
           key: ${{secrets.SSH_PRIVATE_KEY}}
-          key_path: ""
+          envs: DEPLOY_SHA
           command_timeout: 30m
           script: |
             set -eu
@@ -25,12 +43,17 @@ jobs:
               git clone git@github.com:Chernov2312/Spark.git
             fi
             cd Spark
-            git pull origin master
+            git fetch origin master
+            CURRENT_SHA=$(git rev-parse origin/master)
+            if [ "$CURRENT_SHA" != "$DEPLOY_SHA" ]; then
+              exit 0
+            fi
+            git merge --ff-only "$DEPLOY_SHA"
+            test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"
             umask 077
             cat << 'EOF' > .env
               ${{ secrets.ENV_SECRET }}
             EOF
             chmod 600 .env
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile prod up --build --wait
-            docker compose --profile dev stop ollama-model ollama
+            docker compose -f docker-compose.prod.yml up --build --wait
 
