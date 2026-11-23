@@ -8,6 +8,7 @@ import ProfilePage from "./pages/ProfilePage";
 import FaqPage from "./pages/FaqPage";
 import ChatsPage from "./pages/ChatsPage";
 import GuestCallPage from "./pages/GuestCallPage";
+import SettingsPage from "./pages/SettingsPage";
 import EmailVerificationPage from "./pages/EmailVerificationPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
@@ -65,6 +66,14 @@ export default function App() {
           element={
             <PrivateRoute>
               <ProfilePage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <PrivateRoute>
+              <SettingsPage />
             </PrivateRoute>
           }
         />

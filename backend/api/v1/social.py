@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags
@@ -219,6 +219,25 @@ async def set_friend_category(
     if not category_updated:
         raise HTTPException(status_code=404, detail="Category not found")
     return SocialStatusResponse(status="success")
+
+
+@social_router.delete("/friends/{friend_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_friendship(
+    friend_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user_id: uuid.UUID = Depends(get_id_current_user),
+) -> Response:
+    user_low_id, user_high_id = sorted((current_user_id, friend_id), key=str)
+    friendship = await SocialDao.get_friendship(
+        session,
+        user_low_id,
+        user_high_id,
+        status="accepted",
+    )
+    if friendship is None:
+        raise HTTPException(status_code=404, detail="Friend not found")
+    await SocialDao.delete_friendship(session, friendship.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @social_router.get("/chat-folders")

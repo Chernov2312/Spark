@@ -720,6 +720,11 @@ export default function ChatsPage() {
   const [membersLoading, setMembersLoading] = useState(false);
   const [membersError, setMembersError] = useState("");
   const [membersReload, reloadMembers] = useReducer((value) => value + 1, 0);
+  const [memberSearchQuery, setMemberSearchQuery] = useState("");
+  const [memberSearchResults, setMemberSearchResults] = useState([]);
+  const [memberSearchLoading, setMemberSearchLoading] = useState(false);
+  const [memberSearchError, setMemberSearchError] = useState("");
+  const [addingMemberId, setAddingMemberId] = useState(null);
   const [profileMemberId, setProfileMemberId] = useState(null);
   const closeMemberProfile = useCallback(() => setProfileMemberId(null), []);
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -831,7 +836,9 @@ export default function ChatsPage() {
   useEffect(() => {
     if (!chatId) return;
     try {
-      setChatPrefs({ color: "", background: "", muted: false, sound: true, shareReads: true, sharePresence: true, ...JSON.parse(localStorage.getItem(`chat-prefs:${chatId}`) || "{}") });
+      const defaults = JSON.parse(localStorage.getItem("spark-chat-defaults") || "{}");
+      const saved = JSON.parse(localStorage.getItem(`chat-prefs:${chatId}`) || "{}");
+      setChatPrefs({ color: "", background: "", muted: false, sound: true, shareReads: true, sharePresence: true, ...defaults, ...saved });
     } catch { setChatPrefs({ color: "", background: "", muted: false, sound: true, shareReads: true, sharePresence: true }); }
     setChatPrefsChatId(chatId);
   }, [chatId]);
@@ -912,6 +919,62 @@ export default function ChatsPage() {
       clearTimeout(timeoutId);
     };
   }, [usernameQuery, selectedUsers, me?.id]);
+
+  useEffect(() => {
+    const query = memberSearchQuery.trim();
+    if (query.length < 2) {
+      setMemberSearchResults([]);
+      setMemberSearchError("");
+      setMemberSearchLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timeoutId = setTimeout(async () => {
+      setMemberSearchLoading(true);
+      setMemberSearchError("");
+      try {
+        const users = await chatsApi.searchUsersByUsername(query);
+        if (!cancelled) {
+          const currentMemberIds = new Set(chatMembers.map((member) => member.id));
+          setMemberSearchResults(users.filter((user) =>
+            user.id !== me?.id && !currentMemberIds.has(user.id),
+          ));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setMemberSearchError(
+            error.response?.data?.detail || "Не удалось найти пользователей",
+          );
+        }
+      } finally {
+        if (!cancelled) setMemberSearchLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [memberSearchQuery, chatMembers, me?.id]);
+
+  const handleAddChatMember = async (user) => {
+    if (!chatId || addingMemberId) return;
+    setAddingMemberId(user.id);
+    setMemberSearchError("");
+    try {
+      await chatsApi.addUsersToChat(chatId, [user.id]);
+      setMemberSearchQuery("");
+      setMemberSearchResults([]);
+      reloadMembers();
+    } catch (error) {
+      setMemberSearchError(
+        error.response?.data?.detail || "Не удалось добавить пользователя в чат",
+      );
+    } finally {
+      setAddingMemberId(null);
+    }
+  };
 
   /* ---------- 1. Загрузка чатов ---------- */
   useEffect(() => {
@@ -2111,6 +2174,39 @@ export default function ChatsPage() {
                   <ChatPreferences key={chatId} chatId={chatId} userId={me?.id} preferences={chatPrefs} onChange={setChatPrefs} />
                   <section className="chat-members" aria-label="Участники чата" aria-busy={membersLoading}>
                     <h3>Участники</h3>
+                    {activeChat.owner_id === me?.id && (
+                      <div className="chat-members__add">
+                        <label className="vk-field">
+                          <span className="vk-field__label">Добавить пользователя по username</span>
+                          <input
+                            type="search"
+                            value={memberSearchQuery}
+                            onChange={(event) => setMemberSearchQuery(event.target.value)}
+                            placeholder="Введите минимум 2 символа"
+                            autoComplete="off"
+                          />
+                        </label>
+                        {memberSearchLoading && <p className="chat-members__hint" role="status">Поиск пользователей…</p>}
+                        {memberSearchError && <p className="chat-members__error" role="alert">{memberSearchError}</p>}
+                        {memberSearchResults.length > 0 && (
+                          <ul className="chat-user-search-results">
+                            {memberSearchResults.map((user) => (
+                              <li key={user.id}>
+                                <span>{user.username} <small>@{user.tag}</small></span>
+                                <button
+                                  type="button"
+                                  className="vk-btn"
+                                  disabled={Boolean(addingMemberId)}
+                                  onClick={() => handleAddChatMember(user)}
+                                >
+                                  {addingMemberId === user.id ? "Добавление…" : "Добавить"}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
                     {membersLoading && <p className="chat-members__hint" role="status">Загрузка участников…</p>}
                     {membersError && (
                       <div className="chat-members__error" role="alert">

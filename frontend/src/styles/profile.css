@@ -628,3 +628,14 @@
     font-size: 12px;
   }
 }
+.profile-friends__list { display: grid; gap: 10px; padding: 0; margin: 0; list-style: none; }
+.profile-friends__item { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-elevated); }
+.profile-friends__avatar { display: grid; place-items: center; width: 42px; height: 42px; flex: 0 0 42px; border-radius: 50%; background: var(--spark-dim); color: var(--spark-text); font-size: 16px; font-weight: 700; }
+.profile-friends__identity { display: grid; flex: 1; gap: 4px; min-width: 0; }
+.profile-friends__identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-friends__identity small { color: var(--text-muted); }
+.profile-friends__remove { flex: 0 0 auto; }
+@media (max-width: 520px) {
+  .profile-friends__item { flex-wrap: wrap; }
+  .profile-friends__remove { width: 100%; }
+}
