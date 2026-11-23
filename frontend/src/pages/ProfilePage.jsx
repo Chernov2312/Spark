@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { users } from "../api";
+import { social, users } from "../api";
 import { getAvatarImageError } from "../api/imageUpload";
 
 const TABS = [
@@ -14,6 +14,8 @@ const DEMO_USER = {
   username: "chel",
   tag: "chel",
   email: "john@example.com",
+  bio: "",
+  birth_date: null,
   avatar_url: null,
   created_at: "2026-10-03T09:21:00Z",
 };
@@ -24,6 +26,8 @@ export default function ProfilePage({ demo = false }) {
     username: demo ? DEMO_USER.username : "",
     tag: demo ? DEMO_USER.tag || "" : "",
     email: demo ? DEMO_USER.email : "",
+    bio: demo ? DEMO_USER.bio : "",
+    birth_date: demo ? "" : "",
   }));
   const [loading, setLoading] = useState(!demo);
   const [saving, setSaving] = useState(false);
@@ -35,6 +39,9 @@ export default function ProfilePage({ demo = false }) {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [confirmDeleteIndex, setConfirmDeleteIndex] = useState(null);
   const [activeAvatarIndex, setActiveAvatarIndex] = useState(0);
+  const [friends, setFriends] = useState([]);
+  const [friendsLoading, setFriendsLoading] = useState(!demo);
+  const [friendActionId, setFriendActionId] = useState(null);
 
   const fileInputRef = useRef(null);
 
@@ -46,12 +53,22 @@ export default function ProfilePage({ demo = false }) {
       .then((data) => {
         setMe(data); // данные уже нормализованы в users.js
         setActiveAvatarIndex(Math.max(0, (data.avatars?.length ?? 1) - 1));
-        setForm({ username: data.username || "", tag: data.tag || "", email: data.email || "" });
+        setForm({ username: data.username || "", tag: data.tag || "", email: data.email || "", bio: data.bio || "", birth_date: data.birth_date || "" });
       })
       .catch((e) =>
         setError(e.response?.data?.detail || "Не удалось загрузить профиль"),
       )
       .finally(() => setLoading(false));
+  }, [demo]);
+
+  useEffect(() => {
+    if (demo) return;
+    let cancelled = false;
+    social.listFriends()
+      .then((data) => { if (!cancelled) setFriends(data.friends); })
+      .catch(() => { if (!cancelled) setError("Не удалось загрузить список друзей"); })
+      .finally(() => { if (!cancelled) setFriendsLoading(false); });
+    return () => { cancelled = true; };
   }, [demo]);
 
   const update = (field) => (e) =>
@@ -67,6 +84,8 @@ export default function ProfilePage({ demo = false }) {
       patch.username = form.username.trim();
     if (form.tag && form.tag !== me.tag) patch.tag = form.tag.trim();
     if (form.email && form.email !== me.email) patch.email = form.email.trim();
+    if (form.bio !== (me.bio || "")) patch.bio = form.bio.trim() || null;
+    if (form.birth_date !== (me.birth_date || "")) patch.birth_date = form.birth_date || null;
 
     if (Object.keys(patch).length === 0) {
       setSuccess("Нет изменений");
@@ -100,9 +119,23 @@ export default function ProfilePage({ demo = false }) {
   };
 
   const handleCancelEdit = () => {
-    setForm({ username: me.username || "", tag: me.tag || "", email: me.email || "" });
+    setForm({ username: me.username || "", tag: me.tag || "", email: me.email || "", bio: me.bio || "", birth_date: me.birth_date || "" });
     setEditMode(false);
     setError(null);
+  };
+
+  const handleRemoveFriend = async (friend) => {
+    if (!window.confirm(`Удалить ${friend.username} из друзей?`)) return;
+    setError(null);
+    setFriendActionId(friend.id);
+    try {
+      await social.removeFriend(friend.id);
+      setFriends((current) => current.filter((item) => item.id !== friend.id));
+    } catch (err) {
+      setError(err.response?.data?.detail || "Не удалось удалить друга");
+    } finally {
+      setFriendActionId(null);
+    }
   };
 
   const pickAvatar = () => fileInputRef.current?.click();
@@ -417,6 +450,14 @@ export default function ProfilePage({ demo = false }) {
                     <span className="vk-info-row__value">{me.email}</span>
                   </li>
                   <li className="vk-info-row">
+                    <span className="vk-info-row__label">О себе</span>
+                    <span className="vk-info-row__value">{me.bio || "Не указано"}</span>
+                  </li>
+                  <li className="vk-info-row">
+                    <span className="vk-info-row__label">Дата рождения</span>
+                    <span className="vk-info-row__value">{me.birth_date ? new Date(`${me.birth_date}T00:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" }) : "Дата рождения не установлена"}</span>
+                  </li>
+                  <li className="vk-info-row">
                     <span className="vk-info-row__label">Тег пользователя</span>
                     <span className="vk-info-row__value">@{me.tag}</span>
                   </li>
@@ -462,15 +503,34 @@ export default function ProfilePage({ demo = false }) {
                       autoComplete="email"
                     />
                   </label>
+                  <label className="vk-field">
+                    <span className="vk-field__label">О себе</span>
+                    <textarea value={form.bio} onChange={update("bio")} maxLength={500} rows={4} placeholder="Расскажите немного о себе" />
+                  </label>
+                  <label className="vk-field">
+                    <span className="vk-field__label">Дата рождения</span>
+                    <input type="date" value={form.birth_date} onChange={update("birth_date")} />
+                  </label>
                 </form>
               )}
             </>
           )}
 
           {tab === "friends" && (
-            <p className="vk-empty">
-              Пока никого нет — пригласите друзей в Spark.
-            </p>
+            <section className="profile-friends" aria-label="Друзья пользователя">
+              {error && <p className="register-card__error" role="alert">{error}</p>}
+              {friendsLoading ? <p className="vk-empty">Загрузка друзей…</p> : friends.length ? (
+                <ul className="profile-friends__list">
+                  {friends.map((friend) => <li className="profile-friends__item" key={friend.id}>
+                    <span className="profile-friends__avatar" aria-hidden="true">{friend.username?.[0]?.toUpperCase() || "?"}</span>
+                    <span className="profile-friends__identity"><strong>{friend.username}</strong><small>@{friend.tag}</small></span>
+                    {!demo && <button type="button" className="vk-btn profile-friends__remove" disabled={friendActionId === friend.id} onClick={() => handleRemoveFriend(friend)}>
+                      {friendActionId === friend.id ? "Удаление…" : "Удалить из друзей"}
+                    </button>}
+                  </li>)}
+                </ul>
+              ) : <p className="vk-empty">Пока нет друзей — найдите человека в разделе чатов.</p>}
+            </section>
           )}
 
           {tab === "photos" && (

@@ -41,6 +41,10 @@ async def _profile_response(user: User | None) -> UserRead:
         username=user.username,
         tag=user.tag,
         email=user.email,
+        bio=user.bio,
+        birth_date=user.birth_date,
+        profile_visibility=user.profile_visibility,
+        profile_exceptions=user.profile_exceptions,
         avatar_urls=avatar_urls,
         created_at=user.created_at,
     )
@@ -72,6 +76,24 @@ async def update_me(
         existing_tag = await UserDao.get_by_tag(session, update_data["tag"])
         if existing_tag is not None and existing_tag.id != current_user_id:
             raise HTTPException(status_code=409, detail="This tag is already taken")
+    if "profile_exceptions" in update_data:
+        normalized_exceptions: dict[str, list[str]] = {}
+        for field, tags in update_data["profile_exceptions"].items():
+            normalized_tags = list(dict.fromkeys(normalize_user_tag(tag) for tag in tags))
+            for tag in normalized_tags:
+                target = await UserDao.get_by_tag(session, tag)
+                if target is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"User tag not found: @{tag}",
+                    )
+                if target.id == current_user_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                        detail="You cannot add yourself to profile exceptions",
+                    )
+            normalized_exceptions[field] = normalized_tags
+        update_data["profile_exceptions"] = normalized_exceptions
     user = await UserDao.update_by_id(
         session=session,
         target_id=current_user_id,

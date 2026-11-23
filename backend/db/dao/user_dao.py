@@ -136,7 +136,12 @@ class UserDao(BaseDao[User]):
         target_id: uuid.UUID,
         data: dict[str, object],
     ) -> User | None:
-        update_data = {k: v for k, v in data.items() if k != "id" and v is not None}
+        nullable_fields = {"bio", "birth_date"}
+        update_data = {
+            k: v
+            for k, v in data.items()
+            if k != "id" and (v is not None or k in nullable_fields)
+        }
         if update_data:
             stmt = (
                 update(cls.model)

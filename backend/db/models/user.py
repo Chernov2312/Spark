@@ -1,4 +1,7 @@
-from sqlalchemy import Boolean, Column, false, ForeignKey, String, Table, text
+from datetime import date
+
+from sqlalchemy import Boolean, Column, Date, false, ForeignKey, String, Table, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -45,6 +48,27 @@ class User(Base):
         String(100),
         nullable=False,
         unique=True,
+    )
+    bio: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    profile_visibility: Mapped[dict[str, str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=lambda: {
+            "avatar": "everyone",
+            "bio": "everyone",
+            "birth_date": "everyone",
+        },
+        server_default=text(
+            "'{\"avatar\": \"everyone\", \"bio\": \"everyone\", "
+            "\"birth_date\": \"everyone\"}'::jsonb"
+        ),
+    )
+    profile_exceptions: Mapped[dict[str, list[str]]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
     )
     chats: Mapped[list["Chat"]] = relationship(
         "Chat",

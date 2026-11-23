@@ -69,6 +69,8 @@ export default function ChatMemberProfile({ member, chatTitle, isMe, online, onC
           </div>
           <dl className="member-profile__info">
             <div><dt>В чате</dt><dd>{chatTitle}</dd></div>
+            {member.bio && <div><dt>О себе</dt><dd>{member.bio}</dd></div>}
+            {member.birth_date && <div><dt>Дата рождения</dt><dd>{new Date(`${member.birth_date}T00:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}</dd></div>}
             {member.created_at && <div><dt>В Spark с</dt><dd>{new Date(member.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}</dd></div>}
           </dl>
           {photos.length > 1 && <div className="member-profile__photos" aria-label="Фотографии профиля">
