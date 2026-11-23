@@ -59,8 +59,8 @@ class User(Base):
             "birth_date": "everyone",
         },
         server_default=text(
-            "'{\"avatar\": \"everyone\", \"bio\": \"everyone\", "
-            "\"birth_date\": \"everyone\"}'::jsonb"
+            '\'{"avatar": "everyone", "bio": "everyone", '
+            '"birth_date": "everyone"}\'::jsonb'
         ),
     )
     profile_exceptions: Mapped[dict[str, list[str]]] = mapped_column(
