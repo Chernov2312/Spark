@@ -577,6 +577,34 @@ export default function ChatsPage() {
   const isOwnMessage = (message) => Boolean(me?.id) && message.user_id === me.id;
 
   const [chats, setChats] = useState([]);
+  const unreadStorageKey = `spark:unread:${me?.id || "anonymous"}`;
+  const [unreadCounts, setUnreadCounts] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(unreadStorageKey) || "{}");
+      if (!saved || typeof saved !== "object" || Array.isArray(saved)) return {};
+      return Object.fromEntries(Object.entries(saved).filter(([, count]) => Number.isFinite(count) && count > 0).map(([id, count]) => [id, Math.floor(count)]));
+    }
+    catch { return {}; }
+  });
+  const unreadTotal = Object.values(unreadCounts).reduce((total, count) => total + count, 0);
+  const chatsRef = useRef(chats);
+  chatsRef.current = chats;
+  const clearChatUnread = useCallback((targetChatId) => {
+    setUnreadCounts((counts) => {
+      if (!counts[targetChatId]) return counts;
+      const next = { ...counts };
+      delete next[targetChatId];
+      localStorage.setItem(unreadStorageKey, JSON.stringify(next));
+      return next;
+    });
+  }, [unreadStorageKey]);
+  const recordChatUnread = useCallback((targetChatId) => {
+    setUnreadCounts((counts) => {
+      const next = { ...counts, [targetChatId]: (counts[targetChatId] || 0) + 1 };
+      localStorage.setItem(unreadStorageKey, JSON.stringify(next));
+      return next;
+    });
+  }, [unreadStorageKey]);
   const [friends, setFriends] = useState(null);
   const [chatsLoading, setChatsLoading] = useState(true);
   const [chatsError, setChatsError] = useState(null);
@@ -599,6 +627,55 @@ export default function ChatsPage() {
       setChats((items) => items.map((chat) => byId.has(chat.id) ? { ...chat, last_message: byId.get(chat.id) } : chat));
     } catch (error) { setMessagesError(translateApiError(error, "Не удалось обновить последнее сообщение")); }
   }, []);
+  const notifyIncomingMessage = useCallback((data) => {
+    if (data.user_id === me?.id || isWebPushEnabled(me?.id)) return;
+    let preferences = { muted: false, sound: true };
+    try {
+      const defaults = JSON.parse(localStorage.getItem("spark-chat-defaults") || "{}");
+      const saved = JSON.parse(localStorage.getItem(`chat-prefs:${data.chat_id}`) || "{}");
+      preferences = { ...preferences, ...defaults, ...saved };
+    } catch { /* Use default chat notification settings. */ }
+    if (data.chat_id === activeChatIdRef.current) preferences = { ...preferences, ...chatPrefsRef.current };
+    if (preferences.muted) return;
+    if (preferences.sound && typeof AudioContext !== "undefined") {
+      try {
+        const audio = new AudioContext();
+        const tone = audio.createOscillator();
+        const gain = audio.createGain();
+        tone.connect(gain); gain.connect(audio.destination);
+        gain.gain.value = 0.035; tone.frequency.value = 660;
+        tone.start(); tone.stop(audio.currentTime + 0.1);
+        tone.onended = () => audio.close();
+      } catch {}
+    }
+    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+      const preview = summarizeMessageText(data.text) || "Вложение";
+      const mentionsMe = Boolean(me?.tag) && preview.toLowerCase().includes(`@${me.tag.toLowerCase()}`);
+      const chatTitle = chatsRef.current.find((item) => item.id === data.chat_id)?.title;
+      try {
+        new Notification(mentionsMe ? "Вас упомянули" : chatTitle || "Новое сообщение", {
+          body: preview, tag: `chat-${data.chat_id}`, silent: !preferences.sound,
+        });
+      } catch {}
+    }
+  }, [me?.id, me?.tag]);
+  const notifyIncomingMessageRef = useRef(notifyIncomingMessage);
+  notifyIncomingMessageRef.current = notifyIncomingMessage;
+
+  useEffect(() => {
+    document.title = unreadTotal ? `(${unreadTotal}) Spark — мессенджер нового поколения` : "Spark — мессенджер нового поколения";
+    return () => { document.title = "Spark — мессенджер нового поколения"; };
+  }, [unreadTotal]);
+
+  useEffect(() => {
+    if (!chatId) return;
+    clearChatUnread(chatId);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && activeChatTabRef.current === "messages" && !activeThreadRef.current) clearChatUnread(chatId);
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [chatId, clearChatUnread]);
   const [messages, setMessages] = useState([]);
   const [liveLinkPreviews, setLiveLinkPreviews] = useState({});
   const [pollComposer, setPollComposer] = useState(null);
@@ -608,8 +685,6 @@ export default function ChatsPage() {
   const [threadMessages, setThreadMessages] = useState([]);
   const [threadLoading, setThreadLoading] = useState(false);
   const [threads, setThreads] = useState([]);
-  const [threadsLoading, setThreadsLoading] = useState(false);
-  const [threadsError, setThreadsError] = useState("");
   const [threadsVersion, refreshThreads] = useReducer((version) => version + 1, 0);
   const [pinnedMessages, setPinnedMessages] = useState([]);
   const pinnedMessageIds = useMemo(() => new Set(pinnedMessages.map((message) => message.id)), [pinnedMessages]);
@@ -656,7 +731,6 @@ export default function ChatsPage() {
     loadPinnedMessages();
     return () => { pinsRequestRef.current += 1; };
   }, [loadPinnedMessages]);
-  const [sidebarMode, setSidebarMode] = useState("chats");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [forwarding, setForwarding] = useState(null);
   const [forwardTarget, setForwardTarget] = useState("");
@@ -668,13 +742,11 @@ export default function ChatsPage() {
   useEffect(() => {
     if (!chatId) return;
     let cancelled = false;
-    setThreadsLoading(true);
-    setThreadsError("");
     messagesApi.listThreads(chatId).then((loaded) => {
       if (!cancelled) setThreads(loaded);
     }).catch((error) => {
-      if (!cancelled) setThreadsError(translateApiError(error, "Не удалось загрузить треды"));
-    }).finally(() => { if (!cancelled) setThreadsLoading(false); });
+      if (!cancelled) setMessagesError(translateApiError(error, "Не удалось загрузить треды"));
+    });
     return () => { cancelled = true; };
   }, [chatId, threadsVersion]);
   const threadSeenIdsRef = useRef(new Set());
@@ -693,6 +765,8 @@ export default function ChatsPage() {
   const [messagesError, setMessagesError] = useState(null);
   const [chatDetailsOpen, setChatDetailsOpen] = useState(true);
   const [activeChatTab, setActiveChatTab] = useState("messages");
+  const activeChatTabRef = useRef(activeChatTab);
+  activeChatTabRef.current = activeChatTab;
   const [aiPanelOpen, setAIPanelOpen] = useState(false);
   const [transcribingAttachments, setTranscribingAttachments] = useState(
     () => new Set(),
@@ -1101,6 +1175,14 @@ export default function ChatsPage() {
             setPollVersions((versions) => ({ ...versions, [data.poll_id]: Math.max(versions[data.poll_id] || 0, data.version) }));
           }
           if (event === "message:new" && data.chat_id === chatId) {
+            if (data.user_id !== me?.id) {
+              const chatIsVisible = !document.hidden
+                && document.visibilityState === "visible"
+                && activeChatTabRef.current === "messages"
+                && !activeThreadRef.current;
+              if (!chatIsVisible) recordChatUnread(data.chat_id);
+              notifyIncomingMessageRef.current(data);
+            }
             if (data.thread_root_id) {
               const isNewThreadReply = !threadSeenIdsRef.current.has(data.id);
               threadSeenIdsRef.current.add(data.id);
@@ -1119,28 +1201,6 @@ export default function ChatsPage() {
               });
             }
             updateChatPreview(chatId, data);
-            const { muted, sound } = chatPrefsRef.current;
-            const localNotification = !muted && data.user_id !== me?.id && !isWebPushEnabled(me?.id);
-            if (localNotification && sound && typeof AudioContext !== "undefined") {
-              try {
-                const audio = new AudioContext();
-                const tone = audio.createOscillator();
-                const gain = audio.createGain();
-                tone.connect(gain); gain.connect(audio.destination);
-                gain.gain.value = 0.035; tone.frequency.value = 660;
-                tone.start(); tone.stop(audio.currentTime + 0.1);
-                tone.onended = () => audio.close();
-              } catch {}
-            }
-            if (localNotification && typeof Notification !== "undefined" && Notification.permission === "granted") {
-              const preview = summarizeMessageText(data.text) || "Вложение";
-              const mentionsMe = Boolean(me?.tag) && preview.toLowerCase().includes(`@${me.tag.toLowerCase()}`);
-              try {
-                new Notification(mentionsMe ? "Вас упомянули" : "Новое сообщение", {
-                  body: preview, tag: `chat-${chatId}`, silent: !sound,
-                });
-              } catch {}
-            }
           }
           if (event === "message:link-preview" && data.chat_id === chatId) {
             const { message_id: messageId, preview } = data;
@@ -1258,6 +1318,21 @@ export default function ChatsPage() {
     // me?.id намеренно не в зависимостях: сокет пересоздаётся только при смене чата
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId, chatPrefs.sharePresence, loadPinnedMessages, applyPinUpdate]);
+
+  const backgroundChatIds = useMemo(() => chats.map((item) => item.id).filter((id) => id !== chatId).join(","), [chats, chatId]);
+  useEffect(() => {
+    if (!auth.isAuthenticated() || !backgroundChatIds) return undefined;
+    const sockets = backgroundChatIds.split(",").map((targetChatId) => createChatSocket(targetChatId, {
+      sharePresence: false,
+      onEvent: (event, data) => {
+        if (event !== "message:new" || data.chat_id !== targetChatId || data.user_id === me?.id) return;
+        recordChatUnread(targetChatId);
+        updateChatPreview(targetChatId, data);
+        notifyIncomingMessageRef.current(data);
+      },
+    }));
+    return () => sockets.forEach((socket) => socket.close());
+  }, [backgroundChatIds, me?.id, recordChatUnread, updateChatPreview]);
 
   /* ---------- 4. Скролл вниз ---------- */
   useEffect(() => {
@@ -1884,7 +1959,6 @@ export default function ChatsPage() {
     const requestId = ++threadRequestRef.current;
     setActiveThread({ ...root, id: rootId });
     setThreadMessages([]);
-    setSidebarMode("threads");
     setActiveChatTab("messages");
     setReplyTo(null);
     followMessagesRef.current = true;
@@ -2016,13 +2090,7 @@ export default function ChatsPage() {
       <SocialSidebar
         friends={friends ?? []}
         setFriends={setFriends}
-        threads={activeThread && !threads.some((thread) => thread.id === activeThread.id) ? [activeThread, ...threads] : threads}
-        threadsLoading={threadsLoading}
-        threadsError={threadsError}
-        activeThreadId={activeThread?.id}
-        onOpenThread={openThread}
-        mode={sidebarMode}
-        onModeChange={(mode) => { setSidebarMode(mode); if (mode === "chats") closeThread(); }}
+        unreadCounts={unreadCounts}
         mobileOpen={sidebarOpen}
         onCloseMobile={() => setSidebarOpen(false)}
         chats={chats}
@@ -2361,6 +2429,17 @@ export default function ChatsPage() {
                 })}
               <div ref={bottomRef} />
             </div>
+            {!activeThread && threads.length > 0 && <details className="chat-threads-dropdown">
+              <summary>Треды чата <span>{threads.length}</span></summary>
+              <ul className="chat-threads-dropdown__list">
+                {threads.map((thread) => <li key={thread.id}>
+                  <button type="button" onClick={(event) => { event.currentTarget.closest("details").open = false; openThread(thread); }}>
+                    <span>{summarizeMessageText(thread.text) || "Тред с вложением"}</span>
+                    <small>{thread.thread_reply_count || 0} ответов</small>
+                  </button>
+                </li>)}
+              </ul>
+            </details>}
 
             {/* ---------- Composer ---------- */}
             <div className="chat-view__composer-wrapper">

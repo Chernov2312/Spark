@@ -117,6 +117,8 @@ export function renderChat(initialPath = `/chats/${chat.id}`, strict = false) {
 export function setupChatTests() {
   beforeEach(() => {
     vi.clearAllMocks();
+    socketState.connections.clear();
+    socketState.options = null;
     for (const mock of [...Object.values(apiMocks), ...Object.values(socialMocks)]) mock.mockReset();
     localStorage.clear();
     localStorage.setItem("access_token", "test-token");

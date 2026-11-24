@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { chats as chatsApi, social as socialApi } from "../api";
 import "../styles/social-sidebar.css";
-import { messagePreview, messageTimestamp, summarizeMessageText } from "../utils/messagePreview";
+import { messagePreview, messageTimestamp } from "../utils/messagePreview";
 
 export default function SocialSidebar({
   chats,
@@ -12,15 +12,9 @@ export default function SocialSidebar({
   chatId,
   navigate,
   onCreateChat,
-  threads = [],
-  threadsLoading = false,
-  threadsError = "",
-  activeThreadId,
-  onOpenThread,
-  mode = "chats",
-  onModeChange,
   mobileOpen = false,
   onCloseMobile,
+  unreadCounts = {},
 }) {
   const [tab, setTab] = useState("chats");
   const [search, setSearch] = useState("");
@@ -233,25 +227,7 @@ export default function SocialSidebar({
 
   return (
     <aside className={`chats-sidebar ${chatId ? "chats-sidebar--hidden-mobile" : ""} ${mobileOpen ? "chats-sidebar--show-mobile" : ""}`}>
-      <div className="sidebar-scope" role="tablist" aria-label="Чаты и треды">
-        <button type="button" role="tab" aria-selected={mode === "chats"} onClick={() => onModeChange?.("chats")}>Все чаты</button>
-        <button type="button" role="tab" aria-selected={mode === "threads"} disabled={!chatId} onClick={() => onModeChange?.("threads")}>Треды этого чата</button>
-        {mobileOpen && <button type="button" aria-label="Закрыть боковую панель" onClick={onCloseMobile}>×</button>}
-      </div>
-      {mode === "threads" ? <>
-        <h3 className="sidebar-thread-heading">Треды: {chats.find((chat) => chat.id === chatId)?.title}</h3>
-        {threadsLoading && <p className="chats-empty">Загрузка тредов…</p>}
-        {threadsError && <p className="social-sidebar-error" role="alert">{threadsError}</p>}
-        <ul className="chats-list sidebar-threads">
-          {threads.map((thread) => <li key={thread.id}>
-            <button type="button" className={activeThreadId === thread.id ? "is-active" : ""} onClick={() => { onOpenThread(thread); onCloseMobile?.(); }}>
-              <span>{summarizeMessageText(thread.text) || "Тред с вложением"}</span>
-              <small>{thread.thread_reply_count || 0} ответов</small>
-            </button>
-          </li>)}
-          {!threadsLoading && !threadsError && !threads.length && <li className="chats-empty">Тредов пока нет. Откройте меню сообщения и выберите «Открыть тред».</li>}
-        </ul>
-      </> : <>
+      {mobileOpen && <div className="sidebar-scope"><button type="button" aria-label="Закрыть боковую панель" onClick={onCloseMobile}>×</button></div>}
       <div className="chats-sidebar__header">
         <input className="chats-search" type="search" placeholder={tab === "chats" ? "Поиск чатов" : "Поиск друзей"} value={search} onChange={(event) => setSearch(event.target.value)} />
         {tab === "chats" && <button className="chats-new" type="button" title="Создать чат" aria-label="Создать чат" onClick={onCreateChat}>+</button>}
@@ -293,7 +269,8 @@ export default function SocialSidebar({
           {folderFilter === "all" && <li className="sidebar-group-heading"><span>{group.name}</span><span>{group.chats.length}</span></li>}
           {group.chats.map((chat) => {
             const folder = chatFolders.find((item) => item.chat_ids.includes(chat.id));
-            return <li key={chat.id} className={`chat-item ${chatId === chat.id ? "chat-item--active" : ""}`} onClick={() => navigate(`/chats/${chat.id}`)}>
+            const unreadCount = unreadCounts[chat.id] || 0;
+            return <li key={chat.id} className={`chat-item ${chatId === chat.id ? "chat-item--active" : ""} ${unreadCount ? "chat-item--unread" : ""}`} onClick={() => navigate(`/chats/${chat.id}`)}>
               <div className="chat-item__avatar">
                 {chat.personal_avatar_url || chat.avatar_urls?.at(-1)
                   ? <img src={chat.personal_avatar_url || chat.avatar_urls.at(-1)} alt="" />
@@ -307,6 +284,7 @@ export default function SocialSidebar({
                 </div>
                 <div className="chat-item__bottom">
                   <span className="chat-item__preview" title={messagePreview(chat.last_message)}>{messagePreview(chat.last_message)}</span>
+                  {unreadCount > 0 && <span className="chat-item__badge" aria-label={`${unreadCount} новых сообщений`}>{unreadCount > 99 ? "99+" : unreadCount}</span>}
                   <select className="chat-item__folder" aria-label={`Папка для чата ${chat.title}`} value={folder?.id || ""} onClick={(event) => event.stopPropagation()} onChange={(event) => assignChat(chat, event.target.value)}>
                     <option value="">Без папки</option>
                     {chatFolders.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -354,7 +332,6 @@ export default function SocialSidebar({
         </section>)}
         {shownFriends.length === 0 && searchResults.length === 0 && <p className="chats-empty">{friends.length ? "В этой группе пока нет друзей" : "Пока нет друзей — найдите человека по имени или тегу"}</p>}
       </div>}
-      </>}
     </aside>
   );
 }

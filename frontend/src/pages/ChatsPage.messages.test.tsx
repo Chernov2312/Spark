@@ -181,7 +181,7 @@ describe("ChatsPage: messages", () => {
     fireEvent.click(await within(panel).findByRole("button", { name: "Перейти к закреплённому сообщению" }));
     await waitFor(() => expect(document.getElementById("message-pinned-reply")).toHaveTextContent(reply.text));
     expect(apiMocks.listThreadMessages).toHaveBeenCalledWith(chat.id, root.id);
-    expect(screen.getByRole("tab", { name: "Треды этого чата" })).toHaveAttribute("aria-selected", "true");
+    expect(document.querySelector(".active-thread-header")).toHaveTextContent("Тред: Важный ответ");
   });
 
   it("retries loading pins after a request failure", async () => {
@@ -226,17 +226,34 @@ describe("ChatsPage: messages", () => {
     expect(document.querySelector(".chat-item__preview")).toHaveTextContent("В треде: Обсуждаем");
   });
 
-  it("opens a thread from the menu and selects it in the left sidebar", async () => {
+  it("highlights chats and updates the browser tab count for incoming messages", async () => {
+    const otherChat = { ...chat, id: "chat-notification", title: "Чат с новым сообщением" };
+    apiMocks.listChats.mockResolvedValue([chat, otherChat]);
+    renderChat();
+    await screen.findByText(otherChat.title, { selector: ".chat-item__title" });
+    await waitFor(() => expect(socketState.connections.has(otherChat.id)).toBe(true));
+    act(() => socketState.connections.get(otherChat.id)!.onEvent("message:new", {
+      ...audioMessage, id: "new-notification", chat_id: otherChat.id, user_id: "another-user", text: "Привет",
+    }));
+    const chatRow = screen.getByText(otherChat.title, { selector: ".chat-item__title" }).closest(".chat-item");
+    expect(chatRow).toHaveClass("chat-item--unread");
+    expect(within(chatRow!).getByLabelText("1 новых сообщений")).toBeVisible();
+    expect(document.title).toContain("(1)");
+    fireEvent.click(chatRow!);
+    await waitFor(() => expect(within(chatRow!).queryByLabelText("1 новых сообщений")).not.toBeInTheDocument());
+  });
+
+  it("opens a thread from the dropdown below the conversation", async () => {
     const root = { ...audioMessage, text: "Обсуждение релиза", thread_reply_count: 1 };
     const reply = { ...root, id: "thread-reply", thread_root_id: root.id, text: "Ответ в треде" };
     apiMocks.listMessages.mockResolvedValue([root]);
     apiMocks.listThreads.mockResolvedValue([root]);
     apiMocks.listThreadMessages.mockResolvedValue([root, reply]);
     renderChat();
-    fireEvent.contextMenu(await findMessage(root.id));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Открыть тред" }));
+    fireEvent.click(await screen.findByText(/Треды чата/));
+    fireEvent.click(screen.getByRole("button", { name: /Обсуждение релиза/ }));
     expect(await screen.findByText("Ответ в треде")).toBeVisible();
-    expect(screen.getByRole("tab", { name: "Треды этого чата" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("tab", { name: "Треды этого чата" })).not.toBeInTheDocument();
     expect(apiMocks.listThreadMessages).toHaveBeenCalledWith(chat.id, root.id);
     fireEvent.click(screen.getByRole("button", { name: "Вернуться в чат" }));
     expect(screen.queryByText("Ответ в треде")).not.toBeInTheDocument();
