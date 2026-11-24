@@ -1,10 +1,11 @@
 ﻿# Spark
 
-[![Go](https://img.shields.io/github/check-runs/Chernov2312/Spark/master?nameFilter=go_ci&label=Go)](https://github.com/Chernov2312/Spark/actions)
-[![Ruff](https://img.shields.io/github/check-runs/Chernov2312/Spark/master?nameFilter=lint_test&label=Ruff)](https://github.com/Chernov2312/Spark/actions)
-[![Backend](https://img.shields.io/github/check-runs/Chernov2312/Spark/master?nameFilter=backend_tests&label=Backend)](https://github.com/Chernov2312/Spark/actions)
-[![Frontend](https://img.shields.io/github/check-runs/Chernov2312/Spark/master?nameFilter=typescript_ci&label=Frontend)](https://github.com/Chernov2312/Spark/actions)
+![Go](https://img.shields.io/github/check-runs/Chernov2312/Spark/master?nameFilter=go_ci%20%2F%20calls)
 
+![Linter](https://img.shields.io/github/check-runs/Chernov2312/Spark/master?nameFilter=lint_test%20%2F%20lint_test&label=Ruff)
+![Python CI](https://img.shields.io/github/check-runs/Chernov2312/Spark/master?nameFilter=backend_tests%20%2F%20python_test&label=Python)
+![TypeScript CI](https://img.shields.io/github/check-runs/Chernov2312/Spark/master?nameFilter=typescript_ci%20%2F%20frontend&label=TypeScript)
+![CI/CD](https://github.com/Chernov2312/Spark/actions/workflows/ci.yml/badge.svg?branch=master)
 Spark — веб-мессенджер с REST API и WebSocket-соединениями. Backend работает на FastAPI, PostgreSQL хранит данные, Redis передаёт события чатов и обслуживает очередь сообщений, Celery запускает фоновые задачи.
 
 ## Возможности
