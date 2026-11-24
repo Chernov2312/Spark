@@ -1,13 +1,6 @@
 name: lint_test
 on:
   workflow_call:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
-      - master
 
 jobs:
   lint_test:
@@ -31,4 +24,3 @@ jobs:
 
       - name: Ruff format check
         run: ruff format --check .
-

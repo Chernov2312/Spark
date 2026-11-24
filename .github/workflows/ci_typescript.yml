@@ -2,10 +2,6 @@ name: typescript_ci
 
 on:
   workflow_call:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main, master]
 
 jobs:
   frontend:
