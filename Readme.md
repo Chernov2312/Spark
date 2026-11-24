@@ -1,6 +1,6 @@
 ﻿# Spark
 
-![Go](https://img.shields.io/github/check-runs/Chernov2312/Spark/master?nameFilter=go_ci%20%2F%20calls)
+![Go](https://img.shields.io/github/check-runs/Chernov2312/Spark/master?nameFilter=go_ci%20%2F%20calls&label=Go)
 
 ![Linter](https://img.shields.io/github/check-runs/Chernov2312/Spark/master?nameFilter=lint_test%20%2F%20lint_test&label=Ruff)
 ![Python CI](https://img.shields.io/github/check-runs/Chernov2312/Spark/master?nameFilter=backend_tests%20%2F%20python_test&label=Python)
