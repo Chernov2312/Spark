@@ -1,5 +1,10 @@
 ﻿# Spark
 
+[![Go](https://img.shields.io/github/check-runs/Chernov2312/Spark/master?nameFilter=go_ci&label=Go)](https://github.com/Chernov2312/Spark/actions)
+[![Ruff](https://img.shields.io/github/check-runs/Chernov2312/Spark/master?nameFilter=lint_test&label=Ruff)](https://github.com/Chernov2312/Spark/actions)
+[![Backend](https://img.shields.io/github/check-runs/Chernov2312/Spark/master?nameFilter=backend_tests&label=Backend)](https://github.com/Chernov2312/Spark/actions)
+[![Frontend](https://img.shields.io/github/check-runs/Chernov2312/Spark/master?nameFilter=typescript_ci&label=Frontend)](https://github.com/Chernov2312/Spark/actions)
+
 Spark — веб-мессенджер с REST API и WebSocket-соединениями. Backend работает на FastAPI, PostgreSQL хранит данные, Redis передаёт события чатов и обслуживает очередь сообщений, Celery запускает фоновые задачи.
 
 ## Возможности
