@@ -237,6 +237,31 @@ describe("ChatsPage: profile", () => {
     expect(apiMocks.getChatMembers).toHaveBeenCalledTimes(2);
   });
 
+  it("lets the chat owner add a user to an existing group", async () => {
+    apiMocks.listChats.mockResolvedValue([{ ...chat, owner_id: "user-1" }]);
+    apiMocks.getChatMembers
+      .mockResolvedValueOnce([{ id: "user-1", username: "tester", role: "owner" }])
+      .mockResolvedValueOnce([
+        { id: "user-1", username: "tester", role: "owner" },
+        { id: "user-3", username: "new-user", tag: "newuser", role: "member" },
+      ]);
+    apiMocks.searchUsersByUsername.mockResolvedValue([
+      { id: "user-3", username: "new-user", tag: "newuser" },
+    ]);
+    apiMocks.addUsersToChat.mockResolvedValue({ status: "success" });
+
+    renderChat();
+    fireEvent.click(await screen.findByRole("button", { name: "Открыть информацию о чате" }));
+    const members = within(screen.getByRole("region", { name: "Участники чата" }));
+    fireEvent.change(members.getByRole("searchbox"), { target: { value: "new" } });
+
+    const addButton = await members.findByRole("button", { name: "Добавить" });
+    fireEvent.click(addButton);
+    await waitFor(() => expect(apiMocks.addUsersToChat).toHaveBeenCalledWith(chat.id, ["user-3"]));
+    expect(await members.findByRole("button", { name: "Открыть профиль new-user" })).toBeVisible();
+    expect(apiMocks.getChatMembers).toHaveBeenCalledTimes(2);
+  });
+
   it("opens the chat profile from its title and icon without profile tabs", async () => {
     renderChat();
     await screen.findByText(chat.title, { selector: ".chat-view__title" });

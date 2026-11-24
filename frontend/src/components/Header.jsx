@@ -1,4 +1,4 @@
-﻿import { Link, NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import { useContext, useEffect, useLayoutEffect, useState } from "react";
 import SparkLogo from "./SparkLogo";
 import { CallsContext } from "./callsContext";
@@ -16,7 +16,6 @@ function getInitialTheme() {
 }
 
 export default function Header() {
-  const navigate = useNavigate();
   const [user, setUser] = useState(auth.getCurrentUser());
   const [theme, setTheme] = useState(getInitialTheme);
   const calls = useContext(CallsContext);
@@ -40,11 +39,6 @@ export default function Header() {
       window.removeEventListener("storage", sync);
     };
   }, []);
-
-  const handleLogout = async () => {
-    await auth.logoutUser();
-    navigate("/login");
-  };
 
   return (
     <header className="site-header">
@@ -100,9 +94,9 @@ export default function Header() {
               <NavLink to="/profile" className="header-user" title="Открыть профиль">
                 @{user.username}
               </NavLink>
-              <button type="button" className="register-btn" onClick={handleLogout}>
-                Выйти
-              </button>
+              <NavLink to="/settings" className="header-settings" aria-label="Настройки" title="Настройки">
+                Настройки
+              </NavLink>
             </>
           ) : (
             <>

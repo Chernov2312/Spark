@@ -20,6 +20,10 @@ export async function acceptFriend(friendId) {
   return data;
 }
 
+export async function removeFriend(friendId) {
+  await api.delete(`/friends/${friendId}`);
+}
+
 export async function createFriendCategory(name) {
   const { data } = await api.post("/friends/categories", { name });
   return data;

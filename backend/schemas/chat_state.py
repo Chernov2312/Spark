@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 import uuid
 
@@ -12,6 +12,8 @@ class ChatMemberResponse(BaseModel):
     role: Literal["owner", "moderator", "member"]
     last_read_message_id: uuid.UUID | None = None
     avatar_urls: list[str] = Field(default_factory=list)
+    bio: str | None = None
+    birth_date: date | None = None
     created_at: datetime | None = None
 
 

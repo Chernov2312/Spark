@@ -290,7 +290,9 @@ test("enables background notifications, synchronizes chat preferences and revoke
     method: "PUT", body: { chat_options: { [chatId]: { muted: true, silent: true } } },
   });
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Выйти" }).click();
+  await page.getByRole("link", { name: "Настройки" }).click();
+  await page.getByRole("button", { name: "Аккаунт" }).click();
+  await page.getByRole("button", { name: "Выйти из аккаунта" }).click();
   await expect(page).toHaveURL(/\/login$/);
   expect(requests.at(-1)).toEqual({ method: "DELETE", body: { endpoint } });
 });

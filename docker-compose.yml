@@ -68,9 +68,10 @@ services:
     environment:
       POSTGRES_HOST: postgres
       OPENAI_MODEL: ${OPENAI_MODEL:-${OLLAMA_MODEL:-qwen3:0.6b}}
+      LOG_TO_STDOUT: "1"
     env_file:
       - .env
-    command: ["sh", "-c", "bash ./entrypoint.sh --reload >> /logs/backend.log 2>&1"]
+    command: ["bash", "./entrypoint.sh", "--reload"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,7 +87,6 @@ services:
       - "8001:8000"
     volumes:
       - ./backend:/app
-      - ./logs:/logs
 
   calls:
     build: ./calls
@@ -135,7 +135,7 @@ services:
       - "5174:5173"
     volumes:
       - ./frontend:/app
-      - /app/node_modules
+      - frontend_node_modules:/app/node_modules
     command: ["sh", "-c", "npm ci --include=dev --prefer-offline --no-audit --no-fund && exec npm run dev -- --host 0.0.0.0 --port 5173"]
     environment:
       CHOKIDAR_USEPOLLING: true
@@ -177,25 +177,25 @@ services:
     cpus: 0.5
     environment:
       POSTGRES_HOST: postgres
+      LOG_TO_STDOUT: "1"
     env_file:
       - .env
     volumes:
       - ./backend:/app
       - ./whisper-cache:/home/appuser/.cache/whisper
-      - ./logs:/logs
-    command: celery -A tasks.config_celery.celery_app worker --loglevel=info --logfile=/logs/backend.log --concurrency=1
+    command: celery -A tasks.config_celery.celery_app worker --loglevel=info --concurrency=1
   celery-beat:
     build: ./backend
     profiles: ["dev", "prod"]
     environment:
       POSTGRES_HOST: postgres
+      LOG_TO_STDOUT: "1"
     env_file:
       - .env
     volumes:
       - ./backend:/app
       - ./whisper-cache:/home/appuser/.cache/whisper
-      - ./logs:/logs
-    command: celery -A tasks.config_celery.celery_app beat --loglevel=info --logfile=/logs/backend.log --schedule=/tmp/celerybeat-schedule
+    command: celery -A tasks.config_celery.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     depends_on:
       postgres:
         condition: service_healthy
@@ -204,4 +204,5 @@ services:
 
 volumes:
   postgres_data:
+  frontend_node_modules:
   ollama_data:

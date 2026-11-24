@@ -137,6 +137,11 @@ class SocialDao:
         return friendship
 
     @staticmethod
+    async def delete_friendship(session: AsyncSession, friendship_id: uuid.UUID) -> None:
+        await session.execute(delete(Friendship).where(Friendship.id == friendship_id))
+        await session.flush()
+
+    @staticmethod
     async def add_friendship(
         session: AsyncSession,
         *,
