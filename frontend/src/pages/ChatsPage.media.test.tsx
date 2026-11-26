@@ -73,6 +73,7 @@ describe("ChatsPage: media", () => {
     renderChat();
     await screen.findByText(chat.title, { selector: ".chat-view__title" });
 
+    fireEvent.click(screen.getByRole("button", { name: "Дополнительные действия" }));
     const file = new File(["image-bytes"], "photo.png", { type: "image/png" });
     const input = document.querySelector(
       ".chat-view__composer input[type='file']",
@@ -168,6 +169,7 @@ describe("ChatsPage: media", () => {
       new File(["first"], "first.png", { type: "image/png" }),
       new File(["second"], "second.jpg", { type: "image/jpeg" }),
     ];
+    fireEvent.click(screen.getByRole("button", { name: "Дополнительные действия" }));
     fireEvent.change(
       document.querySelector(".chat-view__composer input[type='file']")!,
       { target: { files } },
@@ -227,6 +229,14 @@ describe("ChatsPage: media", () => {
     vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
     renderChat();
     await screen.findByText(chat.title, { selector: ".chat-view__title" });
+
+    expect(screen.getByRole("button", { name: "Записать голосовое сообщение" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Дополнительные действия" }));
+    expect(screen.getByRole("menuitem", { name: "Прикрепить файл" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Записать голосовое" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Опрос или викторина" })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Записать голосовое сообщение" }),

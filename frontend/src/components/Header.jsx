@@ -25,7 +25,7 @@ export default function Header() {
     window.localStorage.setItem("spark-theme", theme);
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute("content", theme === "light" ? "#f4f6fb" : "#0a0a0f");
+      ?.setAttribute("content", theme === "light" ? "#f6f7fa" : "#0b0d12");
   }, [theme]);
 
   useEffect(() => {

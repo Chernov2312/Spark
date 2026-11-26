@@ -1,13 +1,6 @@
 /* Small adjustments for surfaces that use decorative, dark-only gradients. */
 :root[data-theme="light"] .home {
-  background:
-    radial-gradient(ellipse at 76% 20%, rgba(107, 88, 232, 0.1), transparent 34rem),
-    var(--bg);
-}
-
-:root[data-theme="light"] .home::before {
-  border-color: rgba(107, 88, 232, 0.11);
-  box-shadow: 0 0 0 4rem rgba(107, 88, 232, 0.025), 0 0 0 8rem rgba(107, 88, 232, 0.018);
+  background: var(--bg);
 }
 
 :root[data-theme="light"] .home__eyebrow,
@@ -41,9 +34,9 @@
 }
 
 :root[data-theme="light"] .home__preview {
-  border-color: rgba(107, 88, 232, 0.14);
-  background: linear-gradient(150deg, #fff, #f9f9ff);
-  box-shadow: 0 28px 70px rgba(37, 43, 76, 0.12), 0 0 55px rgba(107, 88, 232, 0.07);
+  border-color: var(--border);
+  background: var(--bg-elevated);
+  box-shadow: 0 22px 48px rgba(37, 43, 76, 0.1);
 }
 
 :root[data-theme="light"] .home__preview-top,
@@ -61,7 +54,7 @@
 }
 
 :root[data-theme="light"] .feature {
-  background: rgba(255, 255, 255, 0.78);
+  background: transparent;
 }
 
 :root[data-theme="light"] .site-footer__bottom {

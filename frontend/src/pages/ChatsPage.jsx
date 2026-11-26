@@ -577,6 +577,7 @@ export default function ChatsPage() {
   const isOwnMessage = (message) => Boolean(me?.id) && message.user_id === me.id;
 
   const [chats, setChats] = useState([]);
+  const [chatActionBusy, setChatActionBusy] = useState(false);
   const [friends, setFriends] = useState(null);
   const [chatsLoading, setChatsLoading] = useState(true);
   const [chatsError, setChatsError] = useState(null);
@@ -729,6 +730,7 @@ export default function ChatsPage() {
   const [profileMemberId, setProfileMemberId] = useState(null);
   const closeMemberProfile = useCallback(() => setProfileMemberId(null), []);
   const [selectedFiles, setSelectedFiles] = useState([]);
+  const [composerMenuOpen, setComposerMenuOpen] = useState(false);
   const [selectedPreviewUrls, setSelectedPreviewUrls] = useState([]);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -784,6 +786,19 @@ export default function ChatsPage() {
     return () => { observer?.disconnect(); window.removeEventListener("keydown", dismiss); };
   }, [reactionPicker]);
   useEffect(() => () => clearTimeout(sendHoldTimerRef.current), []);
+  useEffect(() => {
+    if (!composerMenuOpen) return;
+    const dismiss = (event) => {
+      if (event.key === "Escape") setComposerMenuOpen(false);
+      if (event.type === "pointerdown" && !event.target.closest?.(".composer-actions")) setComposerMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    window.addEventListener("keydown", dismiss);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      window.removeEventListener("keydown", dismiss);
+    };
+  }, [composerMenuOpen]);
   const [galleryIndex, setGalleryIndex] = useState(null);
   const [avatarGalleryIndex, setAvatarGalleryIndex] = useState(null);
 
@@ -974,6 +989,30 @@ export default function ChatsPage() {
       );
     } finally {
       setAddingMemberId(null);
+    }
+  };
+
+  const handleLeaveOrDeleteChat = async () => {
+    if (!chatId || !activeChat || chatActionBusy) return;
+    const isOwner = activeChat.owner_id === me?.id;
+    const confirmed = window.confirm(isOwner
+      ? `Удалить чат «${activeChat.title}» для всех участников? Переписка будет удалена.`
+      : `Выйти из чата «${activeChat.title}»? Он исчезнет из вашего списка чатов.`);
+    if (!confirmed) return;
+
+    setChatActionBusy(true);
+    setMessagesError(null);
+    try {
+      if (isOwner) await chatsApi.deleteChat(chatId);
+      else await chatsApi.leaveChat(chatId);
+      localStorage.removeItem(`chat-draft:${chatId}`);
+      setChats((items) => items.filter((chat) => chat.id !== chatId));
+      closeThread();
+      navigate("/chats");
+    } catch (error) {
+      setMessagesError(translateApiError(error, isOwner ? "Не удалось удалить чат" : "Не удалось выйти из чата"));
+    } finally {
+      setChatActionBusy(false);
     }
   };
 
@@ -2251,6 +2290,15 @@ export default function ChatsPage() {
                       }}><option value="member">Участник</option><option value="moderator">Модератор</option></select>}
                     </div>)}
                   </section>
+                  <section className="chat-management" aria-label="Управление чатом">
+                    <h3>Управление чатом</h3>
+                    <p>{activeChat.owner_id === me?.id
+                      ? "Удаление чата удалит переписку и закроет его для всех участников."
+                      : "Вы сможете вернуться в чат, если владелец снова добавит вас."}</p>
+                    <button type="button" className="chat-management__danger" onClick={handleLeaveOrDeleteChat} disabled={chatActionBusy}>
+                      {chatActionBusy ? "Выполняется…" : activeChat.owner_id === me?.id ? "Удалить чат для всех" : "Выйти из чата"}
+                    </button>
+                  </section>
                   <div className="chat-details__meta">
                     <span>{messages.length} сообщений загружено</span>
                     {activeChat.created_at && (
@@ -2425,30 +2473,27 @@ export default function ChatsPage() {
                     </button>
                   </>
                 ) : (
-                  <button
-                    type="button"
-                    className="composer-btn"
-                    onClick={startVoiceRecording}
-                    disabled={sending || Boolean(recordedAudio)}
-                    title="Записать голосовое сообщение"
-                    aria-label="Записать голосовое сообщение"
-                  >
-                    🎙
-                  </button>
+                  <div className="composer-actions">
+                    <button type="button" className="composer-btn composer-btn--actions" aria-label="Дополнительные действия" aria-haspopup="menu" aria-expanded={composerMenuOpen} disabled={sending || recording} onClick={() => setComposerMenuOpen((open) => !open)}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                    </button>
+                    {composerMenuOpen && <div className="composer-actions__menu" role="menu" aria-label="Дополнительные действия">
+                      <label className="composer-actions__item" role="menuitem">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10"/><path d="m3 15 5-5 4 4 2-2 3 3"/><circle cx="8.5" cy="7.5" r="1.5"/><path d="M18 18v6m-3-3h6"/></svg>
+                        <span>Прикрепить файл</span>
+                        <input type="file" multiple hidden disabled={sending} onChange={(event) => { handleFileSelection(event); setComposerMenuOpen(false); }} />
+                      </label>
+                      <button type="button" className="composer-actions__item" role="menuitem" disabled={sending || recording || Boolean(recordedAudio)} onClick={() => { setComposerMenuOpen(false); startVoiceRecording(); }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></svg>
+                        <span>Записать голосовое</span>
+                      </button>
+                      <button type="button" className="composer-actions__item" role="menuitem" disabled={sending || recording} onClick={() => { setComposerMenuOpen(false); setPollComposer({ chatId, threadRootId: activeThread?.id || null }); }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M4 20V10m8 10V4m8 16v-7M2 20h20" /></svg>
+                        <span>Опрос или викторина</span>
+                      </button>
+                    </div>}
+                  </div>
                 )}
-                <label className="composer-btn" title="Прикрепить">
-                  📎
-                  <input
-                    type="file"
-                    multiple
-                    hidden
-                    disabled={sending}
-                    onChange={handleFileSelection}
-                  />
-                </label>
-                <button type="button" className="composer-btn composer-btn--poll" aria-label="Создать опрос" title="Опрос или викторина" disabled={sending || recording} onClick={() => setPollComposer({ chatId, threadRootId: activeThread?.id || null })}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M4 20V10m8 10V4m8 16v-7M2 20h20" /></svg>
-                </button>
 
                 <textarea
                   ref={textareaRef}
@@ -2468,10 +2513,10 @@ export default function ChatsPage() {
 
                 <button
                   type="button"
-                  className="composer-btn composer-btn--send"
-                  aria-label="Отправить"
-                  aria-haspopup="dialog"
-                  aria-expanded={scheduleOpen}
+                  className={`composer-btn composer-btn--send${!text.trim() && selectedFiles.length === 0 && !recordedAudio ? " composer-btn--voice" : ""}`}
+                  aria-label={!text.trim() && selectedFiles.length === 0 && !recordedAudio ? "Записать голосовое сообщение" : "Отправить"}
+                  aria-haspopup={text.trim() ? "dialog" : undefined}
+                  aria-expanded={text.trim() ? scheduleOpen : undefined}
                   onPointerDown={(event) => {
                     if (event.button !== 0) return;
                     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -2479,25 +2524,25 @@ export default function ChatsPage() {
                     clearTimeout(sendHoldTimerRef.current);
                     sendHoldTimerRef.current = setTimeout(() => {
                       sendHeldRef.current = true;
-                      setScheduleOpen(true);
-                    }, 600);
+                      if (!text.trim() && selectedFiles.length === 0 && !recordedAudio) startVoiceRecording();
+                      else setScheduleOpen(true);
+                    }, text.trim() ? 600 : 350);
                   }}
                   onPointerUp={() => clearTimeout(sendHoldTimerRef.current)}
-                  onPointerCancel={() => { clearTimeout(sendHoldTimerRef.current); sendHeldRef.current = true; }}
+                  onPointerCancel={() => { clearTimeout(sendHoldTimerRef.current); sendHeldRef.current = false; }}
                   onKeyDown={(event) => {
-                    if (event.key === "ArrowDown") { event.preventDefault(); setScheduleOpen(true); }
+                    if (event.key === "ArrowDown" && text.trim()) { event.preventDefault(); setScheduleOpen(true); }
                   }}
                   onClick={(event) => {
                     if (sendHeldRef.current) { sendHeldRef.current = false; return; }
-                    if (!scheduleOpen) handleSend(event);
+                    if (scheduleOpen) return;
+                    if (!text.trim() && selectedFiles.length === 0 && !recordedAudio) startVoiceRecording();
+                    else handleSend(event);
                   }}
-                  disabled={
-                    sending ||
-                    (!text.trim() && selectedFiles.length === 0 && !recordedAudio)
-                  }
-                  title="Отправить · удерживайте для выбора времени"
+                  disabled={sending || recording}
+                  title={!text.trim() && selectedFiles.length === 0 && !recordedAudio ? "Записать голосовое сообщение" : "Отправить · удерживайте для выбора времени"}
                 >
-                  ➤
+                  {!text.trim() && selectedFiles.length === 0 && !recordedAudio ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></svg> : "➤"}
                 </button>
               </form>
               {scheduleOpen && <div className="schedule-send" role="dialog" aria-label="Отложенная отправка" onKeyDown={(event) => {

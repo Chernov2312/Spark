@@ -15,7 +15,7 @@
 .site-header__inner {
   max-width: 1280px;
   margin: 0 auto;
-  height: 64px;
+  height: 68px;
   display: flex;
   align-items: center;
   gap: 40px;
@@ -37,11 +37,13 @@
   justify-content: center;
   width: 36px;
   height: 36px;
-  background: linear-gradient(135deg, var(--spark) 0%, #4a3df0 100%);
-  border-radius: 10px;
+  background: var(--spark);
+  border-radius: 11px;
   color: #fff;
-  box-shadow: 0 4px 16px var(--spark-glow);
+  box-shadow: 0 3px 9px var(--spark-glow);
+  transition: transform 220ms cubic-bezier(.2,.8,.2,1);
 }
+.brand:hover .brand__mark { transform: rotate(-5deg) scale(1.04); }
 
 .brand__text {
   font-size: 20px;
@@ -86,6 +88,7 @@
   height: 2px;
   background: var(--spark);
   border-radius: 1px;
+  animation: nav-indicator-in 220ms cubic-bezier(.2,.8,.2,1) both;
 }
 
 /* ---------- Правые действия ---------- */
@@ -125,7 +128,7 @@
   transition:
     background 0.15s,
     box-shadow 0.15s;
-  box-shadow: 0 4px 16px rgba(124, 108, 255, 0.25);
+  box-shadow: 0 3px 10px var(--spark-glow);
 }
 
 .register-btn:focus-visible {
@@ -208,6 +211,9 @@
   background: var(--spark-dim);
   color: var(--spark-text);
 }
+
+.theme-toggle svg { transition: transform 260ms cubic-bezier(.2,.8,.2,1); }
+.theme-toggle:hover svg { transform: rotate(18deg); }
 
 .theme-toggle:focus-visible {
   outline: 3px solid var(--spark-dim);

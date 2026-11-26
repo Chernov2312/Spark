@@ -64,21 +64,27 @@ export default function HomePage() {
 
       <section className="home__benefits" aria-label="Преимущества">
         <article className="feature">
-          <div className="feature__icon" aria-hidden="true">↯</div>
+          <div className="feature__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M13.2 2.8 5.8 13h5l-.2 8.2L18.2 11h-5.1l.1-8.2Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /></svg>
+          </div>
           <div>
             <h2 className="feature__title">Быстро и просто</h2>
             <p className="feature__text">Откройте чат и сразу переходите к разговору.</p>
           </div>
         </article>
         <article className="feature">
-          <div className="feature__icon" aria-hidden="true">⌁</div>
+          <div className="feature__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M4 7.5h6l2 2H20v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5v-10Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M4.5 7.5V6A1.5 1.5 0 0 1 6 4.5h4l2 2H18" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /></svg>
+          </div>
           <div>
             <h2 className="feature__title">Всё на месте</h2>
             <p className="feature__text">Сообщения и файлы собраны в одном пространстве.</p>
           </div>
         </article>
         <article className="feature">
-          <div className="feature__icon" aria-hidden="true">◷</div>
+          <div className="feature__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none"><rect x="6.5" y="3.5" width="11" height="17" rx="2" stroke="currentColor" strokeWidth="1.7" /><path d="M10 17.5h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
+          </div>
           <div>
             <h2 className="feature__title">Всегда под рукой</h2>
             <p className="feature__text">Продолжайте переписку с любого устройства.</p>

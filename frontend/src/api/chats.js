@@ -34,6 +34,14 @@ export async function updateChat(chatId, payload) {
   return data;
 }
 
+export async function leaveChat(chatId) {
+  await api.delete(`/chats/${chatId}/members/me`);
+}
+
+export async function deleteChat(chatId) {
+  await api.delete(`/chats/${chatId}`);
+}
+
 /* POST /chats/{id}/users */
 export async function addUsersToChat(chatId, userIds) {
   const { data } = await api.post(`/chats/${chatId}/users`, {

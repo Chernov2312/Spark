@@ -1,24 +1,24 @@
 /* ---------- Переменные (тёмная тема Spark) ---------- */
 :root {
   color-scheme: dark;
-  --bg: #0a0a0f;
-  --bg-elevated: #131319;
-  --bg-input: #0f0f15;
-  --bg-hover: #1c1c25;
-  --header-bg: rgba(19, 19, 25, 0.85);
+  --bg: #0b0d12;
+  --bg-elevated: #11141b;
+  --bg-input: #0e1117;
+  --bg-hover: #191d26;
+  --header-bg: rgba(11, 13, 18, 0.94);
 
-  --border: #26262f;
-  --border-focus: #7c6cff;
+  --border: #252a35;
+  --border-focus: #9184ff;
 
-  --text: #f1f2f6;
-  --text-muted: #8d92a3;
-  --text-dim: #5a5f70;
+  --text: #f3f4f7;
+  --text-muted: #a0a6b4;
+  --text-dim: #777f8f;
 
-  --spark: #7c6cff;
-  --spark-text: #aa9dff;
-  --spark-hover: #6a58f0;
-  --spark-dim: rgba(124, 108, 255, 0.14);
-  --spark-glow: rgba(124, 108, 255, 0.35);
+  --spark: #897aff;
+  --spark-text: #b8adff;
+  --spark-hover: #7968f2;
+  --spark-dim: rgba(137, 122, 255, 0.13);
+  --spark-glow: rgba(137, 122, 255, 0.22);
 
   --danger: #ff6b6b;
   --success: #4ade80;
@@ -28,24 +28,24 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f4f6fb;
+  --bg: #f6f7fa;
   --bg-elevated: #ffffff;
-  --bg-input: #f8f9fd;
-  --bg-hover: #eef0f8;
-  --header-bg: rgba(255, 255, 255, 0.88);
+  --bg-input: #f7f8fb;
+  --bg-hover: #eef0f5;
+  --header-bg: rgba(246, 247, 250, 0.94);
 
-  --border: #e2e5ef;
-  --border-focus: #6e5bea;
+  --border: #e2e5eb;
+  --border-focus: #7464eb;
 
-  --text: #24263a;
-  --text-muted: #6d7187;
-  --text-dim: #9296a8;
+  --text: #20232b;
+  --text-muted: #626a79;
+  --text-dim: #777f8c;
 
-  --spark: #6b58e8;
-  --spark-text: #5946ce;
-  --spark-hover: #5845d4;
-  --spark-dim: rgba(107, 88, 232, 0.11);
-  --spark-glow: rgba(107, 88, 232, 0.18);
+  --spark: #6f5ee7;
+  --spark-text: #5946cc;
+  --spark-hover: #5f4ed4;
+  --spark-dim: rgba(111, 94, 231, 0.1);
+  --spark-glow: rgba(111, 94, 231, 0.16);
 
   --danger: #d84458;
   --success: #218653;
@@ -72,7 +72,14 @@ body {
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
   transition: color 180ms ease, background-color 180ms ease;
+  caret-color: var(--spark);
 }
+
+::selection { color: #fff; background: var(--spark); }
+:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 3px; }
+* { scrollbar-color: var(--border) transparent; scrollbar-width: thin; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 999px; background: var(--border); background-clip: padding-box; }
 #root {
   display: flex;
   flex-direction: column;

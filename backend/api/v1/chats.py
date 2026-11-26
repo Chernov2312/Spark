@@ -39,6 +39,44 @@ from schemas.responses import ChatMemberRoleResponse
 chat_router = APIRouter(prefix="/api/v1", tags=[RouteTags.CHAT])
 
 
+@chat_router.delete(
+    "/chats/{chat_id}/members/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def leave_chat(
+    chat_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user_id: uuid.UUID = Depends(get_id_current_user),
+) -> None:
+    chat = await ChatDao.get_by_id(session, chat_id)
+    if chat is None:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    if chat.owner_id == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Chat owner cannot leave; delete the chat instead",
+        )
+    if not await ChatDao.remove_member(session, chat_id, user_id):
+        raise HTTPException(status_code=404, detail="Chat membership not found")
+
+
+@chat_router.delete("/chats/{chat_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_chat(
+    chat_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    user_id: uuid.UUID = Depends(get_id_current_user),
+) -> None:
+    chat = await ChatDao.get_by_id(session, chat_id)
+    if chat is None:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    if chat.owner_id != user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the chat owner can delete it",
+        )
+    await ChatDao.delete_chat(session, chat_id)
+
+
 @chat_router.put("/chats/{chat_id}/personal-avatar")
 async def update_personal_chat_avatar(
     chat_id: uuid.UUID,

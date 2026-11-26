@@ -1,7 +1,7 @@
 from datetime import datetime
 import uuid
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -110,6 +110,30 @@ class ChatDao(BaseDao[Chat]):
             .values(role=role),
         )
         return result.rowcount == 1
+
+    @classmethod
+    async def remove_member(
+        cls,
+        session: AsyncSession,
+        chat_id: uuid.UUID,
+        member_id: uuid.UUID,
+    ) -> bool:
+        result = await session.execute(
+            delete(user_chat).where(
+                user_chat.c.chat_id == chat_id,
+                user_chat.c.user_id == member_id,
+            ),
+        )
+        return result.rowcount == 1
+
+    @classmethod
+    async def delete_chat(
+        cls,
+        session: AsyncSession,
+        chat_id: uuid.UUID,
+    ) -> bool:
+        await session.execute(delete(Message).where(Message.chat_id == chat_id))
+        return await cls.delete_by_id(session, chat_id)
 
     @classmethod
     async def is_message_in_chat(
