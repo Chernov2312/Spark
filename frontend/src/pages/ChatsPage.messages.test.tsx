@@ -235,7 +235,7 @@ describe("ChatsPage: messages", () => {
     act(() => socketState.connections.get(otherChat.id)!.onEvent("message:new", {
       ...audioMessage, id: "new-notification", chat_id: otherChat.id, user_id: "another-user", text: "Привет",
     }));
-    const chatRow = screen.getByText(otherChat.title, { selector: ".chat-item__title" }).closest(".chat-item");
+    const chatRow = screen.getByText(otherChat.title, { selector: ".chat-item__title" }).closest(".chat-item") as HTMLElement;
     expect(chatRow).toHaveClass("chat-item--unread");
     expect(within(chatRow!).getByLabelText("1 новых сообщений")).toBeVisible();
     expect(document.title).toContain("(1)");
