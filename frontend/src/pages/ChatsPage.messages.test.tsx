@@ -34,7 +34,7 @@ describe("ChatsPage: messages", () => {
     apiMocks.listChats.mockResolvedValue([{ ...chat, owner_id: ownerId }]);
     renderChat();
     await findMessage();
-    const notice = "Этот чат создал пользователь, которого нет в ваших друзьях.";
+    const notice = "Этот чат создал пользователь, которого нет в ваших контактах.";
     expect(screen.queryByText(notice)).toBeNull();
     await act(async () => result.resolve({ friends, requests: [], sentRequests: [], categories: [] }));
     expect(Boolean(screen.queryByText(notice))).toBe(visible);
@@ -47,8 +47,8 @@ describe("ChatsPage: messages", () => {
       .mockResolvedValue({ ...lists, friends: [creator] });
     socialMocks.acceptFriend.mockResolvedValue({});
     renderChat();
-    const notice = await screen.findByText("Этот чат создал пользователь, которого нет в ваших друзьях.");
-    fireEvent.click(screen.getByRole("tab", { name: /Друзья/ }));
+    const notice = await screen.findByText("Этот чат создал пользователь, которого нет в ваших контактах.");
+    fireEvent.click(screen.getByRole("tab", { name: /Контакты/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Принять" }));
     await waitFor(() => expect(notice).not.toBeInTheDocument());
     expect(socialMocks.acceptFriend).toHaveBeenCalledWith(creator.id);
@@ -330,8 +330,9 @@ describe("ChatsPage: messages", () => {
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Переслать" }));
     const dialog = screen.getByRole("dialog", { name: "Переслать сообщение" });
     fireEvent.change(within(dialog).getByLabelText("Куда переслать"), { target: { value: "chat-2" } });
+    fireEvent.change(within(dialog).getByLabelText("Подпись к пересылке"), { target: { value: "Мой комментарий" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Переслать" }));
-    await waitFor(() => expect(apiMocks.forwardMessage).toHaveBeenCalledWith(chat.id, audioMessage.id, "chat-2", audioMessage.text));
+    await waitFor(() => expect(apiMocks.forwardMessage).toHaveBeenCalledWith(chat.id, audioMessage.id, "chat-2", audioMessage.text, "Мой комментарий"));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
