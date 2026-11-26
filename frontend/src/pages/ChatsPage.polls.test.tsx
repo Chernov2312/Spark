@@ -43,7 +43,8 @@ describe("ChatsPage: polls", () => {
       options: [{ id: "option-1", text: "Утром", votes_count: 0, voters: null }, { id: "option-2", text: "Вечером", votes_count: 0, voters: null }],
     });
     renderChat();
-    fireEvent.click(await screen.findByRole("button", { name: "Создать опрос" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Дополнительные действия" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Опрос или викторина" }));
     const dialog = screen.getByRole("dialog", { name: "Новый опрос" });
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Вопрос" }), { target: { value: pollMessage.text } });
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Вариант 1" }), { target: { value: "Утром" } });

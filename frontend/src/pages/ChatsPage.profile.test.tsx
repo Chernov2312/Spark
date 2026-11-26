@@ -12,7 +12,7 @@ describe("ChatsPage: profile", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Открыть информацию о чате" }));
     fireEvent.click(screen.getByRole("button", { name: "Выйти из чата" }));
     await waitFor(() => expect(apiMocks.leaveChat).toHaveBeenCalledWith(chat.id));
-    expect(screen.getByText("Выберите чат слева или создайте новый")).toBeVisible();
+    expect(await screen.findByText("Выберите чат слева или создайте новый")).toBeVisible();
   });
 
   it("lets the owner delete the chat for everyone after confirmation", async () => {
@@ -24,7 +24,7 @@ describe("ChatsPage: profile", () => {
     fireEvent.click(screen.getByRole("button", { name: "Удалить чат для всех" }));
     await waitFor(() => expect(apiMocks.deleteChat).toHaveBeenCalledWith(chat.id));
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("Переписка будет удалена"));
-    expect(screen.getByText("Выберите чат слева или создайте новый")).toBeVisible();
+    expect(await screen.findByText("Выберите чат слева или создайте новый")).toBeVisible();
   });
 
   it("restores saved preferences in StrictMode without overwriting them on mount", async () => {
