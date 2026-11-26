@@ -94,6 +94,8 @@
 .chat-item--active {
   background: var(--spark-dim);
 }
+.chat-item--unread { box-shadow: inset 3px 0 var(--spark); background: color-mix(in srgb, var(--spark-dim) 48%, transparent); }
+.chat-item--unread .chat-item__title { color: var(--text); font-weight: 700; }
 
 .chat-item__avatar {
   width: 46px;
@@ -351,6 +353,17 @@
 .chat-view__messages > * { flex-shrink: 0; }
 .chat-view__header, .chat-view__tabs, .chat-view__composer-wrapper { flex-shrink: 0; }
 .chat-view__composer-wrapper { max-height: 45dvh; overflow-y: auto; }
+.chat-threads-dropdown { position: relative; flex-shrink: 0; padding: 0 24px 10px; }
+.chat-threads-dropdown summary { display: flex; width: fit-content; align-items: center; gap: 8px; padding: 7px 11px; border: 1px solid var(--border); border-radius: 9px; color: var(--text-muted); background: var(--bg-elevated); cursor: pointer; list-style: none; }
+.chat-threads-dropdown summary::-webkit-details-marker { display: none; }
+.chat-threads-dropdown summary::after { content: "⌄"; }
+.chat-threads-dropdown[open] summary::after { content: "⌃"; }
+.chat-threads-dropdown summary span { color: var(--spark); }
+.chat-threads-dropdown__list { max-height: 30dvh; overflow-y: auto; margin: 6px 0 0; padding: 6px; list-style: none; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-elevated); }
+.chat-threads-dropdown__list button { display: flex; width: 100%; flex-direction: column; gap: 5px; padding: 9px 10px; border: 0; border-radius: 7px; color: var(--text); text-align: left; background: transparent; cursor: pointer; }
+.chat-threads-dropdown__list button:hover { background: var(--bg-hover); }
+.chat-threads-dropdown__list button span { overflow-wrap: anywhere; }
+.chat-threads-dropdown__list button small { color: var(--text-muted); }
 .active-thread-header { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 10px; border-bottom: 1px solid var(--border); }
 .active-thread-header strong { min-width: 0; overflow-wrap: anywhere; }
 .active-thread-header button { flex-shrink: 0; color: var(--spark); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 8px; cursor: pointer; }
