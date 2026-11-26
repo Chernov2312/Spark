@@ -189,7 +189,7 @@ export default function SettingsPage() {
                 <strong>{label}</strong>
                 <select aria-label={`Кто видит: ${label}`} value={profilePrivacy.visibility[field]} onChange={(event) => setProfilePrivacy((current) => ({ ...current, visibility: { ...current.visibility, [field]: event.target.value } }))}>
                   <option value="everyone">Все</option>
-                  <option value="friends">Только друзья</option>
+                  <option value="friends">Только контакты</option>
                   <option value="nobody">Никто</option>
                 </select>
               </div>

@@ -41,6 +41,7 @@ class MessageResponse(BaseModel):
     thread_reply_count: int = 0
     edited_at: datetime | None = None
     is_forwarded: bool = False
+    forward_caption: str | None = None
     is_pinned: bool = False
     poll_id: uuid.UUID | None = None
     link_preview: LinkPreview | None = None
@@ -58,6 +59,7 @@ class MessageHistory(BaseModel):
 
 class MessageForwardRequest(BaseModel):
     target_chat_id: uuid.UUID
+    caption: str | None = Field(default=None, max_length=1000)
     link_preview_url: str | None = Field(default=None, max_length=2048)
 
 

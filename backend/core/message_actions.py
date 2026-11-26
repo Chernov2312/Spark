@@ -179,6 +179,7 @@ async def forward_message(
     target_chat_id: uuid.UUID,
     user_id: uuid.UUID,
     link_preview_url: str | None = None,
+    caption: str | None = None,
 ) -> Message:
     await ensure_chat_member(session, chat_id, user_id)
     await ensure_chat_member(session, target_chat_id, user_id)
@@ -205,6 +206,7 @@ async def forward_message(
             "chat_id": target_chat_id,
             "user_id": user_id,
             "is_forwarded": True,
+            "forward_caption": caption.strip() if caption and caption.strip() else None,
             "text": source.text,
             "link_preview_url": link_preview_url,
         },

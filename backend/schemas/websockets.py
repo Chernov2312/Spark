@@ -11,6 +11,7 @@ from schemas.message import LinkPreview
 class UserData(BaseModel):
     id: uuid.UUID
     is_forwarded: bool = False
+    forward_caption: str | None = None
     text: str | None = None
     chat_id: uuid.UUID
     attachments: list[AttachmentResponse] = Field(default_factory=list)

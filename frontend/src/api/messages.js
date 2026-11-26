@@ -6,9 +6,10 @@ export async function listThreads(chatId) {
   return data.messages;
 }
 
-export async function forwardMessage(chatId, messageId, targetChatId, text) {
+export async function forwardMessage(chatId, messageId, targetChatId, text, caption = "") {
   const { data } = await api.post(`/chats/${chatId}/messages/${messageId}/forward`, {
     target_chat_id: targetChatId,
+    caption: caption.trim() || null,
     link_preview_url: parseMessageMarkdown(text).previewUrl,
   });
   return data;

@@ -1,7 +1,7 @@
 from datetime import datetime
 import uuid
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -12,6 +12,30 @@ from db.models import Attachment, Chat, ChatReadState, Message, User, user_chat
 
 class ChatDao(BaseDao[Chat]):
     model = Chat
+
+    @classmethod
+    async def get_direct_chat_between(
+        cls,
+        session: AsyncSession,
+        first_user_id: uuid.UUID,
+        second_user_id: uuid.UUID,
+    ) -> Chat | None:
+        members = (
+            select(user_chat.c.chat_id)
+            .where(user_chat.c.user_id.in_([first_user_id, second_user_id]))
+            .group_by(user_chat.c.chat_id)
+            .having(func.count(user_chat.c.user_id) == 2)
+        )
+        query = (
+            select(Chat)
+            .where(Chat.id.in_(members))
+            .options(selectinload(Chat.users))
+        )
+        result = await session.execute(query)
+        return next(
+            (chat for chat in result.scalars().all() if len(chat.users) == 2),
+            None,
+        )
 
     @classmethod
     async def get_missing_user_ids(

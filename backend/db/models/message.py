@@ -48,6 +48,7 @@ class Message(Base):
     text: Mapped[str] = mapped_column(String(1000), nullable=True)
     link_preview_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     is_forwarded: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    forward_caption: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     attachments: Mapped[list["Attachment"]] = relationship("Attachment")
     reactions_count: Mapped[dict[str, int]] = mapped_column(
         JSONB,

@@ -45,6 +45,7 @@ class ChatMessagePreview(BaseModel):
 
     id: uuid.UUID
     is_forwarded: bool = False
+    forward_caption: str | None = None
     user_id: uuid.UUID
     poll_id: uuid.UUID | None = None
     text: str | None = None
@@ -63,6 +64,7 @@ class ChatResponse(BaseModel):
     avatar_urls: List[str] = Field(default_factory=list)
     last_message: ChatMessagePreview | None = None
     personal_avatar_url: str | None = None
+    users_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 

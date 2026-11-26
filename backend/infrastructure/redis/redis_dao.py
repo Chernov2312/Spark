@@ -27,6 +27,28 @@ class RedisReactionSyncData(TypedDict):
 
 class RedisDao:
     @staticmethod
+    async def initialize_reaction_cache(
+        redis: Redis,
+        *,
+        message_id: uuid.UUID,
+        reactions_count: dict[str, int],
+        user_reactions: dict[uuid.UUID, str],
+    ) -> None:
+        counts_key = f"message:reactions_count:{message_id}"
+        users_key = f"message:users:{message_id}"
+        if await redis.exists(counts_key, users_key):
+            return
+
+        async with redis.pipeline(transaction=True) as pipeline:
+            if reactions_count:
+                pipeline.hset(counts_key, mapping=reactions_count)
+            if user_reactions:
+                for user_id, emoji in user_reactions.items():
+                    pipeline.set(f"message:user_reaction:{message_id}:{user_id}", emoji)
+                pipeline.sadd(users_key, *(str(user_id) for user_id in user_reactions))
+            await execute_redis_pipeline(pipeline, operation="initialize_reaction_cache")
+
+    @staticmethod
     async def get_link_preview(
         redis: Redis, chat_id: uuid.UUID, message_id: uuid.UUID, url: str
     ) -> LinkPreview | None:

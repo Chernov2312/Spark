@@ -12,6 +12,7 @@ export default function SocialSidebar({
   chatId,
   navigate,
   onCreateChat,
+  onOpenDirectChat,
   mobileOpen = false,
   onCloseMobile,
   unreadCounts = {},
@@ -52,7 +53,7 @@ export default function SocialSidebar({
     ])
       .catch((cause) => {
         if (!cancelled) {
-          setError(cause.response?.data?.detail || "Не удалось загрузить друзей и группы");
+          setError(cause.response?.data?.detail || "Не удалось загрузить контакты и группы");
         }
       })
       .finally(() => {
@@ -90,7 +91,11 @@ export default function SocialSidebar({
 
   const shownChats = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const matching = chats.filter((chat) => (chat.title || "").toLowerCase().includes(query));
+    const matching = chats.filter((chat) => {
+      const isDirect = chat.users_count === 2;
+      return (tab === "direct" ? isDirect : !isDirect)
+        && (chat.title || "").toLowerCase().includes(query);
+    });
     if (folderFilter === "all") return matching;
     if (folderFilter === "uncategorized") {
       const assigned = new Set(chatFolders.flatMap((folder) => folder.chat_ids));
@@ -98,7 +103,7 @@ export default function SocialSidebar({
     }
     const folder = chatFolders.find((item) => item.id === folderFilter);
     return matching.filter((chat) => folder?.chat_ids.includes(chat.id));
-  }, [chats, chatFolders, folderFilter, search]);
+  }, [chats, chatFolders, folderFilter, search, tab]);
 
   const shownFriends = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -142,7 +147,7 @@ export default function SocialSidebar({
       const category = friendCategories.find((item) => item.id === categoryFilter);
       return [{
         id: categoryFilter,
-        name: categoryFilter === "uncategorized" ? "Без категории" : category?.name || "Друзья",
+        name: categoryFilter === "uncategorized" ? "Без категории" : category?.name || "Контакты",
         friends: shownFriends,
       }];
     }
@@ -229,18 +234,19 @@ export default function SocialSidebar({
     <aside className={`chats-sidebar ${chatId ? "chats-sidebar--hidden-mobile" : ""} ${mobileOpen ? "chats-sidebar--show-mobile" : ""}`}>
       {mobileOpen && <div className="sidebar-scope"><button type="button" aria-label="Закрыть боковую панель" onClick={onCloseMobile}>×</button></div>}
       <div className="chats-sidebar__header">
-        <input className="chats-search" type="search" placeholder={tab === "chats" ? "Поиск чатов" : "Поиск друзей"} value={search} onChange={(event) => setSearch(event.target.value)} />
+        <input className="chats-search" type="search" placeholder={tab === "friends" ? "Поиск контактов" : tab === "direct" ? "Поиск личных сообщений" : "Поиск чатов"} value={search} onChange={(event) => setSearch(event.target.value)} />
         {tab === "chats" && <button className="chats-new" type="button" title="Создать чат" aria-label="Создать чат" onClick={onCreateChat}>+</button>}
       </div>
 
       <div className="chats-sidebar-tabs" role="tablist" aria-label="Разделы">
-        <button type="button" role="tab" aria-selected={tab === "chats"} className={tab === "chats" ? "is-active" : ""} onClick={() => setTab("chats")}>Чаты <span>{chats.length}</span></button>
-        <button type="button" role="tab" aria-selected={tab === "friends"} className={tab === "friends" ? "is-active" : ""} onClick={() => setTab("friends")}>Друзья <span>{friends.length}</span></button>
+        <button type="button" role="tab" aria-selected={tab === "chats"} className={tab === "chats" ? "is-active" : ""} onClick={() => setTab("chats")}>Чаты <span>{chats.filter((chat) => chat.users_count !== 2).length}</span></button>
+        <button type="button" role="tab" aria-selected={tab === "friends"} className={tab === "friends" ? "is-active" : ""} onClick={() => setTab("friends")}>Контакты <span>{friends.length}</span></button>
+        <button type="button" role="tab" aria-selected={tab === "direct"} className={tab === "direct" ? "is-active" : ""} onClick={() => setTab("direct")}>Личные сообщения <span>{chats.filter((chat) => chat.users_count === 2).length}</span></button>
       </div>
 
       <div className="sidebar-groups">
         <div className="sidebar-groups__filters">
-          {tab === "chats" ? <>
+          {tab !== "friends" ? <>
             <button type="button" className={folderFilter === "all" ? "is-active" : ""} onClick={() => setFolderFilter("all")}>Все</button>
             {chatFolders.map((folder) => <button key={folder.id} type="button" className={folderFilter === folder.id ? "is-active" : ""} onClick={() => setFolderFilter(folder.id)}>{folder.name}</button>)}
             <button type="button" className={folderFilter === "uncategorized" ? "is-active" : ""} onClick={() => setFolderFilter("uncategorized")}>Без папки</button>
@@ -250,10 +256,10 @@ export default function SocialSidebar({
             <button type="button" className={categoryFilter === "uncategorized" ? "is-active" : ""} onClick={() => setCategoryFilter("uncategorized")}>Без категории</button>
           </>}
         </div>
-        <button className="sidebar-groups__add" type="button" title={tab === "chats" ? "Создать папку" : "Создать категорию"} aria-label={tab === "chats" ? "Создать папку чатов" : "Создать категорию друзей"} onClick={() => { setGroupError(""); setGroupFormOpen((open) => !open); }}>+</button>
+        {tab !== "direct" && <button className="sidebar-groups__add" type="button" title={tab === "chats" ? "Создать папку" : "Создать категорию"} aria-label={tab === "chats" ? "Создать папку чатов" : "Создать категорию контактов"} onClick={() => { setGroupError(""); setGroupFormOpen((open) => !open); }}>+</button>}
       </div>
 
-      {groupFormOpen && <form className="sidebar-group-form" onSubmit={createGroup}>
+      {tab !== "direct" && groupFormOpen && <form className="sidebar-group-form" onSubmit={createGroup}>
         <input autoFocus maxLength={40} value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder={tab === "chats" ? "Название папки" : "Название категории"} aria-label="Название группы" />
         <button type="submit">Создать</button>
         {groupError && <span role="alert">{groupError}</span>}
@@ -261,10 +267,10 @@ export default function SocialSidebar({
 
       {error && <p className="social-sidebar-error" role="alert">{error}</p>}
       {tab === "friends" && loading && <p className="chats-empty">Загрузка…</p>}
-      {tab === "chats" && chatsLoading && <p className="chats-empty">Загрузка чатов…</p>}
-      {tab === "chats" && chatsError && <p className="social-sidebar-error" role="alert">{chatsError}</p>}
+      {tab !== "friends" && chatsLoading && <p className="chats-empty">Загрузка чатов…</p>}
+      {tab !== "friends" && chatsError && <p className="social-sidebar-error" role="alert">{chatsError}</p>}
 
-      {!chatsLoading && !chatsError && tab === "chats" && <ul className="chats-list">
+      {!chatsLoading && !chatsError && tab !== "friends" && <ul className="chats-list">
         {chatGroups.map((group) => group.chats.length > 0 && <Fragment key={group.id}>
           {folderFilter === "all" && <li className="sidebar-group-heading"><span>{group.name}</span><span>{group.chats.length}</span></li>}
           {group.chats.map((chat) => {
@@ -294,11 +300,11 @@ export default function SocialSidebar({
             </li>;
           })}
         </Fragment>)}
-        {shownChats.length === 0 && <li className="chats-empty">{search ? "Ничего не найдено" : "Пока нет чатов"}</li>}
+        {shownChats.length === 0 && <li className="chats-empty">{search ? "Ничего не найдено" : tab === "direct" ? "Личных сообщений пока нет. Откройте диалог из контактов." : "Пока нет чатов"}</li>}
       </ul>}
 
       {!loading && tab === "friends" && <div className="friends-list">
-        <label className="friend-search"><span>Добавить друга</span><input value={friendQuery} onChange={(event) => { setFriendQuery(event.target.value); setSearchResults([]); setSearching(false); }} placeholder="Имя или @тег" /></label>
+        <label className="friend-search"><span>Добавить контакт</span><input value={friendQuery} onChange={(event) => { setFriendQuery(event.target.value); setSearchResults([]); setSearching(false); }} placeholder="Имя или @тег" /></label>
         {searching && <p className="friends-list__hint">Ищем пользователей…</p>}
         {searchResults.map((person) => <div className="friend-item" key={person.id}>
           <div className="friend-avatar">{person.username?.[0]?.toUpperCase()}</div>
@@ -324,13 +330,14 @@ export default function SocialSidebar({
           {group.friends.map((person) => <div className="friend-item" key={person.id}>
             <div className="friend-avatar">{person.username?.[0]?.toUpperCase()}</div>
             <div className="friend-item__identity"><strong>{person.username}</strong><span>@{person.tag}</span></div>
+            <button type="button" className="friend-message-button" onClick={() => onOpenDirectChat(person)}>Сообщение</button>
             <select aria-label={`Категория для ${person.username}`} value={person.category_id || ""} onChange={(event) => assignFriend(person, event.target.value)}>
               <option value="">Без категории</option>
               {friendCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
             </select>
           </div>)}
         </section>)}
-        {shownFriends.length === 0 && searchResults.length === 0 && <p className="chats-empty">{friends.length ? "В этой группе пока нет друзей" : "Пока нет друзей — найдите человека по имени или тегу"}</p>}
+        {shownFriends.length === 0 && searchResults.length === 0 && <p className="chats-empty">{friends.length ? "В этой группе пока нет контактов" : "Пока нет контактов — найдите человека по имени или тегу"}</p>}
       </div>}
     </aside>
   );

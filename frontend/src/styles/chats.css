@@ -530,6 +530,12 @@
 }
 
 .msg--me .msg__forwarded { color: inherit; }
+.msg__forward-caption {
+  display: block;
+  margin-top: 3px;
+  color: var(--text);
+  white-space: pre-wrap;
+}
 
 .chat-view__creator-notice {
   margin: 0;

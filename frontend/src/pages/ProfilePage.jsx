@@ -4,7 +4,7 @@ import { getAvatarImageError } from "../api/imageUpload";
 
 const TABS = [
   { id: "info", label: "Информация" },
-  { id: "friends", label: "Друзья" },
+  { id: "friends", label: "Контакты" },
   { id: "photos", label: "Фото" },
 ];
 
@@ -66,7 +66,7 @@ export default function ProfilePage({ demo = false }) {
     let cancelled = false;
     social.listFriends()
       .then((data) => { if (!cancelled) setFriends(data.friends); })
-      .catch(() => { if (!cancelled) setError("Не удалось загрузить список друзей"); })
+      .catch(() => { if (!cancelled) setError("Не удалось загрузить список контактов"); })
       .finally(() => { if (!cancelled) setFriendsLoading(false); });
     return () => { cancelled = true; };
   }, [demo]);
@@ -125,14 +125,14 @@ export default function ProfilePage({ demo = false }) {
   };
 
   const handleRemoveFriend = async (friend) => {
-    if (!window.confirm(`Удалить ${friend.username} из друзей?`)) return;
+    if (!window.confirm(`Удалить ${friend.username} из контактов?`)) return;
     setError(null);
     setFriendActionId(friend.id);
     try {
       await social.removeFriend(friend.id);
       setFriends((current) => current.filter((item) => item.id !== friend.id));
     } catch (err) {
-      setError(err.response?.data?.detail || "Не удалось удалить друга");
+      setError(err.response?.data?.detail || "Не удалось удалить контакт");
     } finally {
       setFriendActionId(null);
     }
@@ -517,19 +517,19 @@ export default function ProfilePage({ demo = false }) {
           )}
 
           {tab === "friends" && (
-            <section className="profile-friends" aria-label="Друзья пользователя">
+            <section className="profile-friends" aria-label="Контакты пользователя">
               {error && <p className="register-card__error" role="alert">{error}</p>}
-              {friendsLoading ? <p className="vk-empty">Загрузка друзей…</p> : friends.length ? (
+              {friendsLoading ? <p className="vk-empty">Загрузка контактов…</p> : friends.length ? (
                 <ul className="profile-friends__list">
                   {friends.map((friend) => <li className="profile-friends__item" key={friend.id}>
                     <span className="profile-friends__avatar" aria-hidden="true">{friend.username?.[0]?.toUpperCase() || "?"}</span>
                     <span className="profile-friends__identity"><strong>{friend.username}</strong><small>@{friend.tag}</small></span>
                     {!demo && <button type="button" className="vk-btn profile-friends__remove" disabled={friendActionId === friend.id} onClick={() => handleRemoveFriend(friend)}>
-                      {friendActionId === friend.id ? "Удаление…" : "Удалить из друзей"}
+                      {friendActionId === friend.id ? "Удаление…" : "Удалить из контактов"}
                     </button>}
                   </li>)}
                 </ul>
-              ) : <p className="vk-empty">Пока нет друзей — найдите человека в разделе чатов.</p>}
+              ) : <p className="vk-empty">Пока нет контактов — найдите человека в разделе чатов.</p>}
             </section>
           )}
 

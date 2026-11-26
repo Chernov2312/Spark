@@ -439,7 +439,9 @@ const MessageItem = React.memo(function MessageItem({
     else groups.push({ media, items: [attachment] });
     return groups;
   }, []);
-  const reactions = m.reactions_count || {};
+  const reactions = Object.fromEntries(
+    Object.entries(m.reactions_count || {}).filter(([, count]) => Number(count) > 0),
+  );
   const hasReactions = Object.keys(reactions).length > 0;
   const replyText = replySource
     ? messageContentPreview(replySource)
@@ -491,6 +493,7 @@ const MessageItem = React.memo(function MessageItem({
         {m.is_forwarded && (
           <div className="msg__forwarded">
             <span aria-hidden="true">↪</span> Пересланное сообщение
+            {m.forward_caption && <span className="msg__forward-caption">{m.forward_caption}</span>}
           </div>
         )}
         {m.is_pinned && <span className="msg__pin-label">Закреплено</span>}
@@ -552,6 +555,7 @@ const MessageItem = React.memo(function MessageItem({
                 key={emoji}
                 type="button"
                 className={`reaction ${m.user_reaction === emoji ? "reaction--active" : ""}`}
+                aria-pressed={m.user_reaction === emoji}
                 onClick={() => onReaction(m.id, emoji)}
               >
                 {emoji} {count}
@@ -737,6 +741,7 @@ export default function ChatsPage() {
   const [forwardTarget, setForwardTarget] = useState("");
   const [forwardBusy, setForwardBusy] = useState(false);
   const [forwardError, setForwardError] = useState("");
+  const [forwardCaption, setForwardCaption] = useState("");
   const activeThreadRef = useRef(null);
   activeThreadRef.current = activeThread;
   const threadRequestRef = useRef(0);
@@ -1253,6 +1258,17 @@ export default function ChatsPage() {
             updateChatPreview(chatId, data, true);
             setMessages((prev) => prev.map((item) => item.id === data.id ? { ...item, ...data } : item));
             setThreadMessages((prev) => prev.map((item) => item.id === data.id ? { ...item, ...data } : item));
+          }
+          if (event === "message:reactions" && data.chat_id === chatId) {
+            const applyReactions = (items) => items.map((item) => item.id === data.message_id
+              ? {
+                ...item,
+                reactions_count: data.reactions_count,
+                ...(data.user_id === me?.id ? { user_reaction: data.user_reaction } : {}),
+              }
+              : item);
+            setMessages(applyReactions);
+            setThreadMessages(applyReactions);
           }
           if (event === "message:deleted" && data.chat_id === chatId) {
             applyPinUpdate({ id: data.message_id, is_pinned: false, deleted: true });
@@ -1850,23 +1866,22 @@ export default function ChatsPage() {
   const handleReaction = useCallback(async (messageId, emoji) => {
     try {
       const res = await messagesApi.addReaction(messageId, emoji);
-      setMessages((prev) =>
-        prev.map((m) => {
-          if (m.id !== messageId) return m;
+      const updateReaction = (items) => items.map((m) => {
+        if (m.id !== messageId) return m;
 
-          const wasMine = m.user_reaction === emoji;
-          const nextUserReaction = wasMine ? null : emoji;
+        const wasMine = m.user_reaction === emoji;
+        const nextUserReaction = wasMine ? null : emoji;
 
-          return {
-            ...m,
-            reactions_count:
-              res.updated_reactions_count ?? m.reactions_count,
-            user_reaction: nextUserReaction,
-          };
-        }),
-      );
+        return {
+          ...m,
+          reactions_count: res.updated_reactions_count ?? m.reactions_count,
+          user_reaction: nextUserReaction,
+        };
+      });
+      setMessages(updateReaction);
+      setThreadMessages(updateReaction);
     } catch (err) {
-      console.error("Не удалось поставить реакцию:", err);
+      setMessagesError(translateApiError(err, "Не удалось изменить реакцию"));
     }
   }, []);
 
@@ -2026,7 +2041,7 @@ export default function ChatsPage() {
     setForwardBusy(true);
     setForwardError("");
     try {
-      const created = await messagesApi.forwardMessage(chatId, forwarding.id, forwardTarget, forwarding.text);
+      const created = await messagesApi.forwardMessage(chatId, forwarding.id, forwardTarget, forwarding.text, forwardCaption);
       if (forwardTarget === chatId) setMessages((items) => items.some((item) => item.id === created.id) ? items : [...items, created]);
       updateChatPreview(forwardTarget, created);
       setForwarding(null);
@@ -2137,6 +2152,18 @@ export default function ChatsPage() {
         chatsError={chatsError}
         chatId={chatId}
         navigate={(path) => { closeThread(); setSidebarOpen(false); navigate(path); }}
+        onOpenDirectChat={async (person) => {
+          try {
+            const directChat = await chatsApi.openDirectChat(person.id);
+            setChats((items) => items.some((chat) => chat.id === directChat.id)
+              ? items.map((chat) => chat.id === directChat.id ? { ...chat, ...directChat } : chat)
+              : [...items, directChat]);
+            setSidebarOpen(false);
+            navigate(`/chats/${directChat.id}`);
+          } catch (error) {
+            setMessagesError(translateApiError(error, "Не удалось открыть личный диалог"));
+          }
+        }}
         onCreateChat={() => {
           setCreateChatError(null);
           setUsernameQuery("");
@@ -2226,7 +2253,7 @@ export default function ChatsPage() {
             {me?.id && activeChat.owner_id && activeChat.owner_id !== me.id &&
               friends && !friends.some((friend) => friend.id === activeChat.owner_id) && (
                 <p className="chat-view__creator-notice">
-                  Этот чат создал пользователь, которого нет в ваших друзьях.
+                  Этот чат создал пользователь, которого нет в ваших контактах.
                 </p>
               )}
 
@@ -2756,7 +2783,7 @@ export default function ChatsPage() {
             {menuMessage && <div className="message-context-menu__actions">
               <button type="button" onClick={() => runMenuAction(() => replyToMessage(menuMessage))}>Ответить</button>
               <button type="button" onClick={() => runMenuAction(() => openThread(menuMessage))}>Открыть тред</button>
-              {!menuMessage.poll_id && <button type="button" onClick={() => runMenuAction(() => { setForwarding(menuMessage); setForwardTarget(""); setForwardError(""); })}>Переслать</button>}
+              {!menuMessage.poll_id && <button type="button" onClick={() => runMenuAction(() => { setForwarding(menuMessage); setForwardTarget(""); setForwardCaption(""); setForwardError(""); })}>Переслать</button>}
               <button type="button" disabled={Boolean(pinBusyId)} onClick={() => runMenuAction(() => pinMessage(menuMessage))}>{menuMessage.is_pinned ? "Открепить" : "Закрепить"}</button>
               <div ref={setPollMenuTarget} className="message-context-menu__poll-actions" />
               {isOwnMessage(menuMessage) && <>
@@ -2772,6 +2799,7 @@ export default function ChatsPage() {
         <form className="modal forward-message-modal" role="dialog" aria-modal="true" aria-label="Переслать сообщение" onClick={(event) => event.stopPropagation()} onSubmit={handleForward} onKeyDown={(event) => { if (event.key === "Escape" && !forwardBusy) setForwarding(null); }}>
           <h3>Переслать сообщение</h3>
           <p>{forwarding.text || "Сообщение с вложениями"}</p>
+          <label>Подпись к пересылке<textarea maxLength={1000} value={forwardCaption} onChange={(event) => setForwardCaption(event.target.value)} placeholder="Добавить комментарий" disabled={forwardBusy} /></label>
           <label>Куда переслать<select autoFocus value={forwardTarget} onChange={(event) => setForwardTarget(event.target.value)} disabled={forwardBusy}>
             <option value="">Выберите чат</option>
             {chats.map((chat) => <option key={chat.id} value={chat.id}>{chat.title}</option>)}

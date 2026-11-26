@@ -1,7 +1,7 @@
 from typing import TypedDict
 import uuid
 
-from sqlalchemy import and_, bindparam, select, update
+from sqlalchemy import and_, delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.dao.basedao import BaseDao
@@ -16,6 +16,17 @@ class MessageReactionData(TypedDict):
 
 class MessageReactionDao(BaseDao[MessageReaction]):
     model = MessageReaction
+
+    @classmethod
+    async def get_message_reactions(
+        cls,
+        session: AsyncSession,
+        message_id: uuid.UUID,
+    ) -> list[MessageReaction]:
+        result = await session.execute(
+            select(MessageReaction).where(cls.model.message_id == message_id),
+        )
+        return list(result.scalars().all())
 
     @classmethod
     async def get_user_reactions(
@@ -39,31 +50,24 @@ class MessageReactionDao(BaseDao[MessageReaction]):
         session: AsyncSession,
         message_reactions: list[MessageReactionData],
     ) -> None:
+        message_ids = [uuid.UUID(str(message["id"])) for message in message_reactions]
+        if not message_ids:
+            return
+
+        await session.execute(
+            delete(cls.model).where(cls.model.message_id.in_(message_ids)),
+        )
         users_data = []
         for msg in message_reactions:
             message_id = uuid.UUID(str(msg["id"]))
             for user_id_str, emoji in msg["users"].items():
                 users_data.append(
                     {
-                        "b_user_id": uuid.UUID(user_id_str),
-                        "b_message_id": message_id,
+                        "user_id": uuid.UUID(user_id_str),
+                        "message_id": message_id,
                         "emoji": emoji,
                     },
                 )
 
-        if not users_data:
-            return
-
-        stmt = (
-            update(cls.model)
-            .where(
-                cls.model.user_id == bindparam("b_user_id"),
-                cls.model.message_id == bindparam("b_message_id"),
-            )
-            .values(
-                emoji=bindparam("emoji"),
-            )
-        )
-
-        conn = await session.connection()
-        await conn.execute(stmt, users_data)
+        if users_data:
+            await session.execute(insert(cls.model), users_data)

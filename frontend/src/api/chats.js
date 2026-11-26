@@ -7,6 +7,11 @@ export async function listChats() {
   return data.chats;
 }
 
+export async function openDirectChat(userId) {
+  const { data } = await api.post(`/users/${userId}/direct-chat`);
+  return data;
+}
+
 /* POST /chats */
 export async function createChat({
   id = null,
