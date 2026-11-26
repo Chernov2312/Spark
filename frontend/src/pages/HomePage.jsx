@@ -22,8 +22,8 @@ export default function HomePage() {
             <Link to="/register" className="home__btn home__btn--primary">
               Создать аккаунт <span aria-hidden="true">→</span>
             </Link>
-            <Link to="/features" className="home__btn">
-              Узнать больше
+            <Link to="/download" className="home__btn">
+              Скачать Spark
             </Link>
           </div>
           <p className="home__note">Бесплатно начать · Регистрация за минуту</p>

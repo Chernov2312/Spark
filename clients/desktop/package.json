@@ -1,0 +1,29 @@
+{
+  "name": "spark-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Spark Messenger for Windows",
+  "author": "Spark",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.5.0",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "org.sparkwork.messenger",
+    "productName": "Spark",
+    "artifactName": "Spark-Windows-x64.exe",
+    "files": ["main.cjs", "icon.png"],
+    "directories": { "output": "dist" },
+    "win": { "icon": "icon.png" },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "createDesktopShortcut": true
+    }
+  }
+}

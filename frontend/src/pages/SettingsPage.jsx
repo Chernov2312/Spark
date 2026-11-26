@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { auth, users } from "../api";
 import { disableWebPush, enableWebPush, isWebPushEnabled, supportsWebPush } from "../api/push";
 
@@ -139,6 +139,7 @@ export default function SettingsPage() {
   return (
     <main className="settings-page">
       <header className="settings-page__intro">
+        <Link to="/download" className="settings-page__download">Скачать Spark</Link>
         <span className="settings-page__eyebrow">Spark</span>
         <h1>Настройки</h1>
         <p>Управляйте уведомлениями, параметрами чатов и аккаунтом.</p>

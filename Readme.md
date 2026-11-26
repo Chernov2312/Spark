@@ -19,6 +19,35 @@ Spark — веб-мессенджер с REST API и WebSocket-соединен�
 - Распознавание голосовых вложений через Whisper по запросу пользователя.
 - Загрузка файлов в S3-совместимое хранилище Yandex Cloud.
 - Аудио- и видеозвонки через WebRTC с Go-сервисом сигналинга и гостевыми ссылками.
+- Установщики Spark для Windows и Android и установка веб-приложения на iPhone и iPad через Safari.
+
+## Приложения Spark
+
+Страница `/download` показывает установщики Windows 10/11 x64 и Android 10+. Приложения открывают интерфейс `https://sparkwork.dpdns.org` в отдельном окне и используют существующий аккаунт. На iPhone и iPad откройте Spark в Safari и выберите «Поделиться» → «На экран “Домой”».
+
+### Локальная сборка
+
+Для Windows нужны Node.js 24 и npm. Для Android нужны JDK 17, Android SDK Platform 36 и Build Tools 35.0.0. Укажите путь к SDK в `ANDROID_HOME`. Для подписанного APK задайте `SPARK_ANDROID_KEYSTORE` (абсолютный путь к файлу ключей), `SPARK_ANDROID_STORE_PASSWORD`, `SPARK_ANDROID_KEY_ALIAS` и `SPARK_ANDROID_KEY_PASSWORD`.
+
+Сборку и подготовку файлов на Windows запускайте из корня репозитория.
+
+```powershell
+npm --prefix clients/desktop ci
+npm --prefix clients/desktop run dist
+Push-Location clients/android
+.\gradlew.bat :app:assembleRelease :app:lintRelease
+Pop-Location
+
+New-Item -ItemType Directory -Force frontend/public/installers
+Copy-Item clients/desktop/dist/Spark-Windows-x64.exe frontend/public/installers/
+Copy-Item clients/android/app/build/outputs/apk/release/app-release.apk frontend/public/installers/Spark-Android.apk
+```
+
+На Linux и macOS для Android используйте `bash ./gradlew :app:assembleRelease :app:lintRelease` из `clients/android`. Без переменных подписи Gradle создаёт `app-release-unsigned.apk`. Фронтенд подхватывает подготовленные установщики при следующем запуске Vite или сборке production-образа. Файлы установщиков и ключи храните вне Git.
+
+### Публикация
+
+Workflow `Release Spark apps` запускается при отправке тега `apps-v<major>.<minor>.<patch>`, например `apps-v1.0.0`. В настройках GitHub Actions задайте секреты `SPARK_ANDROID_KEYSTORE_BASE64`, `SPARK_ANDROID_STORE_PASSWORD`, `SPARK_ANDROID_KEY_ALIAS` и `SPARK_ANDROID_KEY_PASSWORD`. Используйте один ключ подписи для всех публичных обновлений Android. Workflow собирает оба установщика, проверяет подпись APK и публикует файлы в одном GitHub Release. Если на сервере есть файл в `/installers/`, страница отдаёт его в приоритете. Иначе она ищет выпуск приложений в GitHub Releases.
 
 ## Требования
 

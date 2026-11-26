@@ -1,0 +1,35 @@
+plugins {
+    id 'com.android.application' version '8.13.2'
+}
+
+def signingStore = providers.environmentVariable('SPARK_ANDROID_KEYSTORE')
+
+android {
+    namespace = 'org.sparkwork.messenger'
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = 'org.sparkwork.messenger'
+        minSdk = 29
+        targetSdk = 36
+        versionCode = providers.environmentVariable('SPARK_ANDROID_VERSION_CODE').getOrElse('1').toInteger()
+        versionName = providers.environmentVariable('SPARK_ANDROID_VERSION_NAME').getOrElse('1.0.0')
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    if (signingStore.isPresent()) {
+        signingConfigs {
+            release {
+                storeFile = file(signingStore.get())
+                storePassword = providers.environmentVariable('SPARK_ANDROID_STORE_PASSWORD').get()
+                keyAlias = providers.environmentVariable('SPARK_ANDROID_KEY_ALIAS').get()
+                keyPassword = providers.environmentVariable('SPARK_ANDROID_KEY_PASSWORD').get()
+            }
+        }
+        buildTypes.release.signingConfig = signingConfigs.release
+    }
+}
