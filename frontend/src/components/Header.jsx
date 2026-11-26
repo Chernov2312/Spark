@@ -55,6 +55,7 @@ export default function Header() {
             <>
               <NavLink to="/chats" className={navCls}>Чаты</NavLink>
               <NavLink to="/profile" className={navCls}>Профиль</NavLink>
+              <NavLink to="/download" className={navCls}>Скачать</NavLink>
             </>
           ) : (
             <>

@@ -142,3 +142,8 @@ frontend/playwright-report/
 frontend/test-results/
 
 .ruff_cache
+.client-build/
+frontend/public/installers/
+clients/desktop/node_modules/
+clients/android/.gradle/
+clients/android/local.properties

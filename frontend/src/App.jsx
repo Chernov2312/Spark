@@ -1,4 +1,5 @@
 ﻿import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import HomePage from "./pages/HomePage";
@@ -9,6 +10,7 @@ import FaqPage from "./pages/FaqPage";
 import ChatsPage from "./pages/ChatsPage";
 import GuestCallPage from "./pages/GuestCallPage";
 import SettingsPage from "./pages/SettingsPage";
+import DownloadPage from "./pages/DownloadPage";
 import CallsProvider from "./components/CallsProvider";
 import EmailVerificationPage from "./pages/EmailVerificationPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
@@ -30,9 +32,24 @@ function SimplePage({ title, text }) {
 }
 
 export default function App() {
+  const [installPrompt, setInstallPrompt] = useState(null);
   const { pathname } = useLocation();
   const isVerificationPage = pathname.startsWith("/verify-email/");
   const isChatsPage = pathname === "/chats" || pathname.startsWith("/chats/");
+
+  useEffect(() => {
+    const onInstallPrompt = (event) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+    const clearInstallPrompt = () => setInstallPrompt(null);
+    window.addEventListener("beforeinstallprompt", onInstallPrompt);
+    window.addEventListener("appinstalled", clearInstallPrompt);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onInstallPrompt);
+      window.removeEventListener("appinstalled", clearInstallPrompt);
+    };
+  }, []);
 
   return (
     <CallsProvider>
@@ -91,9 +108,9 @@ export default function App() {
         <Route
           path="/download"
           element={
-            <SimplePage
-              title="Скачать Spark"
-              text="Мобильные и настольные приложения появятся здесь. Пока Spark доступен в браузере."
+            <DownloadPage
+              installPrompt={installPrompt}
+              clearInstallPrompt={() => setInstallPrompt(null)}
             />
           }
         />
