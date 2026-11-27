@@ -51,7 +51,7 @@ jobs:
 
   android:
     needs: version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: clients/android
@@ -64,7 +64,9 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Install Android SDK packages
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;35.0.0'
       - name: Build and verify signed APK
         env:
           SPARK_ANDROID_KEYSTORE_BASE64: ${{ secrets.SPARK_ANDROID_KEYSTORE_BASE64 }}
