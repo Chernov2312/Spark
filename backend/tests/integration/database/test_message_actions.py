@@ -16,6 +16,7 @@ from core.security import create_access_token
 from db.dao.chat_dao import ChatDao
 from db.dao.message_dao import MessageDao
 from db.models import Chat, User
+from infrastructure.redis.client import Redis
 from infrastructure.redis.redis_dao import RedisDao
 from schemas.message import AttachmentRequest, MessageForwardRequest, MessageInternalDTO
 from schemas.websockets import WsEvent
@@ -183,8 +184,10 @@ async def test_queued_thread_discovery_and_forwarding(
 
 
 async def test_thread_list_and_forward_route_responses(
-    db_session, db_userchat, test_redis_client
-):
+    db_session: AsyncSession,
+    db_userchat: tuple[Chat, User],
+    test_redis_client: Redis,
+) -> None:
     chat, member = db_userchat
     root = await MessageDao.create_with_attachments(
         db_session,
@@ -208,7 +211,7 @@ async def test_thread_list_and_forward_route_responses(
         forwarded = await forward_chat_message(
             chat.id,
             root.id,
-            MessageForwardRequest(target_chat_id=chat.id),
+            MessageForwardRequest(target_chat_id=chat.id, caption="  Read this  "),
             member.id,
             db_session,
             test_redis_client,
@@ -217,15 +220,19 @@ async def test_thread_list_and_forward_route_responses(
         published = WsEvent.model_validate_json(event["data"])
         assert published.data.id == forwarded.id
         assert published.data.is_forwarded
+        assert published.data.forward_caption == "Read this"
     assert forwarded.id != root.id
     assert forwarded.text == root.text
     assert forwarded.user_id == member.id
     assert forwarded.is_forwarded
+    assert forwarded.forward_caption == "Read this"
     history = await get_messages_history(
         chat.id, user_id=member.id, session=db_session, redis=test_redis_client
     )
     markers = {message.id: message.is_forwarded for message in history.messages}
     assert markers == {root.id: False, forwarded.id: True}
+    captions = {message.id: message.forward_caption for message in history.messages}
+    assert captions == {root.id: None, forwarded.id: "Read this"}
 
 
 async def test_last_message_preview_merges_queue_and_database(

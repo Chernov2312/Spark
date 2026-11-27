@@ -3,6 +3,7 @@ import uuid
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -26,16 +27,44 @@ class ChatDao(BaseDao[Chat]):
             .group_by(user_chat.c.chat_id)
             .having(func.count(user_chat.c.user_id) == 2)
         )
-        query = (
-            select(Chat)
-            .where(Chat.id.in_(members))
-            .options(selectinload(Chat.users))
-        )
+        query = select(Chat).where(Chat.id.in_(members)).options(selectinload(Chat.users))
         result = await session.execute(query)
         return next(
             (chat for chat in result.scalars().all() if len(chat.users) == 2),
             None,
         )
+
+    @classmethod
+    async def get_or_create_direct_chat(
+        cls,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        target_user_id: uuid.UUID,
+    ) -> Chat:
+        chat = await cls.get_direct_chat_between(session, user_id, target_user_id)
+        if chat is not None:
+            return chat
+
+        first_id, second_id = sorted((user_id, target_user_id))
+        try:
+            async with session.begin_nested():
+                chat = await cls.add(
+                    session,
+                    {
+                        "owner_id": user_id,
+                        "title": f"direct-{first_id}-{second_id}",
+                        "description": "",
+                    },
+                )
+                await cls.add_users_to_chat(session, chat.id, [user_id, target_user_id])
+                await cls.set_owner_role(session, chat.id, user_id)
+        except IntegrityError:
+            chat = await cls.get_direct_chat_between(session, user_id, target_user_id)
+            if chat is None:
+                raise
+        else:
+            await session.refresh(chat, ["users"])
+        return chat
 
     @classmethod
     async def get_missing_user_ids(
@@ -226,5 +255,5 @@ class ChatDao(BaseDao[Chat]):
         if description is not None:
             chat.description = description
         await session.flush()
-        await session.refresh(chat)
+        await session.refresh(chat, ["updated_at"])
         return chat

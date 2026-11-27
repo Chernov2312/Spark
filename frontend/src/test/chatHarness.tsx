@@ -26,6 +26,7 @@ const { apiMocks, socialMocks, socketState } = vi.hoisted(() => ({
     listThreads: vi.fn(),
     listThreadMessages: vi.fn(),
     forwardMessage: vi.fn(),
+    addReaction: vi.fn(),
     setPersonalChatAvatar: vi.fn(),
     resetPersonalChatAvatar: vi.fn(),
     getChatMembers: vi.fn(),
@@ -82,6 +83,7 @@ vi.mock("../api", () => ({
     listThreads: apiMocks.listThreads,
     listThreadMessages: apiMocks.listThreadMessages,
     forwardMessage: apiMocks.forwardMessage,
+    addReaction: apiMocks.addReaction,
   },
   attachments: {
     uploadAttachment: apiMocks.uploadAttachment,

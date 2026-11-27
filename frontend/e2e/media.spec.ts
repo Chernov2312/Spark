@@ -1,6 +1,14 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { Page } from "@playwright/test";
 import { test, expect, chatId, user } from "./support";
+
+async function chooseAttachment(page: Page, file: { name: string; mimeType: string; buffer: Buffer }) {
+  await page.getByRole("button", { name: "Дополнительные действия" }).click();
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("menuitem", { name: "Прикрепить файл" }).click();
+  await (await chooser).setFiles(file);
+}
 
 test("renders uploaded Markdown and loads its bytes when cached text is absent", async ({ page, mockApi }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -12,7 +20,7 @@ test("renders uploaded Markdown and loads its bytes when cached text is absent",
     "- [x] Проверить Markdown",
   ].join("\n");
   await mockApi.openChat();
-  await page.locator(".chat-view__composer input[type=file]").setInputFiles({
+  await chooseAttachment(page, {
     name: "release.markdown", mimeType: "application/octet-stream", buffer: Buffer.from(text),
   });
   await page.getByRole("button", { name: "Отправить", exact: true }).click();
@@ -38,7 +46,7 @@ test("renders uploaded Markdown and loads its bytes when cached text is absent",
 test("audio upload, explicit live transcription and authenticated download preserve the file", async ({ page, mockApi }) => {
   const bytes = readFileSync(resolve("..", "backend", "tests", "integration", "audio_converter", "audio.ogg"));
   await mockApi.openChat();
-  await page.locator(".chat-view__composer input[type=file]").setInputFiles({ name: "voice-note.ogg", mimeType: "audio/ogg", buffer: bytes });
+  await chooseAttachment(page, { name: "voice-note.ogg", mimeType: "audio/ogg", buffer: bytes });
   await page.getByRole("button", { name: "Отправить", exact: true }).click();
   const player = page.locator(".msg .audio-player");
   await expect(player).toBeVisible();
@@ -72,7 +80,7 @@ test("the same photo is compressed and uploaded independently to two chats", asy
   const photo = readFileSync(resolve("..", "backend", "tests", "files", "testimage.jpg"));
   for (const chat of mockApi.chats) {
     await mockApi.openChat(chat.id);
-    await page.locator(".chat-view__composer input[type=file]").setInputFiles({ name: "same-photo.jpg", mimeType: "image/jpeg", buffer: photo });
+    await chooseAttachment(page, { name: "same-photo.jpg", mimeType: "image/jpeg", buffer: photo });
     await page.getByRole("button", { name: "Отправить", exact: true }).click();
     await expect(page.locator(".msg__media-grid img")).toBeVisible();
   }

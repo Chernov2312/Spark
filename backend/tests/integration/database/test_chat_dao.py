@@ -1,10 +1,13 @@
+from asyncio import Barrier, TaskGroup
 from datetime import datetime, timezone
 import uuid
 
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncEngine
 
 from db.dao.chat_dao import ChatDao
 from db.dao.message_dao import MessageDao
+from db.dao.user_dao import UserDao
 from db.models import Chat, user_chat
 
 
@@ -37,6 +40,44 @@ async def test_add_users_to_chat_is_idempotent_and_loads_members(
     assert member_count == 2
     assert {member.id for member in loaded_chat.users} == {db_user.id, invited_user.id}
     assert await ChatDao.get_chat_with_users(db_session, uuid.uuid4()) is None
+
+
+async def test_opening_direct_chat_concurrently_reuses_one_chat(
+    db_engine: AsyncEngine,
+) -> None:
+    sessions = async_sessionmaker(db_engine, expire_on_commit=False)
+    first_id, second_id = uuid.uuid4(), uuid.uuid4()
+    async with sessions.begin() as session:
+        for user_id in (first_id, second_id):
+            await UserDao.add(
+                session,
+                {
+                    "id": user_id,
+                    "username": str(user_id),
+                    "email": f"{user_id}@example.com",
+                    "password": "unused",
+                },
+            )
+
+    ready = Barrier(2)
+
+    async def open_chat(user_id: uuid.UUID, peer_id: uuid.UUID) -> uuid.UUID:
+        async with sessions.begin() as session:
+            await session.connection()
+            await ready.wait()
+            chat = await ChatDao.get_or_create_direct_chat(session, user_id, peer_id)
+            assert {user.id for user in chat.users} == {user_id, peer_id}
+            return chat.id
+
+    try:
+        async with TaskGroup() as group:
+            first_chat = group.create_task(open_chat(first_id, second_id))
+            second_chat = group.create_task(open_chat(second_id, first_id))
+        assert first_chat.result() == second_chat.result()
+    finally:
+        async with sessions.begin() as session:
+            await UserDao.delete_by_id(session, first_id)
+            await UserDao.delete_by_id(session, second_id)
 
 
 async def test_chat_base_dao_returns_none_after_missing_delete(db_session, db_user):

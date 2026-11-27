@@ -1,8 +1,11 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Self, TYPE_CHECKING
 import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
+
+if TYPE_CHECKING:
+    from db.models import Chat
 
 
 class PatchChatRequest(BaseModel):
@@ -56,7 +59,7 @@ class ChatMessagePreview(BaseModel):
 
 class ChatResponse(BaseModel):
     id: uuid.UUID
-    title: str = Field(..., max_length=50)
+    title: str = Field(..., max_length=100)
     description: str = Field(..., max_length=150)
     owner_id: uuid.UUID
     created_at: datetime
@@ -67,6 +70,21 @@ class ChatResponse(BaseModel):
     users_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_chat(cls, chat: "Chat", user_id: uuid.UUID) -> Self:
+        title = chat.title
+        if len(chat.users) == 2:
+            title = next(member.username for member in chat.users if member.id != user_id)
+        return cls(
+            id=chat.id,
+            title=title,
+            description=chat.description,
+            owner_id=chat.owner_id,
+            created_at=chat.created_at,
+            updated_at=chat.updated_at,
+            users_count=len(chat.users),
+        )
 
 
 class GetChatsResponse(BaseModel):

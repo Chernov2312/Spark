@@ -16,10 +16,15 @@ from api.v1 import user as user_api
 from api.v1.websockets import chat_typing
 from core.storage import S3Storage
 from db.dao.message_dao import MessageDao
+from db.dao.message_reactions_dao import MessageReactionDao
+from infrastructure.redis.client import Redis
+from infrastructure.redis.redis_dao import RedisDao
 from schemas.attachment import AttachmentRequest, AvatarUrlRequest
 from schemas.chats import ChatAddUserRequest, NewChatRequest, PatchChatRequest
+from schemas.message import MessageInternalDTO
 from schemas.reactions import ReactionsRequest
 from schemas.user import Avatar, UserQuery, UserUpdate
+from schemas.websockets import MessageReactions, WsEvent
 
 
 def mock_s3(monkeypatch, *, temporary_url="https://signed.test/file", delete=True):
@@ -446,60 +451,109 @@ async def test_user_delete_avatar_missing_and_success(
 
 
 async def test_reaction_routes_cover_add_change_remove_and_missing_reaction(
-    db_session,
-    test_redis_client,
-):
-    message_id, user_id, chat_id = uuid.uuid4(), uuid.uuid4(), str(uuid.uuid4())
+    db_session: AsyncSession,
+    test_redis_client: Redis,
+    chat_id: uuid.UUID,
+    id_first_user: uuid.UUID,
+) -> None:
+    message_id = uuid.uuid4()
+    user_id = id_first_user
     redis = test_redis_client
-    await redis.set(f"message:chat:{message_id}", chat_id)
+    await RedisDao.enqueue_message(
+        redis,
+        MessageInternalDTO(
+            id=message_id, chat_id=chat_id, user_id=user_id, text="Queued"
+        ),
+    )
 
-    await reactions_api.post_reactions(
+    added = await reactions_api.post_reactions(
         message_id,
         ReactionsRequest(emoji="🔥"),
         user_id,
         redis,
         db_session,
     )
+    assert added.updated_reactions_count == {"🔥": 1}
+    assert added.user_reaction == "🔥"
     assert await redis.hget(f"message:reactions_count:{message_id}", "🔥") == "1"
-    await reactions_api.post_reactions(
+    switched = await reactions_api.post_reactions(
         message_id,
         ReactionsRequest(emoji="❤️"),
         user_id,
         redis,
         db_session,
     )
+    assert switched.updated_reactions_count == {"❤️": 1}
+    assert switched.user_reaction == "❤️"
     assert await redis.hget(f"message:reactions_count:{message_id}", "🔥") == "0"
     assert await redis.hget(f"message:reactions_count:{message_id}", "❤️") == "1"
-    await reactions_api.delete(message_id, user_id, redis, db_session)
-    await reactions_api.delete(message_id, user_id, redis, db_session)
+    removed = await reactions_api.delete(message_id, user_id, redis, db_session)
+    assert removed.updated_reactions_count == {}
+    assert removed.user_reaction is None
+    assert await reactions_api.delete(message_id, user_id, redis, db_session) == removed
 
     assert await redis.get(f"message:user_reaction:{message_id}:{user_id}") is None
     assert await redis.smembers(f"message:users:{message_id}") == set()
-    assert await redis.get(f"messages:history-version:{chat_id}") == "3"
+    assert await RedisDao.get_history_version(redis, chat_id) == 4
 
 
-async def test_reaction_route_falls_back_to_database_for_chat_id(
-    db_session,
-    test_redis_client,
-    chat_id,
-    id_first_user,
-):
-    user_id = id_first_user
-    redis = test_redis_client
+async def test_reaction_route_loads_saved_reactions_and_checks_membership(
+    db_session: AsyncSession,
+    test_redis_client: Redis,
+    chat_id: uuid.UUID,
+    id_first_user: uuid.UUID,
+    id_second_user: uuid.UUID,
+) -> None:
     message = await MessageDao.create_with_attachments(
         db_session,
-        {"chat_id": chat_id, "user_id": id_first_user, "text": "reaction target"},
+        {
+            "chat_id": chat_id,
+            "user_id": id_first_user,
+            "text": "reaction target",
+            "reactions_count": {"🔥": 2},
+        },
         [],
     )
+    for user_id in [id_first_user, id_second_user]:
+        await MessageReactionDao.add(
+            db_session, {"user_id": user_id, "message_id": message.id, "emoji": "🔥"}
+        )
+    redis = test_redis_client
+    with pytest.raises(HTTPException) as forbidden:
+        await reactions_api.post_reactions(
+            message.id, ReactionsRequest(emoji="🔥"), uuid.uuid4(), redis, db_session
+        )
+    assert forbidden.value.status_code == 403
+    with pytest.raises(HTTPException) as missing:
+        await reactions_api.delete(uuid.uuid4(), id_first_user, redis, db_session)
+    assert missing.value.status_code == 404
 
-    await reactions_api.post_reactions(
-        message.id,
-        ReactionsRequest(emoji="🔥"),
-        user_id,
-        redis,
-        db_session,
-    )
+    async with redis.pubsub() as subscriber:
+        await subscriber.subscribe(f"chat:{chat_id}")
+        await subscriber.get_message(timeout=1)
+        removed = await reactions_api.post_reactions(
+            message.id,
+            ReactionsRequest(emoji="🔥"),
+            id_first_user,
+            redis,
+            db_session,
+        )
+        published = await subscriber.get_message(
+            ignore_subscribe_messages=True, timeout=2
+        )
+        assert published is not None
+        event = WsEvent.model_validate_json(published["data"])
+        assert event.event == "message:reactions"
+        assert event.data == MessageReactions(
+            chat_id=chat_id,
+            message_id=message.id,
+            user_id=id_first_user,
+            user_reaction=removed.user_reaction,
+            reactions_count=removed.updated_reactions_count,
+        )
 
+    assert removed.updated_reactions_count == {"🔥": 1}
+    assert removed.user_reaction is None
     assert await redis.get(f"message:chat:{message.id}") is None
     assert await redis.get(f"messages:history-version:{chat_id}") == "1"
 
@@ -593,7 +647,9 @@ async def test_chat_route_rejects_missing_invites_and_updates_members(
         db_session,
         owner_id,
     )
-    assert updated.title == "renamed-container-chat"
+    peer = await chats_api.UserDao.get_by_id(db_session, id_second_user)
+    assert updated.title == peer.username
+    assert updated.users_count == 2
     assert updated.description == "changed"
 
     third_user = await chats_api.UserDao.add(
@@ -612,6 +668,7 @@ async def test_chat_route_rejects_missing_invites_and_updates_members(
     )
     assert added.status == "success"
     updated_chat = await chats_api.ChatDao.get_chat_with_users(db_session, created.id)
+    assert updated_chat.title == "renamed-container-chat"
     assert third_user.id in {user.id for user in updated_chat.users}
 
 

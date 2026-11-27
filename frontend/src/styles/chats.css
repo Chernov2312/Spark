@@ -743,13 +743,11 @@
 .composer-actions { position: relative; flex: 0 0 auto; }
 .composer-btn--actions { color: var(--spark-text); }
 .composer-actions__menu {
-  position: absolute;
+  position: fixed;
   z-index: 20;
-  left: 0;
-  bottom: calc(100% + 8px);
   display: grid;
-  width: max-content;
-  min-width: 220px;
+  width: min(220px, calc(100vw - 16px));
+  overflow-y: auto;
   gap: 3px;
   padding: 6px;
   border: 1px solid var(--border);

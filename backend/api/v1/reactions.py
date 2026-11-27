@@ -1,4 +1,3 @@
-import json
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,6 +13,7 @@ from db.database import get_session
 from infrastructure.redis.client import Redis
 from infrastructure.redis.redis_dao import RedisDao
 from schemas.reactions import ReactionsRequest, ReactionsResponse
+from schemas.websockets import MessageReactions, WsEvent
 
 
 async def initialize_reactions(
@@ -45,18 +45,16 @@ async def publish_reaction_update(
     await RedisDao.publish_chat_event(
         redis,
         chat_id,
-        json.dumps(
-            {
-                "event": "message:reactions",
-                "data": {
-                    "chat_id": str(chat_id),
-                    "message_id": str(message_id),
-                    "user_id": str(user_id),
-                    "user_reaction": user_reaction,
-                    "reactions_count": reaction_counts,
-                },
-            }
-        ),
+        WsEvent(
+            event="message:reactions",
+            data=MessageReactions(
+                chat_id=chat_id,
+                message_id=message_id,
+                user_id=user_id,
+                user_reaction=user_reaction,
+                reactions_count=reaction_counts,
+            ),
+        ).model_dump_json(),
     )
     return reaction_counts
 
@@ -81,7 +79,7 @@ async def post_reactions(
     if not any(member.id == user_id for member in chat.users):
         raise HTTPException(status_code=403, detail="You are not a member of this chat")
     await initialize_reactions(session, redis, message_id)
-    current_counters = await RedisDao.set_reaction(
+    current_counters, user_reaction = await RedisDao.set_reaction(
         redis,
         message_id=message_id,
         user_id=user_id,
@@ -93,12 +91,13 @@ async def post_reactions(
         chat_id,
         message_id,
         user_id,
-        await redis.get(f"message:user_reaction:{message_id}:{user_id}"),
+        user_reaction,
         current_counters,
     )
     return ReactionsResponse(
         message_id=message_id,
         updated_reactions_count=reaction_counts,
+        user_reaction=user_reaction,
     )
 
 

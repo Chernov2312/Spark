@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { apiMocks, audioMessage, chat, renderChat, socialMocks, socketState, setupChatTests } from "../test/chatHarness";
-import { deferred } from "../test/fixtures";
+import { deferred, testUser } from "../test/fixtures";
 
 setupChatTests();
 
@@ -14,14 +14,46 @@ function findMessage(id = audioMessage.id) {
 }
 
 describe("ChatsPage: messages", () => {
-  it("marks forwarded attachments in history and forwarded text received live", async () => {
-    apiMocks.listMessages.mockResolvedValue([{ ...audioMessage, is_forwarded: true }]);
+  it("shows forwarding labels and captions in history and in live messages", async () => {
+    apiMocks.listMessages.mockResolvedValue([{
+      ...audioMessage, is_forwarded: true, forward_caption: "Подпись из истории",
+    }]);
     renderChat();
-    expect(within(await findMessage()).getByText("Пересланное сообщение")).toBeVisible();
+    const saved = within(await findMessage());
+    expect(saved.getByText("Пересланное сообщение")).toBeVisible();
+    expect(saved.getByText("Подпись из истории")).toBeVisible();
     act(() => socketState.options!.onEvent("message:new", {
       ...audioMessage, id: "forward", text: "Копия", attachments: [], is_forwarded: true,
+      forward_caption: "Подпись из события",
     }));
-    expect(within(await findMessage("forward")).getByText("Пересланное сообщение")).toBeVisible();
+    const live = within(await findMessage("forward"));
+    expect(live.getByText("Пересланное сообщение")).toBeVisible();
+    expect(live.getByText("Подпись из события")).toBeVisible();
+  });
+
+  it.each([
+    [null, "🔥", 1, 2],
+    ["🔥", null, 2, 1],
+  ] as const)("keeps a reaction change from %s to %s when WebSocket arrives before REST", async (before, after, oldCount, newCount) => {
+    const result = deferred<{ updated_reactions_count: Record<string, number>; user_reaction: string | null }>();
+    apiMocks.listMessages.mockResolvedValue([{
+      ...audioMessage, reactions_count: { "🔥": oldCount }, user_reaction: before,
+    }]);
+    apiMocks.addReaction.mockReturnValue(result.promise);
+    renderChat();
+    const message = within(await findMessage());
+    fireEvent.click(message.getByRole("button", { name: `🔥 ${oldCount}` }));
+    expect(apiMocks.addReaction).toHaveBeenCalledWith(audioMessage.id, "🔥");
+
+    const counters = { "🔥": newCount };
+    act(() => socketState.options!.onEvent("message:reactions", {
+      chat_id: chat.id, message_id: audioMessage.id, user_id: testUser.id,
+      user_reaction: after, reactions_count: counters,
+    }));
+    expect(message.getByRole("button", { name: `🔥 ${newCount}` })).toHaveAttribute("aria-pressed", String(Boolean(after)));
+
+    await act(async () => result.resolve({ updated_reactions_count: counters, user_reaction: after }));
+    expect(message.getByRole("button", { name: `🔥 ${newCount}` })).toHaveAttribute("aria-pressed", String(Boolean(after)));
   });
 
   it.each([

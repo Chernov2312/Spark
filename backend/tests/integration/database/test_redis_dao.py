@@ -83,7 +83,7 @@ async def test_redis_dao_cache_queue_presence_and_reactions(
     await RedisDao.enqueue_message(redis, message)
     entries = await RedisDao.get_stream_entries(redis, message_queue_key(chat_id))
     assert len(entries) == 1
-    assert await RedisDao.get_message_chat_id(redis, message_id) == str(chat_id)
+    assert await RedisDao.get_message_chat_id(redis, message_id) == chat_id
     assert message_queue_key(chat_id) in [
         key async for key in RedisDao.iter_message_queue_keys(redis)
     ]
@@ -113,14 +113,14 @@ async def test_redis_dao_cache_queue_presence_and_reactions(
         message_id=message_id,
         user_id=user_id,
         emoji="🔥",
-    ) == {"🔥": "1"}
+    ) == ({"🔥": "1"}, "🔥")
     assert await RedisDao.get_reaction_counts(redis, message_id) == {"🔥": "1"}
     assert await RedisDao.set_reaction(
         redis,
         message_id=message_id,
         user_id=user_id,
         emoji="🔥",
-    ) == {"🔥": "0"}
+    ) == ({"🔥": "0"}, None)
     counts, removed = await RedisDao.remove_reaction(
         redis,
         message_id=message_id,
@@ -133,7 +133,7 @@ async def test_redis_dao_cache_queue_presence_and_reactions(
         message_id=message_id,
         user_id=user_id,
         emoji="❤️",
-    ) == {"🔥": "0", "❤️": "1"}
+    ) == ({"🔥": "0", "❤️": "1"}, "❤️")
     counts, removed = await RedisDao.remove_reaction(
         redis,
         message_id=message_id,

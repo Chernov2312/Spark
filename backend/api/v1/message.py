@@ -71,7 +71,9 @@ async def get_chat_threads(
                 message_id=root.id,
                 poll_id=root.poll_id if isinstance(root, Message) else None,
                 is_forwarded=isinstance(root, Message) and root.is_forwarded,
-                forward_caption=root.forward_caption if isinstance(root, Message) else None,
+                forward_caption=root.forward_caption
+                if isinstance(root, Message)
+                else None,
                 chat_id=root.chat_id,
                 user_id=root.user_id,
                 text=root.text,

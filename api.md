@@ -375,15 +375,18 @@ Query-параметры:
 ```json
 {
   "message_id": "44444444-eeee-aaaa-bbbb-cccccccccccc",
+  "user_reaction": "🔥",
   "updated_reactions_count": {
     "🔥": 1
   }
 }
 ```
 
+`user_reaction` содержит выбранный пользователем emoji или `null` после снятия реакции. Событие `message:reactions` передаёт то же значение для этого пользователя.
+
 ### `DELETE /api/v1/messages/{message_id}/reactions`
 
-Удаляет реакцию текущего пользователя, если она есть. Ответ `200 OK` содержит `message_id` и актуальный `updated_reactions_count`.
+Удаляет реакцию текущего пользователя, если она есть. Ответ `200 OK` содержит `message_id`, актуальный `updated_reactions_count` и `user_reaction: null`.
 
 ### Закреплённые сообщения
 

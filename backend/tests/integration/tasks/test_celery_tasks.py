@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 import uuid
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 from tasks import config_celery
@@ -17,7 +17,7 @@ from db.dao.message_dao import MessageDao
 from db.dao.message_reactions_dao import MessageReactionDao
 from db.dao.user_dao import UserDao
 from db.database import Base
-from db.models import Message, MessageReaction, User
+from db.models import Message, User
 from infrastructure.redis.client import create_redis_client
 from infrastructure.redis.message_queue import enqueue_message, message_queue_key
 from schemas.message import MessageInternalDTO
@@ -113,7 +113,7 @@ def test_celery_message_and_reaction_tasks_with_testcontainers(
     # asyncio.run() wrapper and async engine cleanup.
     message_tasks.add_messages_in_db.run()
 
-    async def verify_message_and_prepare_reaction():
+    async def verify_message_and_prepare_reaction() -> None:
         redis = create_redis_client(redis_url)
         async with session_maker() as session:
             persisted = await MessageDao.get_by_id(session, queued_message.id)
@@ -121,7 +121,7 @@ def test_celery_message_and_reaction_tasks_with_testcontainers(
             assert persisted.text == "Persisted by the Celery task"
             assert await redis.xlen(message_queue_key(chat_id)) == 0
 
-            reaction = await MessageReactionDao.add(
+            await MessageReactionDao.add(
                 session,
                 {
                     "user_id": user_id,
@@ -142,20 +142,21 @@ def test_celery_message_and_reaction_tasks_with_testcontainers(
             "🔥",
         )
         await redis.aclose()
-        return reaction.id
 
-    reaction_id = asyncio.run(verify_message_and_prepare_reaction())
+    asyncio.run(verify_message_and_prepare_reaction())
     reaction_tasks.add_reactions_in_db.run()
 
-    async def verify_reaction_task():
+    async def verify_reaction_task() -> None:
         redis = create_redis_client(redis_url)
         async with session_maker() as session:
             persisted_message = await MessageDao.get_by_id(session, queued_message.id)
-            persisted_reaction = await session.scalar(
-                select(MessageReaction).where(MessageReaction.id == reaction_id),
+            reactions = await MessageReactionDao.get_message_reactions(
+                session, queued_message.id
             )
             assert persisted_message.reactions_count == {"🔥": 1}
-            assert persisted_reaction.emoji == "🔥"
+            assert [(reaction.user_id, reaction.emoji) for reaction in reactions] == [
+                (user_id, "🔥")
+            ]
 
         assert await redis.scard("message:reactions:dirty_set") == 0
         await redis.aclose()

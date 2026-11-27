@@ -10,3 +10,4 @@ class ReactionsRequest(BaseModel):
 class ReactionsResponse(BaseModel):
     message_id: uuid.UUID
     updated_reactions_count: dict[str, int]
+    user_reaction: str | None = None

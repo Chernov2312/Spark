@@ -2,7 +2,8 @@ import { test, expect, chatId, user } from "./support";
 
 test("anonymous poll creation, vote and retraction survive history reload", async ({ page, mockApi }) => {
   await mockApi.openChat();
-  await page.getByRole("button", { name: "Создать опрос", exact: true }).click();
+  await page.getByRole("button", { name: "Дополнительные действия" }).click();
+  await page.getByRole("menuitem", { name: "Опрос или викторина" }).click();
   const modal = page.getByRole("dialog", { name: "Новый опрос" });
   await modal.getByLabel("Вопрос", { exact: true }).fill("Куда пойдём?");
   await modal.getByLabel("Вариант 1", { exact: true }).fill("В парк");
@@ -35,7 +36,8 @@ test("anonymous poll creation, vote and retraction survive history reload", asyn
 test("public irreversible quiz identifies wrong and correct answers and shows voters", async ({ page, mockApi }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockApi.openChat();
-  await page.getByRole("button", { name: "Создать опрос", exact: true }).click();
+  await page.getByRole("button", { name: "Дополнительные действия" }).click();
+  await page.getByRole("menuitem", { name: "Опрос или викторина" }).click();
   await page.getByRole("button", { name: "Викторина", exact: true }).click();
   const modal = page.getByRole("dialog", { name: "Новая викторина" });
   await modal.getByLabel("Вопрос", { exact: true }).fill("Сколько будет 2 + 2?");

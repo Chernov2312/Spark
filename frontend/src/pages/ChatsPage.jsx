@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
@@ -810,6 +811,8 @@ export default function ChatsPage() {
   const closeMemberProfile = useCallback(() => setProfileMemberId(null), []);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [composerMenuOpen, setComposerMenuOpen] = useState(false);
+  const composerActionsTriggerRef = useRef(null);
+  const composerActionsMenuRef = useRef(null);
   const [selectedPreviewUrls, setSelectedPreviewUrls] = useState([]);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -865,6 +868,25 @@ export default function ChatsPage() {
     return () => { observer?.disconnect(); window.removeEventListener("keydown", dismiss); };
   }, [reactionPicker]);
   useEffect(() => () => clearTimeout(sendHoldTimerRef.current), []);
+  useLayoutEffect(() => {
+    if (!composerMenuOpen) return;
+    const trigger = composerActionsTriggerRef.current;
+    const menu = composerActionsMenuRef.current;
+    if (!trigger || !menu) return;
+    const positionMenu = () => {
+      const { left, top } = trigger.getBoundingClientRect();
+      menu.style.left = `${Math.max(8, Math.min(left, window.innerWidth - menu.offsetWidth - 8))}px`;
+      menu.style.bottom = `${window.innerHeight - top + 8}px`;
+      menu.style.maxHeight = `${Math.max(0, top - 16)}px`;
+    };
+    positionMenu();
+    window.addEventListener("resize", positionMenu);
+    document.addEventListener("scroll", positionMenu, true);
+    return () => {
+      window.removeEventListener("resize", positionMenu);
+      document.removeEventListener("scroll", positionMenu, true);
+    };
+  }, [composerMenuOpen]);
   useEffect(() => {
     if (!composerMenuOpen) return;
     const dismiss = (event) => {
@@ -1869,13 +1891,10 @@ export default function ChatsPage() {
       const updateReaction = (items) => items.map((m) => {
         if (m.id !== messageId) return m;
 
-        const wasMine = m.user_reaction === emoji;
-        const nextUserReaction = wasMine ? null : emoji;
-
         return {
           ...m,
           reactions_count: res.updated_reactions_count ?? m.reactions_count,
-          user_reaction: nextUserReaction,
+          user_reaction: res.user_reaction,
         };
       });
       setMessages(updateReaction);
@@ -2580,10 +2599,10 @@ export default function ChatsPage() {
                   </>
                 ) : (
                   <div className="composer-actions">
-                    <button type="button" className="composer-btn composer-btn--actions" aria-label="Дополнительные действия" aria-haspopup="menu" aria-expanded={composerMenuOpen} disabled={sending || recording} onClick={() => setComposerMenuOpen((open) => !open)}>
+                    <button ref={composerActionsTriggerRef} type="button" className="composer-btn composer-btn--actions" aria-label="Дополнительные действия" aria-haspopup="menu" aria-expanded={composerMenuOpen} disabled={sending || recording} onClick={() => setComposerMenuOpen((open) => !open)}>
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
                     </button>
-                    {composerMenuOpen && <div className="composer-actions__menu" role="menu" aria-label="Дополнительные действия">
+                    {composerMenuOpen && <div ref={composerActionsMenuRef} className="composer-actions__menu" role="menu" aria-label="Дополнительные действия">
                       <label className="composer-actions__item" role="menuitem">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10"/><path d="m3 15 5-5 4 4 2-2 3 3"/><circle cx="8.5" cy="7.5" r="1.5"/><path d="M18 18v6m-3-3h6"/></svg>
                         <span>Прикрепить файл</span>

@@ -1,7 +1,6 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import RouteTags
@@ -165,11 +164,7 @@ async def get_chats(
         avatars = []
         for avatar in chat.avatars:
             avatars.append(await s3.get_temporary_url(avatar.file_key))
-        chat_model = ChatResponse.model_validate(chat)
-        chat_model.users_count = len(chat.users)
-        if chat_model.users_count == 2:
-            other_user = next(member for member in chat.users if member.id != user_id)
-            chat_model.title = other_user.username
+        chat_model = ChatResponse.from_chat(chat, user_id)
         chat_model.avatar_urls = avatars.copy()
         chat_model.last_message = previews.get(chat.id)
         if chat.id in personal_keys:
@@ -191,33 +186,8 @@ async def open_direct_chat(
     target_user = await UserDao.get_by_id(session, target_user_id)
     if target_user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    chat = await ChatDao.get_direct_chat_between(session, user_id, target_user_id)
-    if chat is None:
-        first_id, second_id = sorted((user_id, target_user_id), key=str)
-        try:
-            chat = await ChatDao.add(
-                session,
-                {
-                    "owner_id": user_id,
-                    "title": f"direct-{first_id}-{second_id}",
-                    "description": "",
-                },
-            )
-            await ChatDao.add_users_to_chat(session, chat.id, [user_id, target_user_id])
-            await ChatDao.set_owner_role(session, chat.id, user_id)
-        except IntegrityError:
-            await session.rollback()
-            chat = await ChatDao.get_direct_chat_between(
-                session,
-                user_id,
-                target_user_id,
-            )
-            if chat is None:
-                raise
-    response = ChatResponse.model_validate(chat)
-    response.title = target_user.username
-    response.users_count = 2
-    return response
+    chat = await ChatDao.get_or_create_direct_chat(session, user_id, target_user_id)
+    return ChatResponse.from_chat(chat, user_id)
 
 
 @chat_router.post("/chats", status_code=status.HTTP_201_CREATED)
@@ -301,14 +271,7 @@ async def update_chat(
     )
     if updated_chat is None:
         raise HTTPException(status_code=404, detail="Chat not found")
-    response = ChatResponse.model_validate(updated_chat)
-    response.users_count = len(cur_chat.users)
-    if response.users_count == 2:
-        other_user = next(
-            member for member in cur_chat.users if member.id != current_user_id
-        )
-        response.title = other_user.username
-    return response
+    return ChatResponse.from_chat(updated_chat, current_user_id)
 
 
 @chat_router.post("/chats/{chat_id}/users")

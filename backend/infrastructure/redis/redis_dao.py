@@ -159,8 +159,11 @@ class RedisDao:
         await redis.srem(f"chat:{chat_id}:users", str(user_id))
 
     @staticmethod
-    async def get_message_chat_id(redis: Redis, message_id: uuid.UUID) -> str | None:
-        return await redis.get(f"message:chat:{message_id}")
+    async def get_message_chat_id(
+        redis: Redis, message_id: uuid.UUID
+    ) -> uuid.UUID | None:
+        chat_id = await redis.get(f"message:chat:{message_id}")
+        return uuid.UUID(chat_id) if chat_id else None
 
     @staticmethod
     async def get_reaction_counts(
@@ -176,7 +179,7 @@ class RedisDao:
         message_id: uuid.UUID,
         user_id: uuid.UUID,
         emoji: str,
-    ) -> dict[str, str]:
+    ) -> tuple[dict[str, str], str | None]:
         user_key = f"message:user_reaction:{message_id}:{user_id}"
         counts_key = f"message:reactions_count:{message_id}"
         users_key = f"message:users:{message_id}"
@@ -202,7 +205,7 @@ class RedisDao:
                 operation="set_reaction",
             )
 
-        return results[-2]
+        return results[-2], None if current_emoji == emoji else emoji
 
     @staticmethod
     async def remove_reaction(

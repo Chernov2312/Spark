@@ -32,10 +32,12 @@ describe("message link previews in API requests", () => {
     });
   });
 
-  it("selects a preview URL from the source text for forwarding", async () => {
-    await forwardMessage("chat", "message", "target", "Сайт: www.example.org.");
+  it.each([null, "Копия для https://example.com"])("sends caption %j and selects the preview from the source text", async (caption) => {
+    const args = ["chat", "message", "target", "Сайт: www.example.org."] as const;
+    if (caption === null) await forwardMessage(...args);
+    else await forwardMessage(...args, caption);
     expect(post).toHaveBeenCalledWith("/chats/chat/messages/message/forward", {
-      target_chat_id: "target", link_preview_url: "https://www.example.org",
+      target_chat_id: "target", caption, link_preview_url: "https://www.example.org",
     });
   });
 });

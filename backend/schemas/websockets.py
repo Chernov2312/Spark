@@ -63,6 +63,14 @@ class MessageDeleted(BaseModel):
     message_id: uuid.UUID
 
 
+class MessageReactions(BaseModel):
+    chat_id: uuid.UUID
+    message_id: uuid.UUID
+    user_id: uuid.UUID
+    user_reaction: str | None
+    reactions_count: dict[str, int]
+
+
 class PollUpdated(BaseModel):
     chat_id: uuid.UUID
     poll_id: uuid.UUID
@@ -95,6 +103,7 @@ class WsEvent(BaseModel):
         "message:updated",
         "message:deleted",
         "message:link-preview",
+        "message:reactions",
         "attachment:text",
         "poll:updated",
     ]
@@ -108,6 +117,7 @@ class WsEvent(BaseModel):
         MessageUpdated,
         MessageDeleted,
         MessageLinkPreview,
+        MessageReactions,
         PollUpdated,
     ]
 
@@ -122,6 +132,7 @@ class WsEvent(BaseModel):
                 "message:updated": MessageUpdated,
                 "message:deleted": MessageDeleted,
                 "message:link-preview": MessageLinkPreview,
+                "message:reactions": MessageReactions,
                 "chat:update": ChatData,
                 "user:typing": UserTyping,
                 "user:presence": UserPresence,

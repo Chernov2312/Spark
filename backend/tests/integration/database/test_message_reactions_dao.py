@@ -1,14 +1,17 @@
 import uuid
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from db.dao.message_dao import MessageDao
 from db.dao.message_reactions_dao import MessageReactionDao
+from db.models import Chat, User
 
 
 async def test_reaction_dao_reads_and_updates_user_reactions(
-    db_session,
-    db_user,
-    db_userchat,
-):
+    db_session: AsyncSession,
+    db_user: User,
+    db_userchat: tuple[Chat, User],
+) -> None:
     chat, another_user = db_userchat
     first_message = await MessageDao.create_with_attachments(
         db_session,
@@ -20,7 +23,7 @@ async def test_reaction_dao_reads_and_updates_user_reactions(
         {"chat_id": chat.id, "user_id": db_user.id, "text": "second"},
         [],
     )
-    first_reaction = await MessageReactionDao.add(
+    await MessageReactionDao.add(
         db_session,
         {
             "user_id": another_user.id,
@@ -42,13 +45,16 @@ async def test_reaction_dao_reads_and_updates_user_reactions(
         another_user.id,
         [first_message.id],
     )
+    assert [(reaction.message_id, reaction.emoji) for reaction in result] == [
+        (first_message.id, "👍")
+    ]
     await MessageReactionDao.update_user_reactions(
         db_session,
         [
             {
-                "id": str(first_message.id),
+                "id": first_message.id,
                 "users": {str(another_user.id): "🔥"},
-                "reactions_count": {},
+                "reactions_count": {"🔥": 1},
             },
         ],
     )
@@ -57,11 +63,25 @@ async def test_reaction_dao_reads_and_updates_user_reactions(
         [{"id": first_message.id, "reactions_count": {"🔥": 1}}],
     )
 
-    await db_session.refresh(first_reaction)
     await db_session.refresh(first_message)
-    assert [reaction.id for reaction in result] == [first_reaction.id]
-    assert first_reaction.emoji == "🔥"
+    updated = await MessageReactionDao.get_message_reactions(db_session, first_message.id)
+    assert [(reaction.user_id, reaction.emoji) for reaction in updated] == [
+        (another_user.id, "🔥")
+    ]
     assert first_message.reactions_count == {"🔥": 1}
+
+    await MessageReactionDao.update_user_reactions(
+        db_session, [{"id": first_message.id, "users": {}, "reactions_count": {}}]
+    )
+    assert (
+        await MessageReactionDao.get_message_reactions(db_session, first_message.id) == []
+    )
+    untouched = await MessageReactionDao.get_message_reactions(
+        db_session, second_message.id
+    )
+    assert [(reaction.user_id, reaction.emoji) for reaction in untouched] == [
+        (another_user.id, "❤️")
+    ]
     assert (
         await MessageReactionDao.get_user_reactions(
             db_session,
